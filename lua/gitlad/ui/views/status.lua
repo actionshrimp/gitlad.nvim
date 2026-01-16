@@ -8,6 +8,7 @@ local M = {}
 local state = require("gitlad.state")
 local config = require("gitlad.config")
 local history_view = require("gitlad.ui.views.history")
+local git = require("gitlad.git")
 
 ---@class LineInfo
 ---@field path string File path
@@ -23,6 +24,8 @@ local history_view = require("gitlad.ui.views.history")
 ---@field repo_state RepoState Repository state
 ---@field line_map table<number, LineInfo> Map of line numbers to file info
 ---@field section_lines table<number, SectionInfo> Map of line numbers to section headers
+---@field expanded_files table<string, boolean> Map of "section:path" to expanded state
+---@field diff_cache table<string, string[]> Map of "section:path" to diff lines
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
 
@@ -43,6 +46,8 @@ local function get_or_create_buffer(repo_state)
   self.repo_state = repo_state
   self.line_map = {} -- Maps line numbers to file info
   self.section_lines = {} -- Maps line numbers to section headers
+  self.expanded_files = {} -- Tracks which files have diffs expanded
+  self.diff_cache = {} -- Caches fetched diff lines
 
   -- Create buffer
   self.bufnr = vim.api.nvim_create_buf(false, true)
@@ -183,10 +188,112 @@ function StatusBuffer:_unstage_current()
   end
 end
 
+--- Get the cache key for a file's diff
+---@param path string
+---@param section string
+---@return string
+local function diff_cache_key(path, section)
+  return section .. ":" .. path
+end
+
+--- Filter out git diff header lines, keeping only the actual diff content
+---@param lines string[]
+---@return string[]
+local function filter_diff_header(lines)
+  local result = {}
+  local in_hunk = false
+
+  for _, line in ipairs(lines) do
+    -- Start including lines once we hit the first hunk header
+    if line:match("^@@") then
+      in_hunk = true
+    end
+    if in_hunk then
+      table.insert(result, line)
+    end
+  end
+
+  return result
+end
+
+--- Read file content and format as "added" lines
+---@param path string Full path to file
+---@param callback fun(lines: string[]|nil, err: string|nil)
+local function read_file_as_added(path, callback)
+  vim.schedule(function()
+    local file = io.open(path, "r")
+    if not file then
+      callback(nil, "Could not read file")
+      return
+    end
+
+    local lines = {}
+    for line in file:lines() do
+      table.insert(lines, "+" .. line)
+    end
+    file:close()
+
+    callback(lines, nil)
+  end)
+end
+
 --- Toggle diff view for current file
 function StatusBuffer:_toggle_diff()
-  -- TODO: Implement inline diff expansion
-  vim.notify("[gitlad] Diff toggle not yet implemented", vim.log.levels.INFO)
+  local path, section = self:_get_current_file()
+  if not path then
+    return
+  end
+
+  local key = diff_cache_key(path, section)
+
+  -- Toggle expanded state
+  if self.expanded_files[key] then
+    -- Collapse
+    self.expanded_files[key] = false
+    self:render()
+    return
+  end
+
+  -- Expand - check if diff is cached
+  if self.diff_cache[key] then
+    self.expanded_files[key] = true
+    self:render()
+    return
+  end
+
+  -- Untracked files: read the full file content
+  if section == "untracked" then
+    local full_path = self.repo_state.repo_root .. path
+    read_file_as_added(full_path, function(lines, err)
+      if err then
+        vim.notify("[gitlad] Read error: " .. err, vim.log.levels.ERROR)
+        return
+      end
+
+      vim.schedule(function()
+        self.diff_cache[key] = lines or {}
+        self.expanded_files[key] = true
+        self:render()
+      end)
+    end)
+    return
+  end
+
+  -- Fetch the diff for staged/unstaged files
+  local staged = (section == "staged")
+  git.diff(path, staged, { cwd = self.repo_state.repo_root }, function(diff_lines, err)
+    if err then
+      vim.notify("[gitlad] Diff error: " .. err, vim.log.levels.ERROR)
+      return
+    end
+
+    vim.schedule(function()
+      -- Filter out the diff header, keep only the actual diff
+      self.diff_cache[key] = filter_diff_header(diff_lines or {})
+      self.expanded_files[key] = true
+      self:render()
+    end)
+  end)
 end
 
 --- Navigate to next file entry
@@ -319,7 +426,7 @@ function StatusBuffer:_show_help()
     "Actions:",
     "  <CR>   Visit file",
     "  x      Discard changes",
-    "  <Tab>  Toggle diff (TODO)",
+    "  <Tab>  Toggle inline diff",
     "",
     "Other:",
     "  g      Refresh",
@@ -388,10 +495,26 @@ function StatusBuffer:render()
         and entry.orig_path
         and string.format("%s -> %s", entry.orig_path, entry.path)
       or entry.path
-    local line_text = status_char and string.format("  %s %s  %s", sign, status_char, display)
-      or string.format("  %s    %s", sign, display)
+
+    -- Check if this file is expanded
+    local key = diff_cache_key(entry.path, section)
+    local is_expanded = self.expanded_files[key]
+    local expand_indicator = is_expanded and "v" or ">"
+
+    local line_text = status_char
+        and string.format("  %s %s %s %s", expand_indicator, sign, status_char, display)
+      or string.format("  %s %s   %s", expand_indicator, sign, display)
     table.insert(lines, line_text)
     self.line_map[#lines] = { path = entry.path, section = section }
+
+    -- Add diff lines if expanded
+    if is_expanded and self.diff_cache[key] then
+      for _, diff_line in ipairs(self.diff_cache[key]) do
+        table.insert(lines, "    " .. diff_line)
+        -- Diff lines also map to the same file
+        self.line_map[#lines] = { path = entry.path, section = section }
+      end
+    end
   end
 
   -- Header
