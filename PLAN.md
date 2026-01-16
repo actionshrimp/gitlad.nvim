@@ -19,6 +19,29 @@
 
 This means the UI may occasionally be out of sync with git (if user runs git commands outside the plugin), but the `g` refresh is always available to resync.
 
+### Leverage diffview.nvim for Full-Buffer Diffs
+
+**Principle:** Don't reinvent the wheel for diff viewing.
+
+- **Full-buffer diff views** (side-by-side diffs, commit diffs, file history) → Delegate to `diffview.nvim`
+- **Status buffer inline diffs** (hunk preview, hunk staging) → Our own implementation
+
+`diffview.nvim` is a mature, well-tested plugin that handles all the complexity of diff rendering, navigation, and 3-way merge views. We should integrate with it rather than building our own.
+
+**What we build ourselves:**
+- Inline diff expansion in the status buffer (TAB on a file)
+- Hunk parsing for staging/unstaging individual hunks
+- Diff highlighting within the status buffer
+
+**What we delegate to diffview.nvim:**
+- `d` popup actions that open full diff views
+- Side-by-side file comparison
+- Commit diff viewing
+- File history / log diff viewing
+- 3-way merge conflict resolution
+
+This keeps gitlad.nvim focused on the status/staging workflow while leveraging diffview.nvim's strengths.
+
 ---
 
 ## Current State (Phase 1 Complete)
@@ -213,11 +236,17 @@ Port neogit's PopupBuilder pattern for transient-style menus.
 - `lua/gitlad/ui/views/log.lua`
 - `lua/gitlad/popups/log/init.lua`
 
-### 3.5 Diff View
+### 3.5 Diff View (via diffview.nvim)
+
+**Note:** Full-buffer diff views delegate to `diffview.nvim` - see "Leverage diffview.nvim" section above.
+
 - [ ] `d` opens diff popup
-- [ ] Compare: working tree vs index, index vs HEAD, arbitrary refs
-- [ ] Side-by-side or unified view (config option)
-- [ ] Integration with existing diff plugins? (diffview.nvim)
+- [ ] Actions invoke `diffview.nvim` commands:
+  - Compare working tree vs index → `:DiffviewOpen`
+  - Compare index vs HEAD → `:DiffviewOpen --cached`
+  - Compare arbitrary refs → `:DiffviewOpen ref1..ref2`
+- [ ] Graceful fallback if diffview.nvim not installed (error message with install hint)
+- [ ] Optional: config to use built-in `vimdiff` instead
 
 ### 3.6 Stash Popup
 - [ ] `z` opens stash popup
@@ -236,10 +265,13 @@ Port neogit's PopupBuilder pattern for transient-style menus.
 - [ ] pick/reword/edit/squash/fixup/drop commands
 - [ ] Handle rebase conflicts
 
-### 4.2 Merge & Conflict Resolution
+### 4.2 Merge & Conflict Resolution (3-way merge via diffview.nvim)
+
+**Note:** 3-way merge views delegate to `diffview.nvim` - see "Leverage diffview.nvim" section above.
+
 - [ ] `m` opens merge popup
 - [ ] Show merge conflicts in status buffer
-- [ ] `e` on conflicted file opens 3-way merge view
+- [ ] `e` on conflicted file opens diffview.nvim's merge tool (`:DiffviewOpen` with merge conflict handling)
 - [ ] Mark resolved with `s` (stage)
 - [ ] Abort/continue merge actions
 
@@ -294,6 +326,9 @@ Cloned in parent directory:
 - `../neogit/` - Popup system, comprehensive features, async patterns
 - `../vim-fugitive/` - Performance patterns, vim-way design, caching
 - `../lazygit/` - AsyncHandler pattern, loader architecture, Go but transferable
+
+External dependency:
+- `diffview.nvim` - Full-buffer diff views, side-by-side diffs, 3-way merge (we integrate rather than reinvent)
 
 ## Key Files to Study
 

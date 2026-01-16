@@ -1,5 +1,22 @@
 # gitlad.nvim Development Guide
 
+## ⚠️ Kaizen: Continuous Improvement
+
+**This is a living document.** Our development practices should evolve as we learn.
+
+When you notice something that could be improved—whether it's a process that's too slow, documentation that's unclear, a pattern that keeps causing bugs, or a tool that could help—**speak up and suggest changes** to this guide and PLAN.md.
+
+Examples of improvements to watch for:
+- Repetitive manual steps that could be automated
+- Test patterns that are brittle or hard to maintain
+- Documentation gaps that caused confusion
+- Better ways to structure code or tests
+- Tools or plugins that could speed up development
+
+**Don't just follow the process—help improve it.**
+
+---
+
 ## Project Vision
 
 A fast, well-tested git interface for Neovim inspired by magit, fugitive, and lazygit. Key differentiators:
@@ -16,6 +33,18 @@ A fast, well-tested git interface for Neovim inspired by magit, fugitive, and la
 1. **Manual refresh only** - User presses `g` to refresh, with visual "Refreshing..." indicator
 2. **Optimistic updates** - When staging/unstaging, run git command, check exit code, update Lua state directly
 3. **Git command history** - `$` shows all git commands run, their output, and exit codes
+
+### Leverage diffview.nvim for Full-Buffer Diffs
+
+**Don't reinvent the wheel.** For full-buffer diff views, delegate to `diffview.nvim`:
+
+| What | Who handles it |
+|------|----------------|
+| **Status buffer inline diffs** (hunk preview, hunk staging) | gitlad.nvim (our own implementation) |
+| **Full-buffer diff views** (side-by-side, commit diffs, file history) | diffview.nvim |
+| **3-way merge conflict resolution** | diffview.nvim |
+
+This keeps gitlad.nvim focused on the status/staging workflow while leveraging diffview.nvim's mature diff rendering.
 
 ## Golden Rule: Automated Testing
 
@@ -255,6 +284,10 @@ Cloned in parent directory for reference:
 - `../neogit/` - Popup system architecture, comprehensive features
 - `../vim-fugitive/` - Performance patterns, vim-way design
 - `../lazygit/` - AsyncHandler pattern, loader architecture
+
+External dependency (integrate, don't reinvent):
+
+- `diffview.nvim` - Full-buffer diff views, side-by-side diffs, 3-way merge conflict resolution
 
 ## Development Workflow
 
