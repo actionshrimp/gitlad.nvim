@@ -45,6 +45,23 @@ make test     # Run tests
 make lint     # Check formatting
 ```
 
+### GitHub Account Setup (Optional)
+
+If you have multiple GitHub accounts and need to use a specific one for this project:
+
+```bash
+# 1. Add your account to gh CLI if not already
+gh auth login
+
+# 2. Run setup (prompts for account name, creates local .envrc)
+make setup-gh
+
+# 3. Allow direnv
+direnv allow
+```
+
+This sets `GH_TOKEN` automatically when you're in this directory.
+
 ## License
 
 MIT

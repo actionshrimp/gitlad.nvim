@@ -1,4 +1,4 @@
-.PHONY: test test-unit test-e2e deps lint dev test-repo dev-repo
+.PHONY: test test-unit test-e2e deps lint dev test-repo dev-repo setup-gh
 
 # Run plugin in development mode
 dev:
@@ -55,3 +55,25 @@ format:
 # Clean test artifacts
 clean:
 	rm -rf .tests/
+
+# Setup GitHub account for direnv
+setup-gh:
+	@if [ -f .envrc ]; then \
+		echo ".envrc already exists. Remove it first if you want to reconfigure."; \
+		exit 1; \
+	fi
+	@echo "Available GitHub accounts:"
+	@gh auth status 2>&1 | grep "Logged in" | sed 's/.*account /  - /' | sed 's/ (.*//'
+	@echo ""
+	@read -p "Enter the GitHub account name to use for this project: " account; \
+	if [ -z "$$account" ]; then \
+		echo "Error: Account name cannot be empty"; \
+		exit 1; \
+	fi; \
+	if ! gh auth token --user "$$account" > /dev/null 2>&1; then \
+		echo "Error: Account '$$account' not found. Run 'gh auth login' first."; \
+		exit 1; \
+	fi; \
+	echo "export GH_TOKEN=\$$(gh auth token --user $$account)" > .envrc; \
+	echo "Created .envrc for account '$$account'"; \
+	echo "Run 'direnv allow' to activate"
