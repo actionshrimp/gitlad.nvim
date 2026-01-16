@@ -4,10 +4,18 @@
 
 A fast, well-tested git interface for Neovim inspired by magit, fugitive, and lazygit. Key differentiators:
 
-- **Performance-first**: Timestamp-based cache invalidation (like fugitive), not full refreshes
+- **Performance-first**: Optimistic state updates, no automatic git syncing (critical for large monorepos)
 - **Properly tested**: Comprehensive automated tests are mandatory, not optional
 - **Magit UX**: Transient-style popup menus and magit keybindings
-- **Async-aware**: AsyncHandler pattern prevents stale data, scoped refreshes
+- **Transparent**: Git command history shows exactly what commands are running
+
+### Core Performance Principle
+
+**No automatic git syncing.** In large monorepos (1M+ files), `git status` can take seconds. Instead:
+
+1. **Manual refresh only** - User presses `g` to refresh, with visual "Refreshing..." indicator
+2. **Optimistic updates** - When staging/unstaging, run git command, check exit code, update Lua state directly
+3. **Git command history** - `$` shows all git commands run, their output, and exit codes
 
 ## Golden Rule: Automated Testing
 
@@ -124,35 +132,43 @@ lua/gitlad/
 ├── git/
 │   ├── init.lua      # High-level git operations
 │   ├── cli.lua       # Async job execution (vim.fn.jobstart)
-│   └── parse.lua     # Git output parsers (porcelain v2)
+│   ├── parse.lua     # Git output parsers (porcelain v2)
+│   └── history.lua   # Git command history (TODO)
 ├── state/
-│   ├── init.lua      # RepoState coordinator
-│   ├── cache.lua     # Timestamp-based cache invalidation
+│   ├── init.lua      # RepoState coordinator + optimistic updates
+│   ├── cache.lua     # Cache utilities (simplified)
 │   └── async.lua     # AsyncHandler, debounce, throttle
 └── ui/
     ├── popup/        # Transient-style popup system (TODO)
     └── views/
-        └── status.lua
+        ├── status.lua
+        └── history.lua  # Command history view (TODO)
 ```
 
 ### Key Patterns
 
-1. **Timestamp-based cache** (`state/cache.lua`)
-   - Watches `.git/HEAD`, `.git/index`, etc.
-   - Only invalidates when files actually change
-   - Avoids polling, avoids full refreshes
+1. **Optimistic State Updates** (`state/init.lua`)
+   - On stage/unstage: run git command, check exit code
+   - On success: mutate Lua state directly (move file between sections)
+   - On failure: show error, no state change
+   - **Never** automatically call `git status` after operations
 
-2. **AsyncHandler** (`state/async.lua`)
-   - Tracks request IDs
+2. **Git Command History** (`git/history.lua`)
+   - Ring buffer of all git commands run
+   - Each entry: command, args, exit code, stdout, stderr, duration
+   - Accessible via `$` keybinding
+
+3. **AsyncHandler** (`state/async.lua`)
+   - Tracks request IDs for manual refreshes
    - Only applies the latest result
    - Prevents stale async results from overwriting fresh data
 
-3. **RepoState** (`state/init.lua`)
+4. **RepoState** (`state/init.lua`)
    - One instance per repository
    - Emits events ("status", "branches", etc.)
    - Views subscribe to events for updates
 
-4. **Porcelain v2 parsing** (`git/parse.lua`)
+5. **Porcelain v2 parsing** (`git/parse.lua`)
    - Uses `git status --porcelain=v2` for stable output
    - Machine-readable, won't break with git updates
 
@@ -205,17 +221,22 @@ lua/gitlad/
 
 See **PLAN.md** for the detailed development roadmap with specific tasks, files to create/modify, and implementation notes.
 
-### Current Status: Phase 1 Complete
+### Current Status: Phase 1 Complete, Architecture Refactor Needed
 
 **What's built:**
 - Async git CLI wrapper with porcelain v2 parsing
-- Timestamp-based cache invalidation
 - AsyncHandler pattern for request ordering
 - Status buffer with staging/unstaging
 - 37 tests passing, CI configured
 
+**Architecture refactor needed:**
+- Current stage/unstage triggers full `git status` refresh (wrong)
+- Need to implement optimistic state updates instead
+
 **Next up (Phase 2):**
-- File watcher
+- Optimistic state updates (move files between sections on success)
+- Refresh indicator ("Refreshing..." during manual refresh)
+- Git command history module
 - Full magit keybindings
 - Inline diff expansion
 - Popup system
