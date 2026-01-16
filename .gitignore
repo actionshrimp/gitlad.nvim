@@ -19,3 +19,6 @@ luarocks/
 *.code-workspace
 
 .claude/
+
+# direnv (contains account-specific config)
+.envrc

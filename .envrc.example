@@ -1,0 +1,13 @@
+# GitHub account configuration for direnv
+# This file is a template - run `make setup-gh` to create your .envrc
+#
+# The setup will prompt for your GitHub account name and create a local
+# .envrc file that exports GH_TOKEN for that account.
+#
+# Prerequisites:
+#   1. Install direnv: https://direnv.net/
+#   2. Add your GitHub account to gh CLI: gh auth login
+#   3. Run: make setup-gh
+#   4. Allow direnv: direnv allow
+
+export GH_TOKEN=$(gh auth token --user YOUR_ACCOUNT_NAME)
