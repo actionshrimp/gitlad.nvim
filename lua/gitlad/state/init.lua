@@ -218,6 +218,76 @@ function RepoState:unstage(path, callback)
   end)
 end
 
+--- Stage all files (optimistic update)
+---@param callback? fun(success: boolean)
+function RepoState:stage_all(callback)
+  git.stage_all({ cwd = self.repo_root }, function(success, err)
+    if not success then
+      vim.notify("[gitlad] Stage all error: " .. (err or "unknown"), vim.log.levels.ERROR)
+    else
+      -- Optimistic update: apply command to state
+      local cmd = commands.stage_all()
+      self:apply_command(cmd)
+    end
+    if callback then
+      callback(success)
+    end
+  end)
+end
+
+--- Unstage all files (optimistic update)
+---@param callback? fun(success: boolean)
+function RepoState:unstage_all(callback)
+  git.unstage_all({ cwd = self.repo_root }, function(success, err)
+    if not success then
+      vim.notify("[gitlad] Unstage all error: " .. (err or "unknown"), vim.log.levels.ERROR)
+    else
+      -- Optimistic update: apply command to state
+      local cmd = commands.unstage_all()
+      self:apply_command(cmd)
+    end
+    if callback then
+      callback(success)
+    end
+  end)
+end
+
+--- Discard changes to a file (optimistic update)
+---@param path string File path to discard
+---@param section "unstaged"|"untracked" Which section the file is in
+---@param callback? fun(success: boolean)
+function RepoState:discard(path, section, callback)
+  if section == "untracked" then
+    -- Delete the untracked file
+    git.delete_untracked(path, self.repo_root, function(success, err)
+      if not success then
+        vim.notify("[gitlad] Delete error: " .. (err or "unknown"), vim.log.levels.ERROR)
+      else
+        -- Optimistic update: remove from state
+        local cmd = commands.remove_file(path, section)
+        self:apply_command(cmd)
+      end
+      if callback then
+        callback(success)
+      end
+    end)
+  else
+    -- Discard changes with git checkout
+    git.discard(path, { cwd = self.repo_root }, function(success, err)
+      if not success then
+        vim.notify("[gitlad] Discard error: " .. (err or "unknown"), vim.log.levels.ERROR)
+      else
+        -- Optimistic update: remove from state
+        local cmd = commands.remove_file(path, section)
+        self:apply_command(cmd)
+      end
+      if callback then
+        callback(success)
+      end
+    end)
+  end
+end
+
 --- Invalidate all caches and refresh
 function RepoState:invalidate_and_refresh()
   self.cache:invalidate_all()

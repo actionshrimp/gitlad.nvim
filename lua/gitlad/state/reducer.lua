@@ -199,6 +199,20 @@ function M._apply_unstage_all(status)
   return status
 end
 
+--- Apply remove_file command
+---@param status GitStatusResult (already copied)
+---@param path string
+---@param from_section "unstaged"|"untracked"
+---@return GitStatusResult
+function M._apply_remove_file(status, path, from_section)
+  if from_section == "untracked" then
+    status.untracked = remove_entry(status.untracked, path)
+  elseif from_section == "unstaged" then
+    status.unstaged = remove_entry(status.unstaged, path)
+  end
+  return status
+end
+
 --- Apply a command to status, returning new status (PURE FUNCTION)
 ---@param status GitStatusResult
 ---@param cmd StatusCommand
@@ -219,6 +233,8 @@ function M.apply(status, cmd)
     return M._apply_stage_all(new_status)
   elseif cmd.type == "unstage_all" then
     return M._apply_unstage_all(new_status)
+  elseif cmd.type == "remove_file" then
+    return M._apply_remove_file(new_status, cmd.path, cmd.from_section)
   end
 
   return new_status

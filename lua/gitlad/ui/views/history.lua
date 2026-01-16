@@ -148,8 +148,6 @@ function HistoryBuffer:render()
         table.insert(lines, summary_lines[1])
         self.line_map[#lines] = { entry_index = idx, expanded = false }
       end
-
-      table.insert(lines, "")
     end
   end
 

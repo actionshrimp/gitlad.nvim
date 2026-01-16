@@ -92,6 +92,48 @@ function M.branches(opts, callback)
   end)
 end
 
+--- Stage all files
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.stage_all(opts, callback)
+  cli.run_async({ "add", "-A" }, opts, function(result)
+    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+  end)
+end
+
+--- Unstage all files
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.unstage_all(opts, callback)
+  cli.run_async({ "reset", "HEAD" }, opts, function(result)
+    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+  end)
+end
+
+--- Discard changes to a file (checkout from HEAD)
+---@param path string File path to discard
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.discard(path, opts, callback)
+  cli.run_async({ "checkout", "HEAD", "--", path }, opts, function(result)
+    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+  end)
+end
+
+--- Delete an untracked file
+---@param path string File path to delete
+---@param repo_root string Repository root path
+---@param callback fun(success: boolean, err: string|nil)
+function M.delete_untracked(path, repo_root, callback)
+  local full_path = repo_root .. "/" .. path
+  local ok, err = os.remove(full_path)
+  if ok then
+    callback(true, nil)
+  else
+    callback(false, err or "Failed to delete file")
+  end
+end
+
 --- Check if path is inside a git repository
 ---@param path? string Path to check (defaults to cwd)
 ---@return boolean

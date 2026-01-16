@@ -13,6 +13,7 @@ local M = {}
 ---| "refresh"         -- Full replacement from git status
 ---| "stage_all"       -- Stage all unstaged + untracked
 ---| "unstage_all"     -- Unstage all staged
+---| "remove_file"     -- Remove file from status (after discard)
 
 ---@class StatusCommand
 ---@field type StatusCommandType
@@ -63,6 +64,18 @@ end
 ---@return StatusCommand
 function M.unstage_all()
   return { type = "unstage_all" }
+end
+
+--- Create a remove_file command (for after discard)
+---@param path string File path to remove
+---@param from_section "unstaged"|"untracked" Which section the file is in
+---@return StatusCommand
+function M.remove_file(path, from_section)
+  return {
+    type = "remove_file",
+    path = path,
+    from_section = from_section,
+  }
 end
 
 return M
