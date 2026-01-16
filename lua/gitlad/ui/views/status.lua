@@ -88,14 +88,23 @@ end
 function StatusBuffer:_setup_keymaps()
   local opts = { buffer = self.bufnr, silent = true }
 
-  -- Staging single file
+  -- Staging single file/hunk
   vim.keymap.set("n", "s", function()
     self:_stage_current()
-  end, vim.tbl_extend("force", opts, { desc = "Stage file" }))
+  end, vim.tbl_extend("force", opts, { desc = "Stage file/hunk" }))
 
   vim.keymap.set("n", "u", function()
     self:_unstage_current()
-  end, vim.tbl_extend("force", opts, { desc = "Unstage file" }))
+  end, vim.tbl_extend("force", opts, { desc = "Unstage file/hunk" }))
+
+  -- Visual mode staging (for partial hunk staging)
+  vim.keymap.set("v", "s", function()
+    self:_stage_visual()
+  end, vim.tbl_extend("force", opts, { desc = "Stage selection" }))
+
+  vim.keymap.set("v", "u", function()
+    self:_unstage_visual()
+  end, vim.tbl_extend("force", opts, { desc = "Unstage selection" }))
 
   -- Staging all
   vim.keymap.set("n", "S", function()
@@ -175,6 +184,14 @@ function StatusBuffer:_get_current_file()
   return nil, nil, nil
 end
 
+--- Get the cache key for a file's diff
+---@param path string
+---@param section string
+---@return string
+local function diff_cache_key(path, section)
+  return section .. ":" .. path
+end
+
 --- Build a patch for a single hunk
 ---@param diff_data DiffData
 ---@param hunk_index number
@@ -199,6 +216,250 @@ function StatusBuffer:_build_hunk_patch(diff_data, hunk_index)
   end
 
   return patch_lines
+end
+
+--- Get the visual selection line range (1-indexed)
+---@return number start_line
+---@return number end_line
+local function get_visual_selection_range()
+  -- Exit visual mode to update '< and '> marks
+  vim.cmd("normal! ")
+  local start_line = vim.fn.line("'<")
+  local end_line = vim.fn.line("'>")
+  return start_line, end_line
+end
+
+--- Build a partial patch from selected lines within a hunk
+--- For staging: selected +/- lines are kept, unselected + become context, unselected - are omitted
+---@param diff_data DiffData
+---@param hunk_index number
+---@param selected_display_indices table<number, boolean> Map of display line indices (1-based within display_lines) that are selected
+---@return string[]|nil patch_lines
+function StatusBuffer:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
+  if not diff_data.hunks[hunk_index] then
+    return nil
+  end
+
+  local hunk = diff_data.hunks[hunk_index]
+
+  -- Parse the original @@ header to get starting line numbers
+  local old_start, old_count, new_start, new_count = hunk.header:match("^@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
+  old_start = tonumber(old_start) or 1
+  old_count = tonumber(old_count) or 1
+  new_start = tonumber(new_start) or 1
+  new_count = tonumber(new_count) or 1
+
+  -- Build the new hunk lines based on selection
+  local new_hunk_lines = {}
+  local new_old_count = 0
+  local new_new_count = 0
+
+  -- Calculate the display line index for this hunk's header
+  local hunk_header_display_idx = 0
+  local current_hunk = 0
+  for i, line in ipairs(diff_data.display_lines) do
+    if line:match("^@@") then
+      current_hunk = current_hunk + 1
+      if current_hunk == hunk_index then
+        hunk_header_display_idx = i
+        break
+      end
+    end
+  end
+
+  for i, line in ipairs(hunk.lines) do
+    local display_idx = hunk_header_display_idx + i
+    local is_selected = selected_display_indices[display_idx]
+    local first_char = line:sub(1, 1)
+
+    if first_char == "+" then
+      if is_selected then
+        -- Keep as addition
+        table.insert(new_hunk_lines, line)
+        new_new_count = new_new_count + 1
+      else
+        -- Convert to context (remove the + and add space)
+        table.insert(new_hunk_lines, " " .. line:sub(2))
+        new_old_count = new_old_count + 1
+        new_new_count = new_new_count + 1
+      end
+    elseif first_char == "-" then
+      if is_selected then
+        -- Keep as deletion
+        table.insert(new_hunk_lines, line)
+        new_old_count = new_old_count + 1
+      end
+      -- If not selected, omit entirely
+    else
+      -- Context line - always keep
+      table.insert(new_hunk_lines, line)
+      new_old_count = new_old_count + 1
+      new_new_count = new_new_count + 1
+    end
+  end
+
+  -- If no actual changes remain, don't create a patch
+  local has_changes = false
+  for _, line in ipairs(new_hunk_lines) do
+    local fc = line:sub(1, 1)
+    if fc == "+" or fc == "-" then
+      has_changes = true
+      break
+    end
+  end
+  if not has_changes then
+    return nil
+  end
+
+  -- Build the new @@ header
+  local new_header = string.format("@@ -%d,%d +%d,%d @@", old_start, new_old_count, new_start, new_new_count)
+
+  -- Assemble the patch
+  local patch_lines = {}
+  for _, line in ipairs(diff_data.header) do
+    table.insert(patch_lines, line)
+  end
+  table.insert(patch_lines, new_header)
+  for _, line in ipairs(new_hunk_lines) do
+    table.insert(patch_lines, line)
+  end
+
+  return patch_lines
+end
+
+--- Stage visual selection
+function StatusBuffer:_stage_visual()
+  local start_line, end_line = get_visual_selection_range()
+
+  -- Get file info from first selected line
+  local info = self.line_map[start_line]
+  if not info or not info.hunk_index then
+    vim.notify("[gitlad] Visual staging only works on diff lines", vim.log.levels.INFO)
+    return
+  end
+
+  local path = info.path
+  local section = info.section
+  local hunk_index = info.hunk_index
+
+  if section ~= "unstaged" then
+    vim.notify("[gitlad] Visual staging only works on unstaged changes", vim.log.levels.INFO)
+    return
+  end
+
+  local key = diff_cache_key(path, section)
+  local diff_data = self.diff_cache[key]
+  if not diff_data then
+    return
+  end
+
+  -- Find which display_lines indices correspond to the buffer selection
+  -- We need to map buffer lines back to display_lines indices
+  local selected_display_indices = {}
+
+  -- Find the file entry line for this path to calculate offset
+  local file_entry_line = nil
+  for line_num, line_info in pairs(self.line_map) do
+    if line_info.path == path and line_info.section == section and not line_info.hunk_index then
+      file_entry_line = line_num
+      break
+    end
+  end
+
+  if not file_entry_line then
+    return
+  end
+
+  -- The diff lines start at file_entry_line + 1
+  -- display_lines index = buffer_line - file_entry_line
+  for buf_line = start_line, end_line do
+    local line_info = self.line_map[buf_line]
+    if line_info and line_info.hunk_index == hunk_index then
+      local display_idx = buf_line - file_entry_line
+      selected_display_indices[display_idx] = true
+    end
+  end
+
+  local patch_lines = self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
+  if not patch_lines then
+    vim.notify("[gitlad] No changes selected", vim.log.levels.INFO)
+    return
+  end
+
+  git.apply_patch(patch_lines, false, { cwd = self.repo_state.repo_root }, function(success, err)
+    if not success then
+      vim.notify("[gitlad] Stage selection error: " .. (err or "unknown"), vim.log.levels.ERROR)
+    else
+      self.diff_cache[key] = nil
+      self.repo_state:refresh_status(true)
+    end
+  end)
+end
+
+--- Unstage visual selection
+function StatusBuffer:_unstage_visual()
+  local start_line, end_line = get_visual_selection_range()
+
+  -- Get file info from first selected line
+  local info = self.line_map[start_line]
+  if not info or not info.hunk_index then
+    vim.notify("[gitlad] Visual unstaging only works on diff lines", vim.log.levels.INFO)
+    return
+  end
+
+  local path = info.path
+  local section = info.section
+  local hunk_index = info.hunk_index
+
+  if section ~= "staged" then
+    vim.notify("[gitlad] Visual unstaging only works on staged changes", vim.log.levels.INFO)
+    return
+  end
+
+  local key = diff_cache_key(path, section)
+  local diff_data = self.diff_cache[key]
+  if not diff_data then
+    return
+  end
+
+  -- Find which display_lines indices correspond to the buffer selection
+  local selected_display_indices = {}
+
+  local file_entry_line = nil
+  for line_num, line_info in pairs(self.line_map) do
+    if line_info.path == path and line_info.section == section and not line_info.hunk_index then
+      file_entry_line = line_num
+      break
+    end
+  end
+
+  if not file_entry_line then
+    return
+  end
+
+  for buf_line = start_line, end_line do
+    local line_info = self.line_map[buf_line]
+    if line_info and line_info.hunk_index == hunk_index then
+      local display_idx = buf_line - file_entry_line
+      selected_display_indices[display_idx] = true
+    end
+  end
+
+  local patch_lines = self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
+  if not patch_lines then
+    vim.notify("[gitlad] No changes selected", vim.log.levels.INFO)
+    return
+  end
+
+  -- Reverse apply to unstage
+  git.apply_patch(patch_lines, true, { cwd = self.repo_state.repo_root }, function(success, err)
+    if not success then
+      vim.notify("[gitlad] Unstage selection error: " .. (err or "unknown"), vim.log.levels.ERROR)
+    else
+      self.diff_cache[key] = nil
+      self.repo_state:refresh_status(true)
+    end
+  end)
 end
 
 --- Stage the file or hunk under cursor
@@ -270,14 +531,6 @@ function StatusBuffer:_unstage_current()
   end
 end
 
---- Get the cache key for a file's diff
----@param path string
----@param section string
----@return string
-local function diff_cache_key(path, section)
-  return section .. ":" .. path
-end
-
 --- Parse a git diff into structured data with header and hunks
 ---@param lines string[]
 ---@return DiffData
@@ -300,6 +553,7 @@ local function parse_diff(lines)
         header = line,
         lines = {},
       }
+      -- Keep the @@ header line to show line ranges
       table.insert(data.display_lines, line)
     elseif current_hunk then
       -- Add line to current hunk
@@ -534,6 +788,8 @@ function StatusBuffer:_show_help()
     "Staging:",
     "  s      Stage file/hunk at cursor",
     "  u      Unstage file/hunk at cursor",
+    "  v+s    Stage visual selection",
+    "  v+u    Unstage visual selection",
     "  S      Stage all",
     "  U      Unstage all",
     "",
