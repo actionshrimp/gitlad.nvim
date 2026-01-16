@@ -234,12 +234,19 @@ local function get_visual_selection_range()
 end
 
 --- Build a partial patch from selected lines within a hunk
---- For staging: selected +/- lines are kept, unselected + become context, unselected - are omitted
+--- For staging (reverse=false): selected +/- lines are kept, unselected + omitted, unselected - become context
+--- For unstaging (reverse=true): selected +/- lines are kept, unselected + become context, unselected - omitted
 ---@param diff_data DiffData
 ---@param hunk_index number
 ---@param selected_display_indices table<number, boolean> Map of display line indices (1-based within display_lines) that are selected
+---@param reverse boolean Whether this patch will be applied with --reverse (for unstaging)
 ---@return string[]|nil patch_lines
-function StatusBuffer:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
+function StatusBuffer:_build_partial_hunk_patch(
+  diff_data,
+  hunk_index,
+  selected_display_indices,
+  reverse
+)
   if not diff_data.hunks[hunk_index] then
     return nil
   end
@@ -282,19 +289,25 @@ function StatusBuffer:_build_partial_hunk_patch(diff_data, hunk_index, selected_
         -- Keep as addition
         table.insert(new_hunk_lines, line)
         new_new_count = new_new_count + 1
-      else
-        -- Convert to context (remove the + and add space)
+      elseif reverse then
+        -- Unstaging: unselected + becomes context (stays in index)
         table.insert(new_hunk_lines, " " .. line:sub(2))
         new_old_count = new_old_count + 1
         new_new_count = new_new_count + 1
       end
+      -- Staging: unselected + is omitted (stays only in working tree)
     elseif first_char == "-" then
       if is_selected then
         -- Keep as deletion
         table.insert(new_hunk_lines, line)
         new_old_count = new_old_count + 1
+      elseif not reverse then
+        -- Staging: unselected - becomes context (stays in index)
+        table.insert(new_hunk_lines, " " .. line:sub(2))
+        new_old_count = new_old_count + 1
+        new_new_count = new_new_count + 1
       end
-      -- If not selected, omit entirely
+      -- Unstaging: unselected - is omitted (stays removed from index)
     else
       -- Context line - always keep
       table.insert(new_hunk_lines, line)
@@ -387,7 +400,7 @@ function StatusBuffer:_stage_visual()
   end
 
   local patch_lines =
-    self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
+    self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices, false)
   if not patch_lines then
     vim.notify("[gitlad] No changes selected", vim.log.levels.INFO)
     return
@@ -452,7 +465,7 @@ function StatusBuffer:_unstage_visual()
   end
 
   local patch_lines =
-    self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
+    self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices, true)
   if not patch_lines then
     vim.notify("[gitlad] No changes selected", vim.log.levels.INFO)
     return

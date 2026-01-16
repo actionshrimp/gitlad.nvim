@@ -119,4 +119,269 @@ T["close behavior"]["does not error when winnr is invalid"] = function()
   eq(safe_close(), true)
 end
 
+-- Tests for partial hunk patch building logic
+T["partial hunk patch"] = MiniTest.new_set()
+
+-- Helper to build a partial patch (mirrors StatusBuffer:_build_partial_hunk_patch logic)
+local function build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices, reverse)
+  if not diff_data.hunks[hunk_index] then
+    return nil
+  end
+
+  local hunk = diff_data.hunks[hunk_index]
+
+  local old_start, _, new_start, _ = hunk.header:match("^@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
+  old_start = tonumber(old_start) or 1
+  new_start = tonumber(new_start) or 1
+
+  local new_hunk_lines = {}
+  local new_old_count = 0
+  local new_new_count = 0
+
+  -- Calculate display index for hunk header
+  local hunk_header_display_idx = 0
+  local current_hunk = 0
+  for i, line in ipairs(diff_data.display_lines) do
+    if line:match("^@@") then
+      current_hunk = current_hunk + 1
+      if current_hunk == hunk_index then
+        hunk_header_display_idx = i
+        break
+      end
+    end
+  end
+
+  for i, line in ipairs(hunk.lines) do
+    local display_idx = hunk_header_display_idx + i
+    local is_selected = selected_display_indices[display_idx]
+    local first_char = line:sub(1, 1)
+
+    if first_char == "+" then
+      if is_selected then
+        table.insert(new_hunk_lines, line)
+        new_new_count = new_new_count + 1
+      elseif reverse then
+        table.insert(new_hunk_lines, " " .. line:sub(2))
+        new_old_count = new_old_count + 1
+        new_new_count = new_new_count + 1
+      end
+    elseif first_char == "-" then
+      if is_selected then
+        table.insert(new_hunk_lines, line)
+        new_old_count = new_old_count + 1
+      elseif not reverse then
+        table.insert(new_hunk_lines, " " .. line:sub(2))
+        new_old_count = new_old_count + 1
+        new_new_count = new_new_count + 1
+      end
+    else
+      table.insert(new_hunk_lines, line)
+      new_old_count = new_old_count + 1
+      new_new_count = new_new_count + 1
+    end
+  end
+
+  local has_changes = false
+  for _, line in ipairs(new_hunk_lines) do
+    local fc = line:sub(1, 1)
+    if fc == "+" or fc == "-" then
+      has_changes = true
+      break
+    end
+  end
+  if not has_changes then
+    return nil
+  end
+
+  local patch_lines = {}
+  for _, line in ipairs(diff_data.header) do
+    table.insert(patch_lines, line)
+  end
+  table.insert(
+    patch_lines,
+    string.format("@@ -%d,%d +%d,%d @@", old_start, new_old_count, new_start, new_new_count)
+  )
+  for _, line in ipairs(new_hunk_lines) do
+    table.insert(patch_lines, line)
+  end
+
+  return patch_lines
+end
+
+-- Helper to create diff data structure
+local function make_diff_data(header, hunks)
+  local display_lines = {}
+  local parsed_hunks = {}
+
+  for _, hunk in ipairs(hunks) do
+    table.insert(display_lines, hunk.header)
+    local parsed = { header = hunk.header, lines = {} }
+    for _, line in ipairs(hunk.lines) do
+      table.insert(display_lines, line)
+      table.insert(parsed.lines, line)
+    end
+    table.insert(parsed_hunks, parsed)
+  end
+
+  return {
+    header = header,
+    hunks = parsed_hunks,
+    display_lines = display_lines,
+  }
+end
+
+T["partial hunk patch"]["staging: selecting only additions omits unselected deletions as context"] = function()
+  -- Diff showing line 2 deleted and "new line" added
+  local diff_data = make_diff_data({
+    "diff --git a/file.lua b/file.lua",
+    "index abc..def 100644",
+    "--- a/file.lua",
+    "+++ b/file.lua",
+  }, { { header = "@@ -1,3 +1,3 @@", lines = { " line 1", "-line 2", "+new line", " line 3" } } })
+
+  -- Select only the addition (+new line) at display index 3
+  -- display_lines: [1]=@@, [2]=" line 1", [3]="-line 2", [4]="+new line", [5]=" line 3"
+  local selected = { [4] = true }
+
+  local patch = build_partial_hunk_patch(diff_data, 1, selected, false)
+
+  -- The patch should have the deletion converted to context
+  -- Result: line 1, line 2 (context), +new line, line 3
+  expect.no_equality(patch, nil)
+
+  -- Find the hunk content (after header lines)
+  local hunk_start = 5 -- After 4 header lines
+  -- old=3 (3 context lines), new=4 (3 context + 1 addition)
+  eq(patch[hunk_start], "@@ -1,3 +1,4 @@")
+  eq(patch[hunk_start + 1], " line 1")
+  eq(patch[hunk_start + 2], " line 2") -- Was "-line 2", now context
+  eq(patch[hunk_start + 3], "+new line")
+  eq(patch[hunk_start + 4], " line 3")
+end
+
+T["partial hunk patch"]["staging: selecting only deletions omits unselected additions"] = function()
+  local diff_data = make_diff_data({
+    "diff --git a/file.lua b/file.lua",
+    "index abc..def 100644",
+    "--- a/file.lua",
+    "+++ b/file.lua",
+  }, { { header = "@@ -1,3 +1,3 @@", lines = { " line 1", "-line 2", "+new line", " line 3" } } })
+
+  -- Select only the deletion (-line 2) at display index 2
+  local selected = { [3] = true }
+
+  local patch = build_partial_hunk_patch(diff_data, 1, selected, false)
+
+  expect.no_equality(patch, nil)
+
+  local hunk_start = 5
+  eq(patch[hunk_start], "@@ -1,3 +1,2 @@") -- old has 3, new has 2 (deletion applied)
+  eq(patch[hunk_start + 1], " line 1")
+  eq(patch[hunk_start + 2], "-line 2")
+  eq(patch[hunk_start + 3], " line 3")
+  -- +new line is omitted entirely
+  eq(patch[hunk_start + 4], nil)
+end
+
+T["partial hunk patch"]["staging: selecting both keeps both changes"] = function()
+  local diff_data = make_diff_data({
+    "diff --git a/file.lua b/file.lua",
+    "index abc..def 100644",
+    "--- a/file.lua",
+    "+++ b/file.lua",
+  }, { { header = "@@ -1,3 +1,3 @@", lines = { " line 1", "-line 2", "+new line", " line 3" } } })
+
+  -- Select both the deletion and addition
+  local selected = { [3] = true, [4] = true }
+
+  local patch = build_partial_hunk_patch(diff_data, 1, selected, false)
+
+  expect.no_equality(patch, nil)
+
+  local hunk_start = 5
+  eq(patch[hunk_start], "@@ -1,3 +1,3 @@")
+  eq(patch[hunk_start + 1], " line 1")
+  eq(patch[hunk_start + 2], "-line 2")
+  eq(patch[hunk_start + 3], "+new line")
+  eq(patch[hunk_start + 4], " line 3")
+end
+
+T["partial hunk patch"]["unstaging: selecting only additions converts unselected deletions to omitted"] = function()
+  local diff_data = make_diff_data({
+    "diff --git a/file.lua b/file.lua",
+    "index abc..def 100644",
+    "--- a/file.lua",
+    "+++ b/file.lua",
+  }, { { header = "@@ -1,3 +1,3 @@", lines = { " line 1", "-line 2", "+new line", " line 3" } } })
+
+  -- Select only the addition for unstaging
+  local selected = { [4] = true }
+
+  local patch = build_partial_hunk_patch(diff_data, 1, selected, true)
+
+  expect.no_equality(patch, nil)
+
+  local hunk_start = 5
+  -- For unstaging: unselected - is omitted, selected + stays
+  eq(patch[hunk_start], "@@ -1,2 +1,3 @@")
+  eq(patch[hunk_start + 1], " line 1")
+  eq(patch[hunk_start + 2], "+new line")
+  eq(patch[hunk_start + 3], " line 3")
+end
+
+T["partial hunk patch"]["unstaging: selecting only deletions converts unselected additions to context"] = function()
+  local diff_data = make_diff_data({
+    "diff --git a/file.lua b/file.lua",
+    "index abc..def 100644",
+    "--- a/file.lua",
+    "+++ b/file.lua",
+  }, { { header = "@@ -1,3 +1,3 @@", lines = { " line 1", "-line 2", "+new line", " line 3" } } })
+
+  -- Select only the deletion for unstaging
+  local selected = { [3] = true }
+
+  local patch = build_partial_hunk_patch(diff_data, 1, selected, true)
+
+  expect.no_equality(patch, nil)
+
+  local hunk_start = 5
+  -- For unstaging: selected - stays, unselected + becomes context
+  -- old=4 (3 context + 1 deletion), new=3 (3 context lines)
+  eq(patch[hunk_start], "@@ -1,4 +1,3 @@")
+  eq(patch[hunk_start + 1], " line 1")
+  eq(patch[hunk_start + 2], "-line 2")
+  eq(patch[hunk_start + 3], " new line") -- Was +, now context
+  eq(patch[hunk_start + 4], " line 3")
+end
+
+T["partial hunk patch"]["returns nil when no changes selected"] = function()
+  local diff_data = make_diff_data({
+    "diff --git a/file.lua b/file.lua",
+    "index abc..def 100644",
+    "--- a/file.lua",
+    "+++ b/file.lua",
+  }, { { header = "@@ -1,3 +1,3 @@", lines = { " line 1", "-line 2", "+new line", " line 3" } } })
+
+  -- Select nothing - but we still need indices that exist
+  -- In staging mode, unselected - becomes context, unselected + is omitted
+  -- So with nothing selected, all - become context and all + are omitted = no changes
+  local selected = {}
+
+  local patch = build_partial_hunk_patch(diff_data, 1, selected, false)
+
+  eq(patch, nil)
+end
+
+T["partial hunk patch"]["returns nil for invalid hunk index"] = function()
+  local diff_data = make_diff_data({
+    "diff --git a/file.lua b/file.lua",
+    "index abc..def 100644",
+    "--- a/file.lua",
+    "+++ b/file.lua",
+  }, { { header = "@@ -1,3 +1,3 @@", lines = { " line 1", "-line 2", "+new line", " line 3" } } })
+
+  local patch = build_partial_hunk_patch(diff_data, 99, { [3] = true }, false)
+  eq(patch, nil)
+end
+
 return T

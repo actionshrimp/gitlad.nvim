@@ -21,6 +21,8 @@ A fast, well-tested git interface for Neovim inspired by magit, fugitive, and la
 
 **Every change MUST include automated tests. No exceptions.**
 
+This is the most important rule in this codebase. Code without tests is incomplete code.
+
 ### Non-Negotiable Requirements
 
 1. **NEVER ask the user to manually test changes** - This is disrespectful of their time
@@ -28,6 +30,7 @@ A fast, well-tested git interface for Neovim inspired by magit, fugitive, and la
 3. **NEVER submit code without corresponding tests** - Untested code is broken code
 4. **ALWAYS run `make test` before declaring any task done** - Verify it yourself
 5. **ALWAYS fix failing tests before moving on** - Don't leave broken tests behind
+6. **ALWAYS check if tests exist for changed code** - If you modify a function and there are no tests for it, add them
 
 ### Test-First Development
 
@@ -46,6 +49,9 @@ A fast, well-tested git interface for Neovim inspired by magit, fugitive, and la
 | Refactoring | Existing tests must still pass (no new tests needed if behavior unchanged) |
 | New keybinding | Test that the mapping exists and triggers correct action |
 | Git operation | Test with isolated test repo via helpers |
+| Modifying existing code | Check if tests exist; if not, add them before or alongside the change |
+
+**Important:** When fixing a bug in code that lacks tests, write the tests first. This ensures the bug is properly specified and prevents regressions.
 
 ### Test Quality Standards
 
