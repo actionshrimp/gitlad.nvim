@@ -1,0 +1,21 @@
+# Test artifacts
+.tests/
+
+# Neovim
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Lua
+*.luac
+lua_modules/
+luarocks/
+
+# Editor
+.idea/
+.vscode/
+*.code-workspace
+
+.claude/
