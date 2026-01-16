@@ -21,8 +21,10 @@ local GIT_FLAGS = {
   "--no-pager",
   "--literal-pathspecs",
   "--no-optional-locks",
-  "-c", "core.preloadindex=true",
-  "-c", "color.ui=never",
+  "-c",
+  "core.preloadindex=true",
+  "-c",
+  "color.ui=never",
 }
 
 --- Find the git directory for a given path
@@ -76,7 +78,9 @@ function M.run_async(args, opts, callback)
   local completed = false
 
   local function on_complete(code)
-    if completed then return end
+    if completed then
+      return
+    end
     completed = true
 
     if timeout_timer then

@@ -23,8 +23,12 @@ T["AsyncHandler"]["dispatch increments id"] = function()
   local async = require("gitlad.state.async")
   local handler = async.new(function() end)
 
-  local id1 = handler:dispatch(function(done) done("a") end)
-  local id2 = handler:dispatch(function(done) done("b") end)
+  local id1 = handler:dispatch(function(done)
+    done("a")
+  end)
+  local id2 = handler:dispatch(function(done)
+    done("b")
+  end)
 
   eq(id1, 1)
   eq(id2, 2)
@@ -117,7 +121,9 @@ T["debounce"]["cancel stops pending call"] = function()
   debounced:cancel()
 
   -- Wait a bit longer than delay
-  vim.wait(150, function() return false end)
+  vim.wait(150, function()
+    return false
+  end)
 
   eq(called, false)
 end

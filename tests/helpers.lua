@@ -29,12 +29,18 @@ end
 function M.create_test_repo(child)
   local tmp_dir = child.lua_get("vim.fn.tempname()")
 
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     vim.fn.mkdir(%q, "p")
     vim.fn.system("git -C " .. %q .. " init")
     vim.fn.system("git -C " .. %q .. " config user.email 'test@test.com'")
     vim.fn.system("git -C " .. %q .. " config user.name 'Test User'")
-  ]], tmp_dir, tmp_dir, tmp_dir, tmp_dir))
+  ]],
+    tmp_dir,
+    tmp_dir,
+    tmp_dir,
+    tmp_dir
+  ))
 
   return tmp_dir
 end
@@ -45,12 +51,17 @@ end
 ---@param filename string File name
 ---@param content string File content
 function M.create_file(child, repo_path, filename, content)
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     local path = %q .. "/" .. %q
     local f = io.open(path, "w")
     f:write(%q)
     f:close()
-  ]], repo_path, filename, content))
+  ]],
+    repo_path,
+    filename,
+    content
+  ))
 end
 
 --- Run a git command in the test repo
@@ -59,11 +70,7 @@ end
 ---@param args string Git command arguments
 ---@return string output Command output
 function M.git(child, repo_path, args)
-  return child.lua_get(string.format(
-    [[vim.fn.system("git -C %s %s")]],
-    repo_path,
-    args
-  ))
+  return child.lua_get(string.format([[vim.fn.system("git -C %s %s")]], repo_path, args))
 end
 
 --- Wait for async operations to complete
@@ -71,18 +78,24 @@ end
 ---@param timeout? number Timeout in milliseconds (default 1000)
 function M.wait_async(child, timeout)
   timeout = timeout or 1000
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     vim.wait(%d, function() return false end)
-  ]], timeout))
+  ]],
+    timeout
+  ))
 end
 
 --- Clean up a test repository
 ---@param child table MiniTest child process
 ---@param repo_path string Repository path
 function M.cleanup_repo(child, repo_path)
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     vim.fn.delete(%q, "rf")
-  ]], repo_path))
+  ]],
+    repo_path
+  ))
 end
 
 return M

@@ -23,15 +23,16 @@ function M.new(watched_files)
   local self = setmetatable({}, Cache)
   self.entries = {}
   -- Default files that indicate git state changes
-  self.watched_files = watched_files or {
-    "HEAD",
-    "index",
-    "refs/heads",
-    "MERGE_HEAD",
-    "REBASE_HEAD",
-    "CHERRY_PICK_HEAD",
-    "REVERT_HEAD",
-  }
+  self.watched_files = watched_files
+    or {
+      "HEAD",
+      "index",
+      "refs/heads",
+      "MERGE_HEAD",
+      "REBASE_HEAD",
+      "CHERRY_PICK_HEAD",
+      "REVERT_HEAD",
+    }
   return self
 end
 

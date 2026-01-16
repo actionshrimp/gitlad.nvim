@@ -9,6 +9,8 @@ local M = {}
 local cache = require("gitlad.state.cache")
 local async = require("gitlad.state.async")
 local git = require("gitlad.git")
+local commands = require("gitlad.state.commands")
+local reducer = require("gitlad.state.reducer")
 
 ---@class RepoState
 ---@field git_dir string Path to .git directory
@@ -72,7 +74,9 @@ end
 ---@param callback fun(state: RepoState)
 function RepoState:off(event, callback)
   local listeners = self.listeners[event]
-  if not listeners then return end
+  if not listeners then
+    return
+  end
 
   for i, cb in ipairs(listeners) do
     if cb == callback then
@@ -86,7 +90,9 @@ end
 ---@param event string Event name
 function RepoState:_notify(event)
   local listeners = self.listeners[event]
-  if not listeners then return end
+  if not listeners then
+    return
+  end
 
   for _, callback in ipairs(listeners) do
     -- Wrap in pcall to prevent one listener from breaking others
@@ -98,6 +104,17 @@ function RepoState:_notify(event)
       )
     end
   end
+end
+
+--- Apply a command to update status (Elm Architecture pattern)
+---@param cmd StatusCommand
+function RepoState:apply_command(cmd)
+  if not self.status then
+    return
+  end
+  self.status = reducer.apply(self.status, cmd)
+  self.cache:invalidate("status")
+  self:_notify("status")
 end
 
 --- Refresh status (async with request ordering)
@@ -157,23 +174,26 @@ function RepoState:get_status_sync(force)
   return result
 end
 
---- Stage a file and refresh
+--- Stage a file (optimistic update)
 ---@param path string File path to stage
+---@param section "unstaged"|"untracked" Which section the file is in
 ---@param callback? fun(success: boolean)
-function RepoState:stage(path, callback)
+function RepoState:stage(path, section, callback)
   git.stage(path, { cwd = self.repo_root }, function(success, err)
     if not success then
       vim.notify("[gitlad] Stage error: " .. (err or "unknown"), vim.log.levels.ERROR)
     else
-      -- Invalidate cache and refresh
-      self.cache:invalidate("status")
-      self:refresh_status()
+      -- Optimistic update: apply command to state
+      local cmd = commands.stage_file(path, section)
+      self:apply_command(cmd)
     end
-    if callback then callback(success) end
+    if callback then
+      callback(success)
+    end
   end)
 end
 
---- Unstage a file and refresh
+--- Unstage a file (optimistic update)
 ---@param path string File path to unstage
 ---@param callback? fun(success: boolean)
 function RepoState:unstage(path, callback)
@@ -181,10 +201,13 @@ function RepoState:unstage(path, callback)
     if not success then
       vim.notify("[gitlad] Unstage error: " .. (err or "unknown"), vim.log.levels.ERROR)
     else
-      self.cache:invalidate("status")
-      self:refresh_status()
+      -- Optimistic update: apply command to state
+      local cmd = commands.unstage_file(path)
+      self:apply_command(cmd)
     end
-    if callback then callback(success) end
+    if callback then
+      callback(success)
+    end
   end)
 end
 

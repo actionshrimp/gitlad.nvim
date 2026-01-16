@@ -29,10 +29,8 @@ end
 ---@param opts? GitCommandOptions
 ---@return GitStatusResult|nil, string|nil
 function M.status_sync(opts)
-  local result = cli.run_sync(
-    { "status", "--porcelain=v2", "--branch", "--untracked-files=normal" },
-    opts
-  )
+  local result =
+    cli.run_sync({ "status", "--porcelain=v2", "--branch", "--untracked-files=normal" }, opts)
   if result.code ~= 0 then
     return nil, table.concat(result.stderr, "\n")
   end

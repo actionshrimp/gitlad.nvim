@@ -109,17 +109,21 @@ end
 --- Stage the file under cursor
 function StatusBuffer:_stage_current()
   local path, section = self:_get_current_file()
-  if not path then return end
+  if not path then
+    return
+  end
 
   if section == "unstaged" or section == "untracked" then
-    self.repo_state:stage(path)
+    self.repo_state:stage(path, section)
   end
 end
 
 --- Unstage the file under cursor
 function StatusBuffer:_unstage_current()
   local path, section = self:_get_current_file()
-  if not path then return end
+  if not path then
+    return
+  end
 
   if section == "staged" then
     self.repo_state:unstage(path)
@@ -150,11 +154,11 @@ function StatusBuffer:render()
 
   -- Helper to add a file entry and track its line number
   local function add_file_line(entry, section, sign, status_char, use_display)
-    local display = use_display and entry.orig_path
-      and string.format("%s -> %s", entry.orig_path, entry.path)
+    local display = use_display
+        and entry.orig_path
+        and string.format("%s -> %s", entry.orig_path, entry.path)
       or entry.path
-    local line_text = status_char
-      and string.format("  %s %s  %s", sign, status_char, display)
+    local line_text = status_char and string.format("  %s %s  %s", sign, status_char, display)
       or string.format("  %s    %s", sign, display)
     table.insert(lines, line_text)
     self.line_map[#lines] = { path = entry.path, section = section }
@@ -208,7 +212,12 @@ function StatusBuffer:render()
   end
 
   -- Clean working tree message
-  if #status.staged == 0 and #status.unstaged == 0 and #status.untracked == 0 and #status.conflicted == 0 then
+  if
+    #status.staged == 0
+    and #status.unstaged == 0
+    and #status.untracked == 0
+    and #status.conflicted == 0
+  then
     table.insert(lines, "Nothing to commit, working tree clean")
   end
 
@@ -273,7 +282,9 @@ end
 --- Close status view
 function M.close()
   local repo_state = state.get()
-  if not repo_state then return end
+  if not repo_state then
+    return
+  end
 
   local key = repo_state.repo_root
   local buf = status_buffers[key]
