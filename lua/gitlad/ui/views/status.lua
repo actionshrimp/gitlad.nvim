@@ -76,6 +76,9 @@ local function get_or_create_buffer(repo_state)
   -- Listen for status updates
   repo_state:on("status", function()
     vim.schedule(function()
+      -- Clear diff data when status changes to avoid stale diffs
+      self.expanded_files = {}
+      self.diff_cache = {}
       self:render()
     end)
   end)
@@ -223,7 +226,8 @@ end
 ---@return number end_line
 local function get_visual_selection_range()
   -- Exit visual mode to update '< and '> marks
-  vim.cmd("normal! ")
+  local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
+  vim.api.nvim_feedkeys(esc, "nx", false)
   local start_line = vim.fn.line("'<")
   local end_line = vim.fn.line("'>")
   return start_line, end_line
@@ -243,7 +247,8 @@ function StatusBuffer:_build_partial_hunk_patch(diff_data, hunk_index, selected_
   local hunk = diff_data.hunks[hunk_index]
 
   -- Parse the original @@ header to get starting line numbers
-  local old_start, old_count, new_start, new_count = hunk.header:match("^@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
+  local old_start, old_count, new_start, new_count =
+    hunk.header:match("^@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
   old_start = tonumber(old_start) or 1
   old_count = tonumber(old_count) or 1
   new_start = tonumber(new_start) or 1
@@ -312,7 +317,8 @@ function StatusBuffer:_build_partial_hunk_patch(diff_data, hunk_index, selected_
   end
 
   -- Build the new @@ header
-  local new_header = string.format("@@ -%d,%d +%d,%d @@", old_start, new_old_count, new_start, new_new_count)
+  local new_header =
+    string.format("@@ -%d,%d +%d,%d @@", old_start, new_old_count, new_start, new_new_count)
 
   -- Assemble the patch
   local patch_lines = {}
@@ -380,7 +386,8 @@ function StatusBuffer:_stage_visual()
     end
   end
 
-  local patch_lines = self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
+  local patch_lines =
+    self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
   if not patch_lines then
     vim.notify("[gitlad] No changes selected", vim.log.levels.INFO)
     return
@@ -390,7 +397,6 @@ function StatusBuffer:_stage_visual()
     if not success then
       vim.notify("[gitlad] Stage selection error: " .. (err or "unknown"), vim.log.levels.ERROR)
     else
-      self.diff_cache[key] = nil
       self.repo_state:refresh_status(true)
     end
   end)
@@ -445,7 +451,8 @@ function StatusBuffer:_unstage_visual()
     end
   end
 
-  local patch_lines = self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
+  local patch_lines =
+    self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices)
   if not patch_lines then
     vim.notify("[gitlad] No changes selected", vim.log.levels.INFO)
     return
@@ -456,7 +463,6 @@ function StatusBuffer:_unstage_visual()
     if not success then
       vim.notify("[gitlad] Unstage selection error: " .. (err or "unknown"), vim.log.levels.ERROR)
     else
-      self.diff_cache[key] = nil
       self.repo_state:refresh_status(true)
     end
   end)
@@ -477,15 +483,21 @@ function StatusBuffer:_stage_current()
       if diff_data then
         local patch_lines = self:_build_hunk_patch(diff_data, hunk_index)
         if patch_lines then
-          git.apply_patch(patch_lines, false, { cwd = self.repo_state.repo_root }, function(success, err)
-            if not success then
-              vim.notify("[gitlad] Stage hunk error: " .. (err or "unknown"), vim.log.levels.ERROR)
-            else
-              -- Invalidate diff cache and refresh to get accurate state
-              self.diff_cache[key] = nil
-              self.repo_state:refresh_status(true)
+          git.apply_patch(
+            patch_lines,
+            false,
+            { cwd = self.repo_state.repo_root },
+            function(success, err)
+              if not success then
+                vim.notify(
+                  "[gitlad] Stage hunk error: " .. (err or "unknown"),
+                  vim.log.levels.ERROR
+                )
+              else
+                self.repo_state:refresh_status(true)
+              end
             end
-          end)
+          )
           return
         end
       end
@@ -513,15 +525,21 @@ function StatusBuffer:_unstage_current()
         local patch_lines = self:_build_hunk_patch(diff_data, hunk_index)
         if patch_lines then
           -- Use reverse apply to unstage
-          git.apply_patch(patch_lines, true, { cwd = self.repo_state.repo_root }, function(success, err)
-            if not success then
-              vim.notify("[gitlad] Unstage hunk error: " .. (err or "unknown"), vim.log.levels.ERROR)
-            else
-              -- Invalidate diff cache and refresh to get accurate state
-              self.diff_cache[key] = nil
-              self.repo_state:refresh_status(true)
+          git.apply_patch(
+            patch_lines,
+            true,
+            { cwd = self.repo_state.repo_root },
+            function(success, err)
+              if not success then
+                vim.notify(
+                  "[gitlad] Unstage hunk error: " .. (err or "unknown"),
+                  vim.log.levels.ERROR
+                )
+              else
+                self.repo_state:refresh_status(true)
+              end
             end
-          end)
+          )
           return
         end
       end
@@ -614,21 +632,15 @@ function StatusBuffer:_toggle_diff()
 
   local key = diff_cache_key(path, section)
 
-  -- Toggle expanded state
+  -- Toggle expanded state - if expanded, collapse
   if self.expanded_files[key] then
-    -- Collapse
     self.expanded_files[key] = false
+    self.diff_cache[key] = nil
     self:render()
     return
   end
 
-  -- Expand - check if diff is cached
-  if self.diff_cache[key] then
-    self.expanded_files[key] = true
-    self:render()
-    return
-  end
-
+  -- Expand - always fetch fresh diff
   -- Untracked files: read the full file content
   if section == "untracked" then
     local full_path = self.repo_state.repo_root .. path

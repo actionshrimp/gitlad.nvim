@@ -139,7 +139,10 @@ function M.format_entry(entry)
   local duration_str = string.format("%.0fms", entry.duration_ms)
 
   -- Header line
-  table.insert(lines, string.format("%s [%s] git %s (%s)", status_icon, time_str, entry.cmd, duration_str))
+  table.insert(
+    lines,
+    string.format("%s [%s] git %s (%s)", status_icon, time_str, entry.cmd, duration_str)
+  )
 
   return lines
 end
@@ -154,7 +157,10 @@ function M.format_entry_full(entry)
   local duration_str = string.format("%.0fms", entry.duration_ms)
 
   -- Header
-  table.insert(lines, string.format("%s [%s] git %s (%s)", status_icon, time_str, entry.cmd, duration_str))
+  table.insert(
+    lines,
+    string.format("%s [%s] git %s (%s)", status_icon, time_str, entry.cmd, duration_str)
+  )
   table.insert(lines, string.format("  cwd: %s", entry.cwd))
   table.insert(lines, string.format("  exit: %d", entry.exit_code))
 

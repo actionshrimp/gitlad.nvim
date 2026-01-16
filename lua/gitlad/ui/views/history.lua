@@ -201,7 +201,11 @@ end
 
 --- Toggle history view
 function M.toggle()
-  if history_buffer and history_buffer.winnr and vim.api.nvim_win_is_valid(history_buffer.winnr) then
+  if
+    history_buffer
+    and history_buffer.winnr
+    and vim.api.nvim_win_is_valid(history_buffer.winnr)
+  then
     M.close()
   else
     M.open()
