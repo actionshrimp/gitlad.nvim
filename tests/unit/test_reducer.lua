@@ -322,4 +322,156 @@ T["preserves metadata"]["stage_file preserves submodule info"] = function()
   eq(new_status.staged[1].submodule, "SC..")
 end
 
+T["sort order"] = MiniTest.new_set()
+
+T["sort order"]["stage_file inserts in alphabetical order"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  -- Start with staged files: a.txt, c.txt
+  local status = make_status({
+    staged = {
+      { path = "a.txt", index_status = "M", worktree_status = "." },
+      { path = "c.txt", index_status = "M", worktree_status = "." },
+    },
+    unstaged = {
+      { path = "b.txt", index_status = ".", worktree_status = "M" },
+    },
+  })
+
+  -- Stage b.txt - should be inserted between a.txt and c.txt
+  local cmd = commands.stage_file("b.txt", "unstaged")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.staged, 3)
+  eq(new_status.staged[1].path, "a.txt")
+  eq(new_status.staged[2].path, "b.txt")
+  eq(new_status.staged[3].path, "c.txt")
+end
+
+T["sort order"]["stage_file from untracked inserts in alphabetical order"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = {
+      { path = "aaa.txt", index_status = "M", worktree_status = "." },
+      { path = "zzz.txt", index_status = "M", worktree_status = "." },
+    },
+    untracked = {
+      { path = "mmm.txt", index_status = "?", worktree_status = "?" },
+    },
+  })
+
+  local cmd = commands.stage_file("mmm.txt", "untracked")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.staged, 3)
+  eq(new_status.staged[1].path, "aaa.txt")
+  eq(new_status.staged[2].path, "mmm.txt")
+  eq(new_status.staged[3].path, "zzz.txt")
+end
+
+T["sort order"]["unstage_file inserts in alphabetical order to unstaged"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = {
+      { path = "b.txt", index_status = "M", worktree_status = "." },
+    },
+    unstaged = {
+      { path = "a.txt", index_status = ".", worktree_status = "M" },
+      { path = "c.txt", index_status = ".", worktree_status = "M" },
+    },
+  })
+
+  local cmd = commands.unstage_file("b.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.unstaged, 3)
+  eq(new_status.unstaged[1].path, "a.txt")
+  eq(new_status.unstaged[2].path, "b.txt")
+  eq(new_status.unstaged[3].path, "c.txt")
+end
+
+T["sort order"]["unstage_file added file inserts in alphabetical order to untracked"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = {
+      { path = "new_b.txt", index_status = "A", worktree_status = "." },
+    },
+    untracked = {
+      { path = "new_a.txt", index_status = "?", worktree_status = "?" },
+      { path = "new_c.txt", index_status = "?", worktree_status = "?" },
+    },
+  })
+
+  local cmd = commands.unstage_file("new_b.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.untracked, 3)
+  eq(new_status.untracked[1].path, "new_a.txt")
+  eq(new_status.untracked[2].path, "new_b.txt")
+  eq(new_status.untracked[3].path, "new_c.txt")
+end
+
+T["sort order"]["stage_all maintains alphabetical order"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = {
+      { path = "b.txt", index_status = "M", worktree_status = "." },
+    },
+    unstaged = {
+      { path = "d.txt", index_status = ".", worktree_status = "M" },
+    },
+    untracked = {
+      { path = "a.txt", index_status = "?", worktree_status = "?" },
+      { path = "c.txt", index_status = "?", worktree_status = "?" },
+    },
+  })
+
+  local cmd = commands.stage_all()
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.staged, 4)
+  eq(new_status.staged[1].path, "a.txt")
+  eq(new_status.staged[2].path, "b.txt")
+  eq(new_status.staged[3].path, "c.txt")
+  eq(new_status.staged[4].path, "d.txt")
+end
+
+T["sort order"]["unstage_all maintains alphabetical order"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = {
+      { path = "b.txt", index_status = "M", worktree_status = "." },
+      { path = "d.txt", index_status = "A", worktree_status = "." },
+    },
+    unstaged = {
+      { path = "c.txt", index_status = ".", worktree_status = "M" },
+    },
+    untracked = {
+      { path = "a.txt", index_status = "?", worktree_status = "?" },
+    },
+  })
+
+  local cmd = commands.unstage_all()
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.unstaged, 2)
+  eq(new_status.unstaged[1].path, "b.txt")
+  eq(new_status.unstaged[2].path, "c.txt")
+
+  eq(#new_status.untracked, 2)
+  eq(new_status.untracked[1].path, "a.txt")
+  eq(new_status.untracked[2].path, "d.txt")
+end
+
 return T

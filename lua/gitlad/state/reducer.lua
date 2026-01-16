@@ -38,6 +38,21 @@ local function remove_entry(list, path)
   return new_list, removed
 end
 
+--- Insert an entry into a list maintaining alphabetical sort order by path
+--- This matches the order git returns files in `git status --porcelain=v2`
+---@param list GitStatusEntry[]
+---@param entry GitStatusEntry
+local function insert_sorted(list, entry)
+  for i, existing in ipairs(list) do
+    if entry.path < existing.path then
+      table.insert(list, i, entry)
+      return
+    end
+  end
+  -- Entry belongs at the end
+  table.insert(list, entry)
+end
+
 --- Deep copy a status result for immutability
 ---@param status GitStatusResult
 ---@return GitStatusResult
@@ -65,7 +80,7 @@ function M._apply_stage_file(status, path, from_section)
     local new_untracked, removed = remove_entry(status.untracked, path)
     if removed then
       status.untracked = new_untracked
-      table.insert(status.staged, {
+      insert_sorted(status.staged, {
         path = removed.path,
         index_status = "A",
         worktree_status = ".",
@@ -83,7 +98,7 @@ function M._apply_stage_file(status, path, from_section)
         existing_staged.worktree_status = "."
       else
         -- New staged entry
-        table.insert(status.staged, {
+        insert_sorted(status.staged, {
           path = unstaged_entry.path,
           orig_path = unstaged_entry.orig_path,
           index_status = unstaged_entry.worktree_status,
@@ -112,7 +127,7 @@ function M._apply_unstage_file(status, path)
 
   if staged_entry.index_status == "A" then
     -- Added file becomes untracked
-    table.insert(status.untracked, {
+    insert_sorted(status.untracked, {
       path = staged_entry.path,
       index_status = "?",
       worktree_status = "?",
@@ -122,7 +137,7 @@ function M._apply_unstage_file(status, path)
     existing_unstaged.index_status = "."
   else
     -- Move to unstaged
-    table.insert(status.unstaged, {
+    insert_sorted(status.unstaged, {
       path = staged_entry.path,
       orig_path = staged_entry.orig_path,
       index_status = ".",
@@ -140,7 +155,7 @@ end
 function M._apply_stage_all(status)
   -- Stage all untracked
   for _, entry in ipairs(status.untracked) do
-    table.insert(status.staged, {
+    insert_sorted(status.staged, {
       path = entry.path,
       index_status = "A",
       worktree_status = ".",
@@ -154,7 +169,7 @@ function M._apply_stage_all(status)
     if existing then
       existing.worktree_status = "."
     else
-      table.insert(status.staged, {
+      insert_sorted(status.staged, {
         path = entry.path,
         orig_path = entry.orig_path,
         index_status = entry.worktree_status,
@@ -174,7 +189,7 @@ end
 function M._apply_unstage_all(status)
   for _, entry in ipairs(status.staged) do
     if entry.index_status == "A" then
-      table.insert(status.untracked, {
+      insert_sorted(status.untracked, {
         path = entry.path,
         index_status = "?",
         worktree_status = "?",
@@ -184,7 +199,7 @@ function M._apply_unstage_all(status)
       if existing then
         existing.index_status = "."
       else
-        table.insert(status.unstaged, {
+        insert_sorted(status.unstaged, {
           path = entry.path,
           orig_path = entry.orig_path,
           index_status = ".",
