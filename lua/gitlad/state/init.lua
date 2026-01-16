@@ -16,6 +16,7 @@ local reducer = require("gitlad.state.reducer")
 ---@field git_dir string Path to .git directory
 ---@field repo_root string Path to repository root
 ---@field status GitStatusResult|nil Current status
+---@field refreshing boolean Whether a refresh is in progress
 ---@field status_handler AsyncHandler Handler for status requests
 ---@field cache Cache Cache instance
 ---@field listeners table<string, fun(state: RepoState)[]> Event listeners
@@ -46,12 +47,14 @@ function M.get(path)
   state.repo_root = git_dir
   state.git_dir = git_dir .. ".git"
   state.status = nil
+  state.refreshing = false
   state.cache = cache.new()
   state.listeners = {}
 
   -- Create status handler that notifies listeners on update
   state.status_handler = async.new(function(result)
     state.status = result
+    state.refreshing = false
     state:_notify("status")
   end)
 
@@ -129,6 +132,10 @@ function RepoState:refresh_status(force)
       return
     end
   end
+
+  -- Set refreshing flag and notify UI
+  self.refreshing = true
+  self:_notify("status")
 
   -- Dispatch async refresh
   self.status_handler:dispatch(function(done)

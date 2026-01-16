@@ -6,6 +6,8 @@
 
 local M = {}
 
+local history = require("gitlad.git.history")
+
 ---@class GitCommandResult
 ---@field stdout string[] Lines of stdout
 ---@field stderr string[] Lines of stderr
@@ -28,27 +30,34 @@ local GIT_FLAGS = {
 }
 
 --- Find the git directory for a given path
+--- Uses git rev-parse to handle worktrees correctly
 ---@param path? string Path to check (defaults to cwd)
 ---@return string|nil git_dir Path to .git directory, or nil if not in a repo
 function M.find_git_dir(path)
   path = path or vim.fn.getcwd()
-  local git_dir = vim.fn.finddir(".git", path .. ";")
-  if git_dir ~= "" then
-    return vim.fn.fnamemodify(git_dir, ":p:h")
+  local result = vim.fn.systemlist({ "git", "-C", path, "rev-parse", "--git-dir" })
+  if vim.v.shell_error ~= 0 or #result == 0 then
+    return nil
   end
-  return nil
+  local git_dir = result[1]
+  -- Make absolute if relative
+  if not vim.startswith(git_dir, "/") then
+    git_dir = path .. "/" .. git_dir
+  end
+  return vim.fn.fnamemodify(git_dir, ":p")
 end
 
 --- Find the repository root for a given path
+--- Uses git rev-parse to handle worktrees correctly
 ---@param path? string Path to check (defaults to cwd)
 ---@return string|nil repo_root Path to repository root, or nil if not in a repo
 function M.find_repo_root(path)
-  local git_dir = M.find_git_dir(path)
-  if git_dir then
-    -- .git dir is inside repo root
-    return vim.fn.fnamemodify(git_dir, ":h")
+  path = path or vim.fn.getcwd()
+  local result = vim.fn.systemlist({ "git", "-C", path, "rev-parse", "--show-toplevel" })
+  if vim.v.shell_error ~= 0 or #result == 0 then
+    return nil
   end
-  return nil
+  return vim.fn.fnamemodify(result[1], ":p")
 end
 
 --- Build the full git command with standard flags
@@ -69,6 +78,8 @@ end
 function M.run_async(args, opts, callback)
   opts = opts or {}
   local cmd = build_command(args)
+  local cwd = opts.cwd or vim.fn.getcwd()
+  local start_time = vim.loop.hrtime()
 
   local stdout_data = {}
   local stderr_data = {}
@@ -86,6 +97,22 @@ function M.run_async(args, opts, callback)
     if timeout_timer then
       vim.fn.timer_stop(timeout_timer)
     end
+
+    -- Calculate duration
+    local end_time = vim.loop.hrtime()
+    local duration_ms = (end_time - start_time) / 1e6
+
+    -- Log to history
+    history.add({
+      cmd = args[1] or "git",
+      args = args,
+      cwd = cwd,
+      exit_code = code,
+      stdout = stdout_data,
+      stderr = stderr_data,
+      timestamp = os.time(),
+      duration_ms = duration_ms,
+    })
 
     -- Schedule callback to ensure we're in main loop
     vim.schedule(function()
@@ -144,13 +171,31 @@ end
 function M.run_sync(args, opts)
   opts = opts or {}
   local cmd = build_command(args)
+  local cwd = opts.cwd or vim.fn.getcwd()
+  local start_time = vim.loop.hrtime()
 
   local result = vim.fn.systemlist(cmd)
   local code = vim.v.shell_error
 
-  return {
+  -- Calculate duration
+  local end_time = vim.loop.hrtime()
+  local duration_ms = (end_time - start_time) / 1e6
+
+  -- Log to history
+  history.add({
+    cmd = args[1] or "git",
+    args = args,
+    cwd = cwd,
+    exit_code = code,
     stdout = result,
     stderr = {}, -- systemlist doesn't separate stderr
+    timestamp = os.time(),
+    duration_ms = duration_ms,
+  })
+
+  return {
+    stdout = result,
+    stderr = {},
     code = code,
   }
 end

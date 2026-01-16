@@ -7,6 +7,7 @@ local M = {}
 
 local state = require("gitlad.state")
 local config = require("gitlad.config")
+local history_view = require("gitlad.ui.views.history")
 
 ---@class LineInfo
 ---@field path string File path
@@ -89,6 +90,11 @@ function StatusBuffer:_setup_keymaps()
   vim.keymap.set("n", "<Tab>", function()
     self:_toggle_diff()
   end, vim.tbl_extend("force", opts, { desc = "Toggle diff" }))
+
+  -- Git command history
+  vim.keymap.set("n", "$", function()
+    history_view.open()
+  end, vim.tbl_extend("force", opts, { desc = "Show git command history" }))
 end
 
 --- Get the file path at the current cursor position
@@ -165,7 +171,11 @@ function StatusBuffer:render()
   end
 
   -- Header
-  table.insert(lines, string.format("Head:     %s", status.branch))
+  local head_line = string.format("Head:     %s", status.branch)
+  if self.repo_state.refreshing then
+    head_line = head_line .. "  (Refreshing...)"
+  end
+  table.insert(lines, head_line)
   if status.upstream then
     local ahead_behind = ""
     if status.ahead > 0 or status.behind > 0 then
@@ -223,7 +233,7 @@ function StatusBuffer:render()
 
   -- Help line
   table.insert(lines, "")
-  table.insert(lines, "s=stage  u=unstage  g=refresh  q=close")
+  table.insert(lines, "s=stage  u=unstage  g=refresh  $=history  q=close")
 
   vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, lines)
 end
