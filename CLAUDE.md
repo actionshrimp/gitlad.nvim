@@ -258,6 +258,18 @@ Cloned in parent directory for reference:
 
 ## Development Workflow
 
+### Planning First
+
+**For bigger features, use plan mode before writing any code.** This ensures we:
+- Understand the current goal clearly
+- Break the work into a sequence of logical, atomic steps
+- Identify what tests, keybindings, and documentation each step needs
+- Avoid scope creep and stay focused
+
+Each logical step in the plan should be implementable as a single commit.
+
+### Test-First Development
+
 Every task follows this workflow:
 
 ```
@@ -271,6 +283,61 @@ Every task follows this workflow:
 ```
 
 **If you skip step 5, the task is NOT complete.**
+
+### Atomic Commits
+
+Each logical step from the plan should be committed as a complete unit. A commit is complete when it includes **all** of the following (as applicable):
+
+| Component | Description |
+|-----------|-------------|
+| **Tests** | Both unit tests and e2e tests for the new functionality |
+| **CI updates** | Any changes to workflow files needed for the feature |
+| **Plan updates** | Update PLAN.md or goal-level docs with progress |
+| **Implementation** | The feature/fix code itself |
+| **Keybindings** | Any new mappings and their tests |
+
+**Every commit must pass all checks:**
+```bash
+make format   # Format code
+make lint     # Check formatting
+make test     # Run all tests (unit + e2e)
+```
+
+Do not move to the next logical step until the current commit is complete and green.
+
+### PR-Based Workflow
+
+Once you have a commit or sequence of commits for a higher-level goal, follow this workflow:
+
+#### 1. Local Review
+```
+- Use a sub-agent to review all changes locally (review-local skill)
+- Address any feedback from the local review
+- Ensure all commits are clean and well-structured
+```
+
+#### 2. Submit PR
+```
+- Push the branch and create a PR
+- Wait for CI workflows to complete
+- All checks must pass before proceeding
+```
+
+#### 3. PR Review
+```
+- Use a sub-agent to review the PR
+- Address any feedback from the review
+- Push fixes and ensure CI remains green
+```
+
+#### 4. Human Approval
+```
+- Once everything is green, notify a human
+- Request manual testing and final review
+- Only merge after human approval
+```
+
+**Never merge a PR without human sign-off.**
 
 ## Code Style
 
