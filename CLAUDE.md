@@ -291,6 +291,21 @@ External dependency (integrate, don't reinvent):
 
 ## Development Workflow
 
+### Starting a New Feature
+
+**Always start new features from an up-to-date `main` branch:**
+
+```bash
+git checkout main
+git pull
+git checkout -b feature/your-feature-name
+```
+
+This ensures:
+- You're building on the latest code
+- No conflicts from stale branches
+- Clean git history
+
 ### Planning First
 
 **For bigger features, use plan mode before writing any code.** This ensures we:
