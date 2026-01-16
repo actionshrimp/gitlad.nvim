@@ -44,18 +44,25 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 
 ---
 
-## Current State (Phase 1 Complete)
+## Current State (Phase 2.1-2.6 Complete)
 
 ### What's Built
 - Project structure with proper module organization
 - Async git CLI wrapper (`git/cli.lua`) using `vim.fn.jobstart`
 - Git output parsing (`git/parse.lua`) for porcelain v2 format
-- Timestamp-based cache invalidation (`state/cache.lua`) - **to be removed/simplified**
+- Cache utilities (`state/cache.lua`)
 - AsyncHandler pattern (`state/async.lua`) for request ordering
 - Debounce/throttle utilities
 - RepoState coordinator with event system (`state/init.lua`)
-- Basic status buffer view with staging/unstaging
-- Test infrastructure with mini.test (37 tests passing)
+- **Optimistic state updates** - Commands/reducer pattern for pure state mutations
+- **Refresh indicator** - "(Refreshing...)" shown in header during manual refresh
+- **Git command history** - `$` keybinding opens history view
+- **Full magit keybindings** - n/p, M-n/M-p, TAB, RET, s/u, S/U, x, g, q, ?, $
+- **Inline diff expansion** - TAB on file shows diff with syntax highlighting
+- **Hunk-level staging** - s/u on diff lines stages/unstages individual hunks
+- **Popup system** - Transient-style popups with switches, options, and actions
+- Status buffer view with full staging/unstaging workflow
+- Test infrastructure with mini.test (135 tests passing)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -63,125 +70,71 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - Porcelain v2 format for stable machine-readable output
 - Line map approach for buffer -> file mapping (no text parsing)
 - Event-driven updates (RepoState emits events, views subscribe)
-
-### Architecture Changes Needed
-- **Remove automatic refresh after stage/unstage** (`state/init.lua:169-170, 184-185`)
-- **Add optimistic state mutation** - Move file entries between sections on success
-- **Add "Refreshing..." indicator** in status buffer during manual refresh
-- **Add git command history module**
+- Elm-style Commands/Reducer for pure state mutations
 
 ---
 
 ## Phase 2: Core Functionality
 
-### 2.1 Optimistic State Updates (PRIORITY)
+### 2.1 Optimistic State Updates - COMPLETE
 
-Refactor stage/unstage to update Lua state directly instead of refreshing from git.
+Implemented using Commands/Reducer pattern (Elm Architecture):
+- [x] `state/commands.lua` - Command definitions (stage_file, unstage_file, etc.)
+- [x] `state/reducer.lua` - Pure state mutations
+- [x] `RepoState:apply_command()` - Applies command and notifies listeners
+- [x] Stage/unstage use optimistic updates (no auto-refresh)
 
-- [ ] Add state mutation helpers to RepoState:
-  - `move_to_staged(path)` - move entry from unstaged/untracked to staged
-  - `move_to_unstaged(path)` - move entry from staged to unstaged
-- [ ] Refactor `RepoState:stage()`:
-  - Run `git add`
-  - On success: call `move_to_staged(path)`, emit "status" event
-  - On failure: show error, no state change
-  - **Remove** `self:refresh_status()` call
-- [ ] Refactor `RepoState:unstage()`:
-  - Run `git reset HEAD`
-  - On success: call `move_to_unstaged(path)`, emit "status" event
-  - On failure: show error, no state change
-  - **Remove** `self:refresh_status()` call
-- [ ] Handle edge cases:
-  - Staging untracked file (needs to set index_status appropriately)
-  - Partially staged files (file in both staged and unstaged)
+### 2.2 Refresh Indicator - COMPLETE
 
-**Files to modify:**
-- `lua/gitlad/state/init.lua`
+- [x] `refreshing` boolean in RepoState
+- [x] "(Refreshing...)" shown in status buffer header during manual refresh
 
-### 2.2 Refresh Indicator
+### 2.3 Git Command History - COMPLETE
 
-Show visual feedback during manual refresh so user knows it's working.
+- [x] `git/history.lua` - Ring buffer tracking all git commands
+- [x] `ui/views/history.lua` - History view buffer
+- [x] `$` keybinding opens command history
 
-- [ ] Add `refreshing` boolean to RepoState
-- [ ] Set `refreshing = true` at start of `refresh_status()`, `false` on completion
-- [ ] Emit "refreshing" event (or include in "status" event)
-- [ ] Update status buffer to show "Refreshing..." when `refreshing == true`
-- [ ] Consider: spinner animation? Or just static text?
+### 2.4 Full Magit Keybindings - COMPLETE
 
-**Files to modify:**
-- `lua/gitlad/state/init.lua`
-- `lua/gitlad/ui/views/status.lua`
+- [x] Navigation: `n`/`p` (next/prev item), `M-n`/`M-p` (next/prev section)
+- [x] `TAB` - expand/collapse inline diff
+- [x] `RET` - visit file at point
+- [x] `s`/`u` - stage/unstage
+- [x] `S`/`U` - stage all / unstage all
+- [x] `x` - discard changes at point
+- [x] `g` - refresh
+- [x] `q` - close
+- [x] `$` - show git command history
+- [x] `?` - show help popup
 
-### 2.3 Git Command History
+### 2.5 Inline Diff Expansion - COMPLETE
 
-Track all git commands for transparency and debugging.
+- [x] `TAB` on file shows/hides diff inline
+- [x] Track expanded state per file in StatusBuffer
+- [x] Fetch diff async when expanding
+- [x] Syntax highlighting for diff (add/remove lines)
+- [ ] Hunk headers clickable/navigable (enhancement for later)
 
-- [ ] Create `lua/gitlad/git/history.lua` module:
-  - Ring buffer of last N commands (configurable, default 100)
-  - Each entry: `{ cmd, args, cwd, exit_code, stdout, stderr, timestamp, duration_ms }`
-- [ ] Integrate with `git/cli.lua` to log every command
-- [ ] Add `$` keybinding to open command history buffer
-- [ ] History buffer shows commands in reverse chronological order
-- [ ] `RET` on a command expands to show full output
+### 2.6 Hunk-Level Staging - COMPLETE
 
-**Files to create:**
-- `lua/gitlad/git/history.lua`
-- `lua/gitlad/ui/views/history.lua`
+- [x] Parse diff into hunks
+- [x] `s`/`u` on hunk stages/unstages just that hunk
+- [x] Use `git apply --cached` for hunk staging
+- [x] Visual feedback for partially staged files
 
-**Files to modify:**
-- `lua/gitlad/git/cli.lua`
-- `lua/gitlad/ui/views/status.lua` (add `$` keybinding)
+### 2.7 Popup System - COMPLETE
 
-### 2.4 Full Magit Keybindings
-- [ ] Navigation: `n`/`p` (next/prev item), `M-n`/`M-p` (next/prev section)
-- [ ] `TAB` - expand/collapse section or show inline diff
-- [ ] `RET` - visit file at point
-- [ ] `s`/`u` - stage/unstage (done)
-- [ ] `S`/`U` - stage all / unstage all
-- [ ] `x` - discard changes at point (with confirmation)
-- [ ] `g` - refresh (done)
-- [ ] `q` - close (done)
-- [ ] `$` - show git command history
-- [ ] `?` - show help popup with all keybindings
+Transient-style popup system inspired by neogit/magit:
 
-**Files to modify:**
-- `lua/gitlad/ui/views/status.lua`
-
-### 2.5 Inline Diff Expansion
-- [ ] `TAB` on file shows/hides diff inline
-- [ ] Track expanded state per file in StatusBuffer
-- [ ] Fetch diff async when expanding
-- [ ] Syntax highlighting for diff (add/remove lines)
-- [ ] Hunk headers clickable/navigable
-
-**Files to modify:**
-- `lua/gitlad/ui/views/status.lua`
-- `lua/gitlad/git/init.lua` (add diff fetching)
-
-### 2.6 Hunk-Level Staging
-- [ ] Parse diff into hunks
-- [ ] `s`/`u` on hunk stages/unstages just that hunk
-- [ ] Use `git apply --cached` for hunk staging
-- [ ] Visual feedback for partially staged files
-- [ ] **Optimistic update:** On hunk stage success, update diff state without re-fetching
-
-**Files to create/modify:**
-- `lua/gitlad/git/diff.lua` (new - hunk parsing)
-- `lua/gitlad/git/init.lua` (add `stage_hunk`, `unstage_hunk`)
-
-### 2.7 Popup System
-Port neogit's PopupBuilder pattern for transient-style menus.
-
-- [ ] `lua/gitlad/ui/popup/builder.lua` - fluent API for building popups
-- [ ] `lua/gitlad/ui/popup/init.lua` - popup state, rendering, key handling
-- [ ] Support for:
-  - Switches (boolean flags like `-a`, `--all`)
-  - Options (key-value like `--author=`)
-  - Actions (commands that execute)
-  - Grouping with headings
-- [ ] Persistent switch state between sessions
-
-**Reference:** `/Users/dave/dev/actionshrimp/neogit/lua/neogit/lib/popup/`
+- [x] `lua/gitlad/ui/popup/init.lua` - PopupBuilder fluent API and PopupData
+- [x] Switches (boolean flags like `-a`, `--all`)
+- [x] Options (key-value like `--author=`)
+- [x] Actions (commands that execute)
+- [x] Grouping with headings
+- [x] Prefix keybindings (`-` for switches, `=` for options)
+- [x] Close with `q` or `<Esc>`
+- [ ] Persistent switch state between sessions (enhancement for later)
 
 ### 2.8 Commit Popup
 - [ ] `c` opens commit popup
