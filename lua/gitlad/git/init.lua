@@ -134,6 +134,22 @@ function M.delete_untracked(path, repo_root, callback)
   end
 end
 
+--- Apply a patch via stdin
+---@param patch_lines string[] The patch content lines
+---@param reverse boolean Whether to reverse the patch (for unstaging)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.apply_patch(patch_lines, reverse, opts, callback)
+  local args = { "apply", "--cached" }
+  if reverse then
+    table.insert(args, "-R")
+  end
+
+  cli.run_async_with_stdin(args, patch_lines, opts, function(result)
+    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+  end)
+end
+
 --- Check if path is inside a git repository
 ---@param path? string Path to check (defaults to cwd)
 ---@return boolean

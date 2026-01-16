@@ -13,6 +13,16 @@ local git = require("gitlad.git")
 ---@class LineInfo
 ---@field path string File path
 ---@field section "staged"|"unstaged"|"untracked"|"conflicted" Section type
+---@field hunk_index number|nil Index of hunk if this is a diff line
+
+---@class DiffHunk
+---@field header string The @@ header line
+---@field lines string[] The hunk content lines
+
+---@class DiffData
+---@field header string[] The diff header lines (diff --git, index, ---, +++)
+---@field hunks DiffHunk[] Array of parsed hunks
+---@field display_lines string[] Flattened lines for display (without diff header)
 
 ---@class SectionInfo
 ---@field name string Section name
@@ -25,7 +35,7 @@ local git = require("gitlad.git")
 ---@field line_map table<number, LineInfo> Map of line numbers to file info
 ---@field section_lines table<number, SectionInfo> Map of line numbers to section headers
 ---@field expanded_files table<string, boolean> Map of "section:path" to expanded state
----@field diff_cache table<string, string[]> Map of "section:path" to diff lines
+---@field diff_cache table<string, DiffData> Map of "section:path" to parsed diff data
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
 
@@ -152,38 +162,110 @@ end
 --- Get the file path at the current cursor position
 ---@return string|nil path
 ---@return string|nil section "staged"|"unstaged"|"untracked"|"conflicted"
+---@return number|nil hunk_index Index of hunk if on a diff line
 function StatusBuffer:_get_current_file()
   local cursor = vim.api.nvim_win_get_cursor(0)
   local line = cursor[1]
 
   local info = self.line_map[line]
   if info then
-    return info.path, info.section
+    return info.path, info.section, info.hunk_index
   end
 
-  return nil, nil
+  return nil, nil, nil
 end
 
---- Stage the file under cursor
+--- Build a patch for a single hunk
+---@param diff_data DiffData
+---@param hunk_index number
+---@return string[]|nil patch_lines
+function StatusBuffer:_build_hunk_patch(diff_data, hunk_index)
+  if not diff_data.hunks[hunk_index] then
+    return nil
+  end
+
+  local patch_lines = {}
+
+  -- Add the diff header
+  for _, line in ipairs(diff_data.header) do
+    table.insert(patch_lines, line)
+  end
+
+  -- Add the single hunk
+  local hunk = diff_data.hunks[hunk_index]
+  table.insert(patch_lines, hunk.header)
+  for _, line in ipairs(hunk.lines) do
+    table.insert(patch_lines, line)
+  end
+
+  return patch_lines
+end
+
+--- Stage the file or hunk under cursor
 function StatusBuffer:_stage_current()
-  local path, section = self:_get_current_file()
+  local path, section, hunk_index = self:_get_current_file()
   if not path then
     return
   end
 
-  if section == "unstaged" or section == "untracked" then
+  if section == "unstaged" then
+    -- Check if we're on a hunk line
+    if hunk_index then
+      local key = diff_cache_key(path, section)
+      local diff_data = self.diff_cache[key]
+      if diff_data then
+        local patch_lines = self:_build_hunk_patch(diff_data, hunk_index)
+        if patch_lines then
+          git.apply_patch(patch_lines, false, { cwd = self.repo_state.repo_root }, function(success, err)
+            if not success then
+              vim.notify("[gitlad] Stage hunk error: " .. (err or "unknown"), vim.log.levels.ERROR)
+            else
+              -- Invalidate diff cache and refresh to get accurate state
+              self.diff_cache[key] = nil
+              self.repo_state:refresh_status(true)
+            end
+          end)
+          return
+        end
+      end
+    end
+    -- Stage the whole file
+    self.repo_state:stage(path, section)
+  elseif section == "untracked" then
     self.repo_state:stage(path, section)
   end
 end
 
---- Unstage the file under cursor
+--- Unstage the file or hunk under cursor
 function StatusBuffer:_unstage_current()
-  local path, section = self:_get_current_file()
+  local path, section, hunk_index = self:_get_current_file()
   if not path then
     return
   end
 
   if section == "staged" then
+    -- Check if we're on a hunk line
+    if hunk_index then
+      local key = diff_cache_key(path, section)
+      local diff_data = self.diff_cache[key]
+      if diff_data then
+        local patch_lines = self:_build_hunk_patch(diff_data, hunk_index)
+        if patch_lines then
+          -- Use reverse apply to unstage
+          git.apply_patch(patch_lines, true, { cwd = self.repo_state.repo_root }, function(success, err)
+            if not success then
+              vim.notify("[gitlad] Unstage hunk error: " .. (err or "unknown"), vim.log.levels.ERROR)
+            else
+              -- Invalidate diff cache and refresh to get accurate state
+              self.diff_cache[key] = nil
+              self.repo_state:refresh_status(true)
+            end
+          end)
+          return
+        end
+      end
+    end
+    -- Unstage the whole file
     self.repo_state:unstage(path)
   end
 end
@@ -196,24 +278,56 @@ local function diff_cache_key(path, section)
   return section .. ":" .. path
 end
 
---- Filter out git diff header lines, keeping only the actual diff content
+--- Parse a git diff into structured data with header and hunks
 ---@param lines string[]
----@return string[]
-local function filter_diff_header(lines)
-  local result = {}
-  local in_hunk = false
+---@return DiffData
+local function parse_diff(lines)
+  local data = {
+    header = {},
+    hunks = {},
+    display_lines = {},
+  }
+
+  local current_hunk = nil
 
   for _, line in ipairs(lines) do
-    -- Start including lines once we hit the first hunk header
     if line:match("^@@") then
-      in_hunk = true
-    end
-    if in_hunk then
-      table.insert(result, line)
+      -- Start a new hunk
+      if current_hunk then
+        table.insert(data.hunks, current_hunk)
+      end
+      current_hunk = {
+        header = line,
+        lines = {},
+      }
+      table.insert(data.display_lines, line)
+    elseif current_hunk then
+      -- Add line to current hunk
+      table.insert(current_hunk.lines, line)
+      table.insert(data.display_lines, line)
+    else
+      -- This is part of the diff header (before first @@)
+      table.insert(data.header, line)
     end
   end
 
-  return result
+  -- Don't forget the last hunk
+  if current_hunk then
+    table.insert(data.hunks, current_hunk)
+  end
+
+  return data
+end
+
+--- Create DiffData for an untracked file (all lines as additions)
+---@param lines string[]
+---@return DiffData
+local function create_untracked_diff_data(lines)
+  return {
+    header = {},
+    hunks = {},
+    display_lines = lines,
+  }
 end
 
 --- Read file content and format as "added" lines
@@ -271,7 +385,7 @@ function StatusBuffer:_toggle_diff()
       end
 
       vim.schedule(function()
-        self.diff_cache[key] = lines or {}
+        self.diff_cache[key] = create_untracked_diff_data(lines or {})
         self.expanded_files[key] = true
         self:render()
       end)
@@ -288,8 +402,8 @@ function StatusBuffer:_toggle_diff()
     end
 
     vim.schedule(function()
-      -- Filter out the diff header, keep only the actual diff
-      self.diff_cache[key] = filter_diff_header(diff_lines or {})
+      -- Parse the diff into structured data with hunks
+      self.diff_cache[key] = parse_diff(diff_lines or {})
       self.expanded_files[key] = true
       self:render()
     end)
@@ -418,8 +532,8 @@ function StatusBuffer:_show_help()
     "  M-p    Previous section",
     "",
     "Staging:",
-    "  s      Stage file at cursor",
-    "  u      Unstage file at cursor",
+    "  s      Stage file/hunk at cursor",
+    "  u      Unstage file/hunk at cursor",
     "  S      Stage all",
     "  U      Unstage all",
     "",
@@ -509,10 +623,22 @@ function StatusBuffer:render()
 
     -- Add diff lines if expanded
     if is_expanded and self.diff_cache[key] then
-      for _, diff_line in ipairs(self.diff_cache[key]) do
+      local diff_data = self.diff_cache[key]
+      local current_hunk_index = 0
+
+      for _, diff_line in ipairs(diff_data.display_lines) do
+        -- Track which hunk we're in
+        if diff_line:match("^@@") then
+          current_hunk_index = current_hunk_index + 1
+        end
+
         table.insert(lines, "    " .. diff_line)
-        -- Diff lines also map to the same file
-        self.line_map[#lines] = { path = entry.path, section = section }
+        -- Diff lines map to the file and include hunk index
+        self.line_map[#lines] = {
+          path = entry.path,
+          section = section,
+          hunk_index = current_hunk_index > 0 and current_hunk_index or nil,
+        }
       end
     end
   end

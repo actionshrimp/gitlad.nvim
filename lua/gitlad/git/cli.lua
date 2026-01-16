@@ -206,4 +206,104 @@ function M.cancel(job_id)
   vim.fn.jobstop(job_id)
 end
 
+--- Run a git command asynchronously with stdin input
+---@param args string[] Git command arguments (without 'git' prefix)
+---@param stdin_lines string[] Lines to send to stdin
+---@param opts? GitCommandOptions Options
+---@param callback fun(result: GitCommandResult) Callback with result
+---@return number job_id Job ID for cancellation
+function M.run_async_with_stdin(args, stdin_lines, opts, callback)
+  opts = opts or {}
+  local cmd = build_command(args)
+  local cwd = opts.cwd or vim.fn.getcwd()
+  local start_time = vim.loop.hrtime()
+
+  local stdout_data = {}
+  local stderr_data = {}
+  local job_id
+
+  local timeout_timer = nil
+  local completed = false
+
+  local function on_complete(code)
+    if completed then
+      return
+    end
+    completed = true
+
+    if timeout_timer then
+      vim.fn.timer_stop(timeout_timer)
+    end
+
+    -- Calculate duration
+    local end_time = vim.loop.hrtime()
+    local duration_ms = (end_time - start_time) / 1e6
+
+    -- Log to history
+    history.add({
+      cmd = args[1] or "git",
+      args = args,
+      cwd = cwd,
+      exit_code = code,
+      stdout = stdout_data,
+      stderr = stderr_data,
+      timestamp = os.time(),
+      duration_ms = duration_ms,
+    })
+
+    -- Schedule callback to ensure we're in main loop
+    vim.schedule(function()
+      callback({
+        stdout = stdout_data,
+        stderr = stderr_data,
+        code = code,
+      })
+    end)
+  end
+
+  job_id = vim.fn.jobstart(cmd, {
+    cwd = opts.cwd or vim.fn.getcwd(),
+    env = opts.env,
+    stdout_buffered = true,
+    stderr_buffered = true,
+    on_stdout = function(_, data)
+      if data then
+        if #data > 0 and data[#data] == "" then
+          table.remove(data)
+        end
+        vim.list_extend(stdout_data, data)
+      end
+    end,
+    on_stderr = function(_, data)
+      if data then
+        if #data > 0 and data[#data] == "" then
+          table.remove(data)
+        end
+        vim.list_extend(stderr_data, data)
+      end
+    end,
+    on_exit = function(_, code)
+      on_complete(code)
+    end,
+  })
+
+  -- Send stdin data and close
+  if job_id > 0 then
+    local stdin_content = table.concat(stdin_lines, "\n") .. "\n"
+    vim.fn.chansend(job_id, stdin_content)
+    vim.fn.chanclose(job_id, "stdin")
+  end
+
+  -- Set up timeout
+  local timeout = opts.timeout or 30000
+  timeout_timer = vim.fn.timer_start(timeout, function()
+    if not completed then
+      vim.fn.jobstop(job_id)
+      on_complete(-1) -- Timeout exit code
+    end
+  end)
+
+  return job_id
+end
+
 return M
