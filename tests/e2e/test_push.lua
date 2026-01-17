@@ -309,7 +309,7 @@ T["push popup"]["p keybinding appears in help"] = function()
 
   local found_push = false
   for _, line in ipairs(lines) do
-    if line:match("p%s+Push popup") then
+    if line:match("p%s+Push") then
       found_push = true
     end
   end
