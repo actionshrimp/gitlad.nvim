@@ -62,8 +62,10 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Hunk-level staging** - s/u on diff lines stages/unstages individual hunks
 - **Popup system** - Transient-style popups with switches, options, and actions
 - Status buffer view with full staging/unstaging workflow
-- **Push popup** - `P` keybinding for push with switches/options/actions
-- Test infrastructure with mini.test (179 tests passing)
+- **Push popup** - `p` keybinding for push with switches/options/actions
+- **Fetch popup** - `f` keybinding for fetch with switches/options/actions
+- **Pull popup** - `F` keybinding for pull with switches/options/actions
+- Test infrastructure with mini.test (230 tests passing)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -179,11 +181,22 @@ Transient-style popup system inspired by neogit/magit:
 - `tests/unit/test_push_popup.lua` - Unit tests (13 tests)
 - `tests/e2e/test_push.lua` - E2E tests (6 tests)
 
-### 3.2 Pull/Fetch Popups
-- [ ] `F` opens pull popup, `f` opens fetch popup
-- [ ] Pull: `--rebase`, `--ff-only`, `--no-ff` switches
-- [ ] Fetch: `--prune`, `--tags`, `--all` switches
-- [ ] Remote selection
+### 3.2 Pull/Fetch Popups - COMPLETE
+
+- [x] `F` opens pull popup, `f` opens fetch popup
+- [x] Pull: `--rebase`, `--ff-only`, `--no-ff`, `--autostash` switches
+- [x] Fetch: `--prune`, `--tags`, `--all` switches
+- [x] Remote selection via option (`=o` for pull, `=r` for fetch)
+- [x] Actions: pull/fetch from upstream, pull/fetch elsewhere, fetch all remotes
+
+**Files created:**
+- `lua/gitlad/popups/fetch.lua` - Fetch popup definition and actions
+- `lua/gitlad/popups/pull.lua` - Pull popup definition and actions
+- `lua/gitlad/git/init.lua` - Added `fetch()` and `pull()` functions
+- `tests/unit/test_fetch_popup.lua` - Unit tests (7 tests)
+- `tests/unit/test_pull_popup.lua` - Unit tests (7 tests)
+- `tests/e2e/test_fetch.lua` - E2E tests (6 tests)
+- `tests/e2e/test_pull.lua` - E2E tests (6 tests)
 
 ### 3.3 Branch Popup
 - [ ] `b` opens branch popup

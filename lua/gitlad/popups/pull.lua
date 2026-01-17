@@ -1,7 +1,7 @@
----@mod gitlad.popups.push Push popup
+---@mod gitlad.popups.pull Pull popup
 ---@brief [[
---- Transient-style push popup with switches, options, and actions.
---- Follows magit push popup patterns.
+--- Transient-style pull popup with switches, options, and actions.
+--- Follows magit pull popup patterns.
 ---@brief ]]
 
 local M = {}
@@ -9,7 +9,7 @@ local M = {}
 local popup = require("gitlad.ui.popup")
 local git = require("gitlad.git")
 
----@class PushPopupContext
+---@class PullPopupContext
 ---@field repo_state RepoState
 ---@field popup PopupData
 
@@ -23,106 +23,100 @@ local function get_remote_from_upstream(upstream)
   return upstream:match("^([^/]+)/")
 end
 
---- Check if push can proceed (has upstream or remote specified)
+--- Check if pull can proceed (has upstream or remote specified)
 ---@param repo_state RepoState
 ---@param remote string|nil Remote option value
----@return boolean can_push
+---@return boolean can_pull
 ---@return string|nil error_message
-local function can_push(repo_state, remote)
+local function can_pull(repo_state, remote)
   local status = repo_state.status
   if not status then
     return false, "Status not loaded"
   end
 
-  -- If remote is specified, we can push
+  -- If remote is specified, we can pull
   if remote and remote ~= "" then
     return true, nil
   end
 
   -- Otherwise we need an upstream
   if not status.upstream then
-    return false, "No upstream configured. Set a remote with =r or use 'e' to push elsewhere."
+    return false, "No upstream configured. Set a remote with =r or use 'e' to pull elsewhere."
   end
 
   return true, nil
 end
 
---- Build push arguments from popup state
+--- Build pull arguments from popup state
 ---@param popup_data PopupData
 ---@param remote string|nil Override remote
----@param refspec string|nil Override refspec
 ---@return string[]
-local function build_push_args(popup_data, remote, refspec)
+local function build_pull_args(popup_data, remote)
   local args = popup_data:get_arguments()
 
-  -- Filter out --remote= and --refspec= since they are positional arguments, not options
+  -- Filter out --remote= since remote is a positional argument, not an option
   args = vim.tbl_filter(function(arg)
-    return not vim.startswith(arg, "--remote=") and not vim.startswith(arg, "--refspec=")
+    return not vim.startswith(arg, "--remote=")
   end, args)
 
   if remote and remote ~= "" then
     table.insert(args, remote)
-    if refspec and refspec ~= "" then
-      table.insert(args, refspec)
-    end
   end
 
   return args
 end
 
---- Execute push operation
+--- Execute pull operation
 ---@param repo_state RepoState
 ---@param args string[]
-local function do_push(repo_state, args)
-  vim.notify("[gitlad] Pushing...", vim.log.levels.INFO)
+local function do_pull(repo_state, args)
+  vim.notify("[gitlad] Pulling...", vim.log.levels.INFO)
 
-  git.push(args, { cwd = repo_state.repo_root }, function(success, _, err)
+  git.pull(args, { cwd = repo_state.repo_root }, function(success, _, err)
     vim.schedule(function()
       if success then
-        vim.notify("[gitlad] Push complete", vim.log.levels.INFO)
+        vim.notify("[gitlad] Pull complete", vim.log.levels.INFO)
         repo_state:refresh_status(true)
       else
-        vim.notify("[gitlad] Push failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        vim.notify("[gitlad] Pull failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
       end
     end)
   end)
 end
 
---- Create and show the push popup
+--- Create and show the pull popup
 ---@param repo_state RepoState
 function M.open(repo_state)
   local status = repo_state.status
   local default_remote = status and get_remote_from_upstream(status.upstream) or ""
 
-  local push_popup = popup
+  local pull_popup = popup
     .builder()
-    :name("Push")
+    :name("Pull")
     -- Switches
-    :switch("f", "force-with-lease", "Force with lease (safer)")
-    :switch("F", "force", "Force (dangerous)")
-    :switch("n", "dry-run", "Dry run")
-    :switch("t", "tags", "Include tags")
-    :switch("u", "set-upstream", "Set upstream")
+    :switch("r", "rebase", "Rebase instead of merge")
+    :switch("f", "ff-only", "Fast-forward only")
+    :switch("n", "no-ff", "Create merge commit")
+    :switch("a", "autostash", "Autostash before pull")
     -- Options
-    :option("r", "remote", default_remote, "Remote")
-    :option("b", "refspec", "", "Refspec")
+    :option("o", "remote", default_remote, "Remote")
     -- Actions
-    :group_heading("Push")
-    :action("p", "Push to upstream", function(popup_data)
-      M._push_upstream(repo_state, popup_data)
+    :group_heading("Pull")
+    :action("p", "Pull from upstream", function(popup_data)
+      M._pull_upstream(repo_state, popup_data)
     end)
-    :action("e", "Push elsewhere", function(popup_data)
-      M._push_elsewhere(repo_state, popup_data)
+    :action("e", "Pull elsewhere", function(popup_data)
+      M._pull_elsewhere(repo_state, popup_data)
     end)
     :build()
 
-  push_popup:show()
+  pull_popup:show()
 end
 
---- Push to upstream
+--- Pull from upstream
 ---@param repo_state RepoState
 ---@param popup_data PopupData
-function M._push_upstream(repo_state, popup_data)
+function M._pull_upstream(repo_state, popup_data)
   -- Get remote from option, or default from upstream
   local remote = nil
   for _, opt in ipairs(popup_data.options) do
@@ -133,29 +127,20 @@ function M._push_upstream(repo_state, popup_data)
   end
 
   -- Validate
-  local ok, err = can_push(repo_state, remote)
+  local ok, err = can_pull(repo_state, remote)
   if not ok then
     vim.notify("[gitlad] " .. err, vim.log.levels.WARN)
     return
   end
 
-  -- Get refspec if set
-  local refspec = nil
-  for _, opt in ipairs(popup_data.options) do
-    if opt.cli == "refspec" and opt.value ~= "" then
-      refspec = opt.value
-      break
-    end
-  end
-
-  local args = build_push_args(popup_data, remote, refspec)
-  do_push(repo_state, args)
+  local args = build_pull_args(popup_data, remote)
+  do_pull(repo_state, args)
 end
 
---- Push elsewhere (prompts for remote if not set)
+--- Pull elsewhere (prompts for remote if not set)
 ---@param repo_state RepoState
 ---@param popup_data PopupData
-function M._push_elsewhere(repo_state, popup_data)
+function M._pull_elsewhere(repo_state, popup_data)
   -- Check if remote is already set
   local remote = nil
   for _, opt in ipairs(popup_data.options) do
@@ -165,19 +150,10 @@ function M._push_elsewhere(repo_state, popup_data)
     end
   end
 
-  -- Get refspec if set
-  local refspec = nil
-  for _, opt in ipairs(popup_data.options) do
-    if opt.cli == "refspec" and opt.value ~= "" then
-      refspec = opt.value
-      break
-    end
-  end
-
   if remote and remote ~= "" then
-    -- Remote already set, push directly
-    local args = build_push_args(popup_data, remote, refspec)
-    do_push(repo_state, args)
+    -- Remote already set, pull directly
+    local args = build_pull_args(popup_data, remote)
+    do_pull(repo_state, args)
     return
   end
 
@@ -201,14 +177,14 @@ function M._push_elsewhere(repo_state, popup_data)
       end
 
       vim.ui.select(remote_names, {
-        prompt = "Select remote to push to:",
+        prompt = "Select remote to pull from:",
       }, function(choice)
         if not choice then
           return
         end
 
-        local args = build_push_args(popup_data, choice, refspec)
-        do_push(repo_state, args)
+        local args = build_pull_args(popup_data, choice)
+        do_pull(repo_state, args)
       end)
     end)
   end)
