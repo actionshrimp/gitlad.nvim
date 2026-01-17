@@ -7,6 +7,7 @@ local M = {}
 
 local cli = require("gitlad.git.cli")
 local parse = require("gitlad.git.parse")
+local errors = require("gitlad.utils.errors")
 
 --- Get repository status
 ---@param opts? GitCommandOptions
@@ -43,7 +44,7 @@ end
 ---@param callback fun(success: boolean, err: string|nil)
 function M.stage(path, opts, callback)
   cli.run_async({ "add", "--", path }, opts, function(result)
-    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+    callback(errors.result_to_callback(result))
   end)
 end
 
@@ -53,7 +54,7 @@ end
 ---@param callback fun(success: boolean, err: string|nil)
 function M.unstage(path, opts, callback)
   cli.run_async({ "reset", "HEAD", "--", path }, opts, function(result)
-    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+    callback(errors.result_to_callback(result))
   end)
 end
 
@@ -97,7 +98,7 @@ end
 ---@param callback fun(success: boolean, err: string|nil)
 function M.stage_all(opts, callback)
   cli.run_async({ "add", "-A" }, opts, function(result)
-    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+    callback(errors.result_to_callback(result))
   end)
 end
 
@@ -106,7 +107,7 @@ end
 ---@param callback fun(success: boolean, err: string|nil)
 function M.unstage_all(opts, callback)
   cli.run_async({ "reset", "HEAD" }, opts, function(result)
-    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+    callback(errors.result_to_callback(result))
   end)
 end
 
@@ -116,15 +117,16 @@ end
 ---@param callback fun(success: boolean, err: string|nil)
 function M.discard(path, opts, callback)
   cli.run_async({ "checkout", "HEAD", "--", path }, opts, function(result)
-    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+    callback(errors.result_to_callback(result))
   end)
 end
 
 --- Delete an untracked file
 ---@param path string File path to delete
----@param repo_root string Repository root path
+---@param opts? GitCommandOptions Options (cwd is the repository root)
 ---@param callback fun(success: boolean, err: string|nil)
-function M.delete_untracked(path, repo_root, callback)
+function M.delete_untracked(path, opts, callback)
+  local repo_root = opts and opts.cwd or vim.fn.getcwd()
   local full_path = repo_root .. "/" .. path
   local ok, err = os.remove(full_path)
   if ok then
@@ -146,7 +148,7 @@ function M.apply_patch(patch_lines, reverse, opts, callback)
   end
 
   cli.run_async_with_stdin(args, patch_lines, opts, function(result)
-    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+    callback(errors.result_to_callback(result))
   end)
 end
 
@@ -162,7 +164,7 @@ function M.commit(message_lines, args, opts, callback)
   vim.list_extend(commit_args, args)
 
   cli.run_async_with_stdin(commit_args, message_lines, opts, function(result)
-    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+    callback(errors.result_to_callback(result))
   end)
 end
 
@@ -175,7 +177,7 @@ function M.commit_amend_no_edit(args, opts, callback)
   vim.list_extend(commit_args, args)
 
   cli.run_async(commit_args, opts, function(result)
-    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+    callback(errors.result_to_callback(result))
   end)
 end
 

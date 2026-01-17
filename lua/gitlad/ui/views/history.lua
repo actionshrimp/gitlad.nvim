@@ -7,6 +7,7 @@
 local M = {}
 
 local history = require("gitlad.git.history")
+local keymap = require("gitlad.utils.keymap")
 
 ---@class HistoryLineInfo
 ---@field entry_index number Index into history entries
@@ -56,30 +57,28 @@ end
 
 --- Set up buffer keymaps
 function HistoryBuffer:_setup_keymaps()
-  local opts = { buffer = self.bufnr, silent = true }
+  local bufnr = self.bufnr
 
   -- Toggle expand
-  vim.keymap.set("n", "<CR>", function()
+  keymap.set(bufnr, "n", "<CR>", function()
     self:_toggle_expand()
-  end, vim.tbl_extend("force", opts, { desc = "Toggle expand entry" }))
-
-  vim.keymap.set("n", "<Tab>", function()
+  end, "Toggle expand entry")
+  keymap.set(bufnr, "n", "<Tab>", function()
     self:_toggle_expand()
-  end, vim.tbl_extend("force", opts, { desc = "Toggle expand entry" }))
+  end, "Toggle expand entry")
 
   -- Refresh
-  vim.keymap.set("n", "g", function()
+  keymap.set(bufnr, "n", "g", function()
     self:refresh()
-  end, vim.tbl_extend("force", opts, { desc = "Refresh history" }))
+  end, "Refresh history")
 
   -- Close
-  vim.keymap.set("n", "q", function()
+  keymap.set(bufnr, "n", "q", function()
     self:close()
-  end, vim.tbl_extend("force", opts, { desc = "Close history" }))
-
-  vim.keymap.set("n", "$", function()
+  end, "Close history")
+  keymap.set(bufnr, "n", "$", function()
     self:close()
-  end, vim.tbl_extend("force", opts, { desc = "Close history" }))
+  end, "Close history")
 end
 
 --- Get entry index at current cursor

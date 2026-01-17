@@ -9,6 +9,7 @@ local state = require("gitlad.state")
 local config = require("gitlad.config")
 local history_view = require("gitlad.ui.views.history")
 local git = require("gitlad.git")
+local keymap = require("gitlad.utils.keymap")
 
 ---@class LineInfo
 ---@field path string File path
@@ -89,92 +90,86 @@ end
 
 --- Set up buffer keymaps
 function StatusBuffer:_setup_keymaps()
-  local opts = { buffer = self.bufnr, silent = true }
+  local bufnr = self.bufnr
 
   -- Staging single file/hunk
-  vim.keymap.set("n", "s", function()
+  keymap.set(bufnr, "n", "s", function()
     self:_stage_current()
-  end, vim.tbl_extend("force", opts, { desc = "Stage file/hunk" }))
-
-  vim.keymap.set("n", "u", function()
+  end, "Stage file/hunk")
+  keymap.set(bufnr, "n", "u", function()
     self:_unstage_current()
-  end, vim.tbl_extend("force", opts, { desc = "Unstage file/hunk" }))
+  end, "Unstage file/hunk")
 
   -- Visual mode staging (for partial hunk staging)
-  vim.keymap.set("v", "s", function()
+  keymap.set(bufnr, "v", "s", function()
     self:_stage_visual()
-  end, vim.tbl_extend("force", opts, { desc = "Stage selection" }))
-
-  vim.keymap.set("v", "u", function()
+  end, "Stage selection")
+  keymap.set(bufnr, "v", "u", function()
     self:_unstage_visual()
-  end, vim.tbl_extend("force", opts, { desc = "Unstage selection" }))
+  end, "Unstage selection")
 
   -- Staging all
-  vim.keymap.set("n", "S", function()
+  keymap.set(bufnr, "n", "S", function()
     self:_stage_all()
-  end, vim.tbl_extend("force", opts, { desc = "Stage all" }))
-
-  vim.keymap.set("n", "U", function()
+  end, "Stage all")
+  keymap.set(bufnr, "n", "U", function()
     self:_unstage_all()
-  end, vim.tbl_extend("force", opts, { desc = "Unstage all" }))
+  end, "Unstage all")
 
   -- Discard
-  vim.keymap.set("n", "x", function()
+  keymap.set(bufnr, "n", "x", function()
     self:_discard_current()
-  end, vim.tbl_extend("force", opts, { desc = "Discard changes" }))
+  end, "Discard changes")
 
   -- Refresh
-  vim.keymap.set("n", "g", function()
+  keymap.set(bufnr, "n", "g", function()
     self.repo_state:refresh_status(true)
-  end, vim.tbl_extend("force", opts, { desc = "Refresh status" }))
+  end, "Refresh status")
 
   -- Close
-  vim.keymap.set("n", "q", function()
+  keymap.set(bufnr, "n", "q", function()
     self:close()
-  end, vim.tbl_extend("force", opts, { desc = "Close status" }))
+  end, "Close status")
 
   -- Navigation
-  vim.keymap.set("n", "n", function()
+  keymap.set(bufnr, "n", "n", function()
     self:_goto_next_file()
-  end, vim.tbl_extend("force", opts, { desc = "Next file" }))
-
-  vim.keymap.set("n", "p", function()
+  end, "Next file")
+  keymap.set(bufnr, "n", "p", function()
     self:_goto_prev_file()
-  end, vim.tbl_extend("force", opts, { desc = "Previous file" }))
-
-  vim.keymap.set("n", "<M-n>", function()
+  end, "Previous file")
+  keymap.set(bufnr, "n", "<M-n>", function()
     self:_goto_next_section()
-  end, vim.tbl_extend("force", opts, { desc = "Next section" }))
-
-  vim.keymap.set("n", "<M-p>", function()
+  end, "Next section")
+  keymap.set(bufnr, "n", "<M-p>", function()
     self:_goto_prev_section()
-  end, vim.tbl_extend("force", opts, { desc = "Previous section" }))
+  end, "Previous section")
 
   -- Visit file
-  vim.keymap.set("n", "<CR>", function()
+  keymap.set(bufnr, "n", "<CR>", function()
     self:_visit_file()
-  end, vim.tbl_extend("force", opts, { desc = "Visit file" }))
+  end, "Visit file")
 
   -- Diff toggle
-  vim.keymap.set("n", "<Tab>", function()
+  keymap.set(bufnr, "n", "<Tab>", function()
     self:_toggle_diff()
-  end, vim.tbl_extend("force", opts, { desc = "Toggle diff" }))
+  end, "Toggle diff")
 
   -- Git command history
-  vim.keymap.set("n", "$", function()
+  keymap.set(bufnr, "n", "$", function()
     history_view.open()
-  end, vim.tbl_extend("force", opts, { desc = "Show git command history" }))
+  end, "Show git command history")
 
   -- Help
-  vim.keymap.set("n", "?", function()
+  keymap.set(bufnr, "n", "?", function()
     self:_show_help()
-  end, vim.tbl_extend("force", opts, { desc = "Show help" }))
+  end, "Show help")
 
   -- Commit popup
-  vim.keymap.set("n", "c", function()
+  keymap.set(bufnr, "n", "c", function()
     local commit_popup = require("gitlad.popups.commit")
     commit_popup.open(self.repo_state)
-  end, vim.tbl_extend("force", opts, { desc = "Commit popup" }))
+  end, "Commit popup")
 end
 
 --- Get the file path at the current cursor position

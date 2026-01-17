@@ -6,6 +6,8 @@
 
 local M = {}
 
+local keymap = require("gitlad.utils.keymap")
+
 ---@class PopupSwitch
 ---@field key string Single character key binding
 ---@field cli string CLI flag name (without --)
@@ -301,18 +303,19 @@ end
 
 --- Set up keymaps for the popup buffer
 function PopupData:_setup_keymaps()
-  local opts = { buffer = self.buffer, nowait = true, silent = true }
+  local bufnr = self.buffer
+  local nowait_opts = { nowait = true }
 
   -- Close keymaps
-  vim.keymap.set("n", "q", function()
+  keymap.set(bufnr, "n", "q", function()
     self:close()
-  end, opts)
-  vim.keymap.set("n", "<Esc>", function()
+  end, "Close popup", nowait_opts)
+  keymap.set(bufnr, "n", "<Esc>", function()
     self:close()
-  end, opts)
+  end, "Close popup", nowait_opts)
 
   -- Switch prefix key (-)
-  vim.keymap.set("n", "-", function()
+  keymap.set(bufnr, "n", "-", function()
     -- Wait for next key
     local ok, char = pcall(vim.fn.getcharstr)
     if not ok or not char then
@@ -320,10 +323,10 @@ function PopupData:_setup_keymaps()
     end
     self:toggle_switch(char)
     self:refresh()
-  end, opts)
+  end, "Toggle switch", nowait_opts)
 
   -- Option prefix key (=)
-  vim.keymap.set("n", "=", function()
+  keymap.set(bufnr, "n", "=", function()
     -- Wait for next key
     local ok, char = pcall(vim.fn.getcharstr)
     if not ok or not char then
@@ -351,17 +354,17 @@ function PopupData:_setup_keymaps()
         self:refresh()
       end
     end)
-  end, opts)
+  end, "Set option", nowait_opts)
 
   -- Action keymaps (direct keys)
   for _, item in ipairs(self.actions) do
     if item.type == "action" and item.key then
-      vim.keymap.set("n", item.key, function()
+      keymap.set(bufnr, "n", item.key, function()
         self:close()
         if item.callback then
           item.callback(self)
         end
-      end, opts)
+      end, item.description or "Action", nowait_opts)
     end
   end
 end
