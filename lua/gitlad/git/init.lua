@@ -80,6 +80,25 @@ function M.diff(path, staged, opts, callback)
   end)
 end
 
+--- Get diff for an untracked file (shows full file as additions)
+---@param path string File path (relative to repo root)
+---@param opts? GitCommandOptions
+---@param callback fun(lines: string[]|nil, err: string|nil)
+function M.diff_untracked(path, opts, callback)
+  -- Use --no-index to diff against /dev/null, producing proper diff output
+  local args = { "diff", "--no-index", "--", "/dev/null", path }
+
+  cli.run_async(args, opts, function(result)
+    -- --no-index returns exit code 1 when files differ (which they always will)
+    -- So we check for actual errors differently
+    if result.code ~= 0 and result.code ~= 1 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(result.stdout, nil)
+  end)
+end
+
 --- Get list of branches
 ---@param opts? GitCommandOptions
 ---@param callback fun(branches: table[]|nil, err: string|nil)
