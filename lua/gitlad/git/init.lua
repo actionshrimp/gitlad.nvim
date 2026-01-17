@@ -225,4 +225,38 @@ function M.push(args, opts, callback)
   end)
 end
 
+--- Fetch from a remote
+---@param args string[] Fetch arguments (e.g., { "origin" } or { "--prune", "--tags" })
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.fetch(args, opts, callback)
+  local fetch_args = { "fetch" }
+  vim.list_extend(fetch_args, args)
+
+  cli.run_async(fetch_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    -- Git fetch outputs progress to stderr even on success
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Pull from a remote
+---@param args string[] Pull arguments (e.g., { "origin", "main" } or { "--rebase" })
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.pull(args, opts, callback)
+  local pull_args = { "pull" }
+  vim.list_extend(pull_args, args)
+
+  cli.run_async(pull_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    -- Git pull outputs progress to stderr even on success
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
 return M
