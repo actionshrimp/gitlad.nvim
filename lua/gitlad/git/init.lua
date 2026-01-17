@@ -259,4 +259,80 @@ function M.pull(args, opts, callback)
   end)
 end
 
+--- Checkout a branch
+---@param branch string Branch name to checkout
+---@param args string[] Extra arguments (from popup switches)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.checkout(branch, args, opts, callback)
+  local checkout_args = { "checkout" }
+  vim.list_extend(checkout_args, args)
+  table.insert(checkout_args, branch)
+
+  cli.run_async(checkout_args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Create and checkout a new branch
+---@param name string New branch name
+---@param base string|nil Base ref (defaults to HEAD if nil)
+---@param args string[] Extra arguments (e.g., --track)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.checkout_new_branch(name, base, args, opts, callback)
+  local checkout_args = { "checkout", "-b", name }
+  vim.list_extend(checkout_args, args)
+  if base and base ~= "" then
+    table.insert(checkout_args, base)
+  end
+
+  cli.run_async(checkout_args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Create a branch (without checking it out)
+---@param name string New branch name
+---@param base string|nil Base ref (defaults to HEAD if nil)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.create_branch(name, base, opts, callback)
+  local branch_args = { "branch", name }
+  if base and base ~= "" then
+    table.insert(branch_args, base)
+  end
+
+  cli.run_async(branch_args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Delete a branch
+---@param name string Branch name to delete
+---@param force boolean Whether to force delete (git branch -D vs -d)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.delete_branch(name, force, opts, callback)
+  local flag = force and "-D" or "-d"
+  local branch_args = { "branch", flag, name }
+
+  cli.run_async(branch_args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Rename a branch
+---@param old_name string Current branch name
+---@param new_name string New branch name
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.rename_branch(old_name, new_name, opts, callback)
+  local branch_args = { "branch", "-m", old_name, new_name }
+
+  cli.run_async(branch_args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
 return M

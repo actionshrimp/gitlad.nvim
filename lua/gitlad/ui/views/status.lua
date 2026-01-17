@@ -189,6 +189,12 @@ function StatusBuffer:_setup_keymaps()
     local pull_popup = require("gitlad.popups.pull")
     pull_popup.open(self.repo_state)
   end, "Pull popup")
+
+  -- Branch popup
+  keymap.set(bufnr, "n", "b", function()
+    local branch_popup = require("gitlad.popups.branch")
+    branch_popup.open(self.repo_state)
+  end, "Branch popup")
 end
 
 --- Get the file path at the current cursor position
