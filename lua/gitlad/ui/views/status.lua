@@ -170,6 +170,12 @@ function StatusBuffer:_setup_keymaps()
     local commit_popup = require("gitlad.popups.commit")
     commit_popup.open(self.repo_state)
   end, "Commit popup")
+
+  -- Push popup
+  keymap.set(bufnr, "n", "P", function()
+    local push_popup = require("gitlad.popups.push")
+    push_popup.open(self.repo_state)
+  end, "Push popup")
 end
 
 --- Get the file path at the current cursor position
@@ -824,6 +830,7 @@ function StatusBuffer:_show_help()
     "  x      Discard changes",
     "  <Tab>  Toggle inline diff",
     "  c      Commit popup",
+    "  P      Push popup",
     "",
     "Other:",
     "  g      Refresh",

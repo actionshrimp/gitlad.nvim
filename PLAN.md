@@ -62,7 +62,8 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Hunk-level staging** - s/u on diff lines stages/unstages individual hunks
 - **Popup system** - Transient-style popups with switches, options, and actions
 - Status buffer view with full staging/unstaging workflow
-- Test infrastructure with mini.test (135 tests passing)
+- **Push popup** - `P` keybinding for push with switches/options/actions
+- Test infrastructure with mini.test (179 tests passing)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -162,12 +163,21 @@ Transient-style popup system inspired by neogit/magit:
 
 ## Phase 3: Git Operations
 
-### 3.1 Push Popup
-- [ ] `P` opens push popup
-- [ ] Switches: `--force-with-lease`, `--force`, `--dry-run`, `--tags`
-- [ ] Options: remote selection, refspec
-- [ ] Actions: push to upstream, push to different remote
-- [ ] Show push progress (streaming output)
+### 3.1 Push Popup - COMPLETE
+
+- [x] `P` opens push popup
+- [x] Switches: `--force-with-lease`, `--force`, `--dry-run`, `--tags`, `--set-upstream`
+- [x] Options: remote selection (`=r`), refspec (`=b`)
+- [x] Actions: push to upstream (`p`), push elsewhere (`e`)
+- [x] Validation: warns when no upstream configured
+- [ ] Show push progress (streaming output) - future enhancement
+
+**Files created:**
+- `lua/gitlad/popups/push.lua` - Popup definition and actions
+- `lua/gitlad/git/parse.lua` - Added `parse_remotes()` function
+- `lua/gitlad/git/init.lua` - Added `remotes()` and `push()` functions
+- `tests/unit/test_push_popup.lua` - Unit tests (13 tests)
+- `tests/e2e/test_push.lua` - E2E tests (6 tests)
 
 ### 3.2 Pull/Fetch Popups
 - [ ] `F` opens pull popup, `f` opens fetch popup
