@@ -65,7 +65,8 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Push popup** - `p` keybinding for push with switches/options/actions
 - **Fetch popup** - `f` keybinding for fetch with switches/options/actions
 - **Pull popup** - `F` keybinding for pull with switches/options/actions
-- Test infrastructure with mini.test (230 tests passing)
+- **Branch popup** - `b` keybinding for branch operations (checkout, create, delete, rename)
+- Test infrastructure with mini.test (250 tests passing)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -198,12 +199,19 @@ Transient-style popup system inspired by neogit/magit:
 - `tests/e2e/test_fetch.lua` - E2E tests (6 tests)
 - `tests/e2e/test_pull.lua` - E2E tests (6 tests)
 
-### 3.3 Branch Popup
-- [ ] `b` opens branch popup
-- [ ] Actions: checkout, create, delete, rename
-- [ ] Create from: current HEAD, specific ref, remote branch
-- [ ] Track remote branches
-- [ ] Show branch list with current indicator
+### 3.3 Branch Popup - COMPLETE
+
+- [x] `b` opens branch popup
+- [x] Actions: checkout, create, delete, rename
+- [x] Create from: current HEAD, specific ref (via base prompt)
+- [x] Force delete switch (`-f`) for unmerged branches
+- [x] Show branch list with current indicator (via vim.ui.select)
+
+**Files created:**
+- `lua/gitlad/popups/branch.lua` - Popup definition and actions
+- `lua/gitlad/git/init.lua` - Added `checkout()`, `checkout_new_branch()`, `create_branch()`, `delete_branch()`, `rename_branch()` functions
+- `tests/unit/test_branch_popup.lua` - Unit tests (9 tests)
+- `tests/e2e/test_branch.lua` - E2E tests (11 tests)
 
 ### 3.4 Log View
 - [ ] `l` opens log popup, then actions open log buffer
