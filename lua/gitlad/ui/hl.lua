@@ -479,7 +479,13 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
       end
 
       -- Diff lines (expanded file content)
-    elseif line_map[i] and line_map[i].hunk_index then
+      -- Match lines with hunk_index OR untracked file content (no hunk headers)
+    elseif
+      line_map[i]
+      and (
+        line_map[i].hunk_index or (line_map[i].section == "untracked" and line:match("^%s%s%s%s%+"))
+      )
+    then
       -- This is a diff line - format: "    @@ ..." or "    +..." or "    -..." or "     context"
       local content_start = 4 -- Skip the 4-space indent
       local first_char = line:sub(content_start + 1, content_start + 1)
@@ -701,9 +707,13 @@ function M.apply_diff_treesitter_highlights(bufnr, lines, line_map, diff_cache)
 
   for i, _ in ipairs(lines) do
     local info = line_map[i]
+    local line = lines[i]
 
-    if info and not info.hunk_index then
-      -- This is a file entry line
+    -- Check if this is a diff content line (starts with 4 spaces then +/-/space/@@)
+    local is_diff_content = line:match("^%s%s%s%s[%+%-%s@]")
+
+    if info and not is_diff_content then
+      -- This is a file entry line (not diff content)
       -- If we were collecting diff lines for a previous file, process them
       if current_file and #diff_lines_for_file > 0 then
         M.highlight_diff_content(bufnr, diff_lines_for_file, diff_start_line, current_file)
@@ -713,12 +723,12 @@ function M.apply_diff_treesitter_highlights(bufnr, lines, line_map, diff_cache)
       current_file = info.path
       diff_start_line = nil
       diff_lines_for_file = {}
-    elseif info and info.hunk_index then
-      -- This is a diff line
+    elseif info and is_diff_content then
+      -- This is a diff line (staged/unstaged with hunk_index, or untracked content)
       if diff_start_line == nil then
         diff_start_line = i - 1 -- Convert to 0-indexed
       end
-      table.insert(diff_lines_for_file, lines[i])
+      table.insert(diff_lines_for_file, line)
     end
   end
 
