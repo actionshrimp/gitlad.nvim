@@ -19,6 +19,9 @@ local config = require("gitlad.config")
 function M.setup(opts)
   config.setup(opts)
 
+  -- Setup highlight groups
+  require("gitlad.ui.hl").setup()
+
   -- Register user commands
   vim.api.nvim_create_user_command("Gitlad", function(cmd_opts)
     require("gitlad.commands").execute(cmd_opts.args)

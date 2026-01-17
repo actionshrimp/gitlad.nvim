@@ -10,6 +10,7 @@ local config = require("gitlad.config")
 local history_view = require("gitlad.ui.views.history")
 local git = require("gitlad.git")
 local keymap = require("gitlad.utils.keymap")
+local hl = require("gitlad.ui.hl")
 
 ---@class LineInfo
 ---@field path string File path
@@ -630,38 +631,6 @@ local function parse_diff(lines)
   return data
 end
 
---- Create DiffData for an untracked file (all lines as additions)
----@param lines string[]
----@return DiffData
-local function create_untracked_diff_data(lines)
-  return {
-    header = {},
-    hunks = {},
-    display_lines = lines,
-  }
-end
-
---- Read file content and format as "added" lines
----@param path string Full path to file
----@param callback fun(lines: string[]|nil, err: string|nil)
-local function read_file_as_added(path, callback)
-  vim.schedule(function()
-    local file = io.open(path, "r")
-    if not file then
-      callback(nil, "Could not read file")
-      return
-    end
-
-    local lines = {}
-    for line in file:lines() do
-      table.insert(lines, "+" .. line)
-    end
-    file:close()
-
-    callback(lines, nil)
-  end)
-end
-
 --- Toggle diff view for current file
 function StatusBuffer:_toggle_diff()
   local path, section = self:_get_current_file()
@@ -680,21 +649,23 @@ function StatusBuffer:_toggle_diff()
   end
 
   -- Expand - always fetch fresh diff
-  -- Untracked files: read the full file content
-  if section == "untracked" then
-    local full_path = self.repo_state.repo_root .. path
-    read_file_as_added(full_path, function(lines, err)
-      if err then
-        vim.notify("[gitlad] Read error: " .. err, vim.log.levels.ERROR)
-        return
-      end
+  -- Use appropriate diff function based on section
+  local function on_diff_result(diff_lines, err)
+    if err then
+      vim.notify("[gitlad] Diff error: " .. err, vim.log.levels.ERROR)
+      return
+    end
 
-      vim.schedule(function()
-        self.diff_cache[key] = create_untracked_diff_data(lines or {})
-        self.expanded_files[key] = true
-        self:render()
-      end)
+    vim.schedule(function()
+      self.diff_cache[key] = parse_diff(diff_lines or {})
+      self.expanded_files[key] = true
+      self:render()
     end)
+  end
+
+  if section == "untracked" then
+    -- Untracked files: use git diff --no-index for proper diff output
+    git.diff_untracked(path, { cwd = self.repo_state.repo_root }, on_diff_result)
     return
   end
 
@@ -998,6 +969,12 @@ function StatusBuffer:render()
   table.insert(lines, "Press ? for help")
 
   vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, lines)
+
+  -- Apply syntax highlighting
+  hl.apply_status_highlights(self.bufnr, lines, self.line_map, self.section_lines)
+
+  -- Apply treesitter highlighting to expanded diffs
+  hl.apply_diff_treesitter_highlights(self.bufnr, lines, self.line_map, self.diff_cache)
 end
 
 --- Open the status buffer in a window
