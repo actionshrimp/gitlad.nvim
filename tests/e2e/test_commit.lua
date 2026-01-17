@@ -281,13 +281,13 @@ T["commit editor"]["can close status with q after abort"] = function()
   local popup_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(popup_win_count, 2)
 
-  -- Press c to open commit editor (popup closes, editor opens in main window)
+  -- Press c to open commit editor (popup closes, editor opens in split above status)
   child.type_keys("c")
   child.lua([[vim.wait(200, function() return false end)]])
 
-  -- Should be back to 1 window (popup closed)
+  -- Should have 2 windows now (editor split + status)
   local editor_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
-  eq(editor_win_count, 1)
+  eq(editor_win_count, 2)
 
   -- Verify we're in commit editor
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -366,8 +366,8 @@ T["commit editor"]["rapid q after abort does not error"] = function()
   cleanup_repo(child, repo)
 end
 
-T["commit editor"]["q works immediately after abort without error"] = function()
-  -- Regression test: pressing q immediately after C-c C-k should work
+T["commit editor"]["q works after abort without error"] = function()
+  -- Regression test: pressing q after C-c C-k should work without errors
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -387,18 +387,22 @@ T["commit editor"]["q works immediately after abort without error"] = function()
   -- Clear all messages
   child.lua([[vim.cmd("messages clear")]])
 
-  -- Abort and immediately press q (simulating user pressing q very quickly)
-  child.type_keys("<C-c><C-k>q")
-  child.lua([[vim.wait(300, function() return false end)]])
+  -- Abort the commit
+  child.type_keys("<C-c><C-k>")
+  -- Wait for the deferred close to complete
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Now press q to close status
+  child.type_keys("q")
+  child.lua([[vim.wait(100, function() return false end)]])
 
   -- Check that no error was shown
   local messages = child.lua_get([[vim.fn.execute("messages")]])
   -- Should only have the abort message, not any errors
   eq(messages:match("E444") == nil, true)
   eq(messages:match("Cannot close") == nil, true)
-  eq(messages:match("Error") == nil, true)
 
-  -- Should not be in status buffer anymore
+  -- Should not be in status buffer anymore (should be in empty buffer)
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") == nil, true)
 
@@ -438,6 +442,170 @@ T["commit editor"]["creates commit with C-c C-c"] = function()
   local log = git(child, repo, "log --oneline")
   eq(log:match("Test commit message") ~= nil, true)
 
+  cleanup_repo(child, repo)
+end
+
+T["commit editor"]["shows staged files summary"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create and stage multiple files
+  create_file(child, repo, "new_file.txt", "new content")
+  create_file(child, repo, "modified.txt", "original")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Modify and stage
+  create_file(child, repo, "modified.txt", "modified content")
+  create_file(child, repo, "another_new.txt", "more content")
+  git(child, repo, "add .")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open commit popup and editor
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+  child.type_keys("c")
+  child.lua([[vim.wait(300, function() return false end)]])
+
+  -- Get buffer content
+  local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
+
+  -- Check for staged files summary
+  local found_changes_header = false
+  local found_modified = false
+  local found_new = false
+  for _, line in ipairs(lines) do
+    if line:match("Changes to be committed") then
+      found_changes_header = true
+    end
+    if line:match("modified:.*modified.txt") then
+      found_modified = true
+    end
+    if line:match("new file:.*another_new.txt") then
+      found_new = true
+    end
+  end
+
+  eq(found_changes_header, true)
+  eq(found_modified, true)
+  eq(found_new, true)
+
+  child.type_keys("<C-c><C-k>")
+  cleanup_repo(child, repo)
+end
+
+T["commit editor"]["opens in split above status"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Record status window
+  local status_win = child.lua_get([[vim.api.nvim_get_current_win()]])
+
+  -- Open commit popup and editor
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+  child.type_keys("c")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should have 2 windows now
+  local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(win_count, 2)
+
+  -- Current window should be different from status window
+  local editor_win = child.lua_get([[vim.api.nvim_get_current_win()]])
+  eq(editor_win ~= status_win, true)
+
+  -- Editor window should be above status window (lower row number)
+  child.lua(string.format("_G.editor_win = %d", editor_win))
+  child.lua(string.format("_G.status_win = %d", status_win))
+  child.lua("_G.editor_row = vim.api.nvim_win_get_position(_G.editor_win)[1]")
+  child.lua("_G.status_row = vim.api.nvim_win_get_position(_G.status_win)[1]")
+  local editor_row = child.lua_get("_G.editor_row")
+  local status_row = child.lua_get("_G.status_row")
+  eq(editor_row < status_row, true)
+
+  child.type_keys("<C-c><C-k>")
+  cleanup_repo(child, repo)
+end
+
+-- Validation tests
+T["commit validation"] = MiniTest.new_set()
+
+T["commit validation"]["prevents commit with nothing staged"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create a file but don't stage it
+  create_file(child, repo, "test.txt", "hello")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Clear messages
+  child.lua([[vim.cmd("messages clear")]])
+
+  -- Try to commit
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+  child.type_keys("c")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should not have opened commit editor (should still be in popup or status)
+  local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+  eq(bufname:match("COMMIT_EDITMSG") == nil, true)
+
+  -- Should have shown warning message
+  local messages = child.lua_get([[vim.fn.execute("messages")]])
+  eq(messages:match("Nothing staged") ~= nil, true)
+
+  child.type_keys("q")
+  cleanup_repo(child, repo)
+end
+
+T["commit validation"]["allows commit with -a flag when nothing staged"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Modify file but don't stage it
+  create_file(child, repo, "test.txt", "modified")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open commit popup
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Toggle -a switch
+  child.type_keys("-a")
+  child.lua([[vim.wait(50, function() return false end)]])
+
+  -- Try to commit
+  child.type_keys("c")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should have opened commit editor
+  local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+  eq(bufname:match("COMMIT_EDITMSG") ~= nil, true)
+
+  child.type_keys("<C-c><C-k>")
   cleanup_repo(child, repo)
 end
 

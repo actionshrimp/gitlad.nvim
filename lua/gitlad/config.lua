@@ -1,10 +1,14 @@
 ---@mod gitlad.config Configuration management
 local M = {}
 
+---@class GitladCommitEditorConfig
+---@field split "above"|"replace" How to open the commit editor ("above" = split above status, "replace" = replace current buffer)
+
 ---@class GitladConfig
 ---@field refresh_on_focus boolean
 ---@field watch_gitdir boolean
 ---@field signs GitladSigns
+---@field commit_editor GitladCommitEditorConfig
 local defaults = {
   refresh_on_focus = true,
   watch_gitdir = true,
@@ -13,6 +17,9 @@ local defaults = {
     unstaged = "○",
     untracked = "?",
     conflict = "!",
+  },
+  commit_editor = {
+    split = "above", -- "above" or "replace"
   },
 }
 

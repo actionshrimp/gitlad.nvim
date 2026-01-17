@@ -7,6 +7,7 @@
 local M = {}
 
 local git = require("gitlad.git")
+local config = require("gitlad.config")
 
 ---@class CommitEditorState
 ---@field bufnr number Buffer number
@@ -15,6 +16,7 @@ local git = require("gitlad.git")
 ---@field args string[] Extra git commit arguments
 ---@field amend boolean Whether this is an amend
 ---@field verbose_diff string[]|nil Diff lines for verbose mode
+---@field opened_in_split boolean Whether the editor was opened in a split
 
 --- Active commit editor (only one at a time)
 ---@type CommitEditorState|nil
@@ -58,11 +60,55 @@ local function get_verbose_diff(repo_root, staged, callback)
   end)
 end
 
+--- Get the staged files summary
+---@param repo_root string
+---@param callback fun(lines: string[]|nil)
+local function get_staged_files_summary(repo_root, callback)
+  local cli = require("gitlad.git.cli")
+  -- Use git diff --cached --name-status for a nice summary
+  cli.run_async({ "diff", "--cached", "--name-status" }, { cwd = repo_root }, function(result)
+    if result.code == 0 and #result.stdout > 0 then
+      -- Format: "A\tfilename" or "M\tfilename" etc.
+      -- Convert to readable format
+      local lines = {}
+      for _, line in ipairs(result.stdout) do
+        local status, path = line:match("^(%S+)%s+(.+)$")
+        if status and path then
+          local status_text
+          if status == "A" then
+            status_text = "new file"
+          elseif status == "M" then
+            status_text = "modified"
+          elseif status == "D" then
+            status_text = "deleted"
+          elseif status == "R" then
+            status_text = "renamed"
+          elseif status == "C" then
+            status_text = "copied"
+          elseif status:match("^R%d+") then
+            -- Rename with percentage (e.g., R100)
+            status_text = "renamed"
+          elseif status:match("^C%d+") then
+            status_text = "copied"
+          else
+            status_text = status
+          end
+          table.insert(lines, string.format("        %s:   %s", status_text, path))
+        end
+      end
+      callback(lines)
+    else
+      callback(nil)
+    end
+  end)
+end
+
 --- Create the commit editor buffer content
 ---@param message_lines string[] Initial message lines
+---@param staged_files string[]|nil Summary of staged files
 ---@param verbose_diff string[]|nil Diff for verbose mode
 ---@return string[]
-local function build_buffer_content(message_lines, verbose_diff)
+local function build_buffer_content(message_lines, staged_files, verbose_diff)
   local lines = {}
 
   -- Add message lines (or empty line for new commit)
@@ -77,10 +123,19 @@ local function build_buffer_content(message_lines, verbose_diff)
   table.insert(lines, "# Press C-c C-c to commit, C-c C-k to abort")
   table.insert(lines, "# Lines starting with '#' will be ignored")
 
+  -- Add staged files summary
+  if staged_files and #staged_files > 0 then
+    table.insert(lines, "#")
+    table.insert(lines, "# Changes to be committed:")
+    for _, file_line in ipairs(staged_files) do
+      table.insert(lines, "#" .. file_line)
+    end
+  end
+
   -- Add verbose diff if requested
   if verbose_diff and #verbose_diff > 0 then
     table.insert(lines, "#")
-    table.insert(lines, "# Changes to be committed:")
+    table.insert(lines, "# Diff:")
     for _, diff_line in ipairs(verbose_diff) do
       table.insert(lines, "# " .. diff_line)
     end
@@ -118,7 +173,9 @@ local function close_editor()
   end
 
   local bufnr = active_editor.bufnr
+  local winnr = active_editor.winnr
   local repo_state = active_editor.repo_state
+  local opened_in_split = active_editor.opened_in_split
   active_editor = nil
 
   -- First, mark the buffer as not modified to avoid "unsaved changes" warnings
@@ -126,20 +183,25 @@ local function close_editor()
     vim.bo[bufnr].modified = false
   end
 
-  -- Return to status view first (before deleting buffer)
-  if repo_state then
-    local status_view = require("gitlad.ui.views.status")
-    status_view.open(repo_state)
-  end
-
-  -- Defer buffer deletion to avoid issues when called from a keymap on that buffer
-  if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-    vim.schedule(function()
-      if vim.api.nvim_buf_is_valid(bufnr) then
-        vim.api.nvim_buf_delete(bufnr, { force = true })
+  -- Defer window/buffer cleanup to avoid issues when called from a keymap on that buffer
+  vim.schedule(function()
+    -- If we opened in a split, close the split window
+    if opened_in_split and winnr and vim.api.nvim_win_is_valid(winnr) then
+      -- Close the split window (this won't close the last window since status is still there)
+      vim.api.nvim_win_close(winnr, true)
+    else
+      -- If we replaced the buffer, switch back to status view
+      if repo_state then
+        local status_view = require("gitlad.ui.views.status")
+        status_view.open(repo_state)
       end
-    end)
-  end
+    end
+
+    -- Delete the buffer
+    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end
+  end)
 end
 
 --- Confirm and execute the commit
@@ -241,6 +303,11 @@ function M.open(repo_state, args)
     end
   end
 
+  -- Get split configuration
+  local cfg = config.get()
+  local split_mode = cfg.commit_editor and cfg.commit_editor.split or "above"
+  local opened_in_split = split_mode == "above"
+
   -- Create buffer
   local bufnr = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_name(bufnr, "gitlad://COMMIT_EDITMSG")
@@ -256,42 +323,51 @@ function M.open(repo_state, args)
     repo_state = repo_state,
     args = args,
     amend = amend,
+    opened_in_split = opened_in_split,
   }
 
   -- Set up keymaps
   setup_keymaps(bufnr)
 
-  -- Open in current window
-  vim.api.nvim_set_current_buf(bufnr)
+  -- Open in split above or current window based on config
+  if opened_in_split then
+    vim.cmd("aboveleft split")
+    vim.api.nvim_set_current_buf(bufnr)
+  else
+    vim.api.nvim_set_current_buf(bufnr)
+  end
   active_editor.winnr = vim.api.nvim_get_current_win()
 
   -- Load initial content asynchronously
+  -- First get staged files summary, then optionally get verbose diff
   local function load_content(initial_message)
-    if verbose then
-      get_verbose_diff(repo_state.repo_root, true, function(diff_lines)
+    get_staged_files_summary(repo_state.repo_root, function(staged_files)
+      if verbose then
+        get_verbose_diff(repo_state.repo_root, true, function(diff_lines)
+          vim.schedule(function()
+            if not active_editor or active_editor.bufnr ~= bufnr then
+              return
+            end
+            local content = build_buffer_content(initial_message or {}, staged_files, diff_lines)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
+            -- Position cursor at start
+            vim.api.nvim_win_set_cursor(active_editor.winnr, { 1, 0 })
+            vim.bo[bufnr].modified = false
+          end)
+        end)
+      else
         vim.schedule(function()
           if not active_editor or active_editor.bufnr ~= bufnr then
             return
           end
-          local content = build_buffer_content(initial_message or {}, diff_lines)
+          local content = build_buffer_content(initial_message or {}, staged_files, nil)
           vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
           -- Position cursor at start
           vim.api.nvim_win_set_cursor(active_editor.winnr, { 1, 0 })
           vim.bo[bufnr].modified = false
         end)
-      end)
-    else
-      vim.schedule(function()
-        if not active_editor or active_editor.bufnr ~= bufnr then
-          return
-        end
-        local content = build_buffer_content(initial_message or {}, nil)
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
-        -- Position cursor at start
-        vim.api.nvim_win_set_cursor(active_editor.winnr, { 1, 0 })
-        vim.bo[bufnr].modified = false
-      end)
-    end
+      end
+    end)
   end
 
   if amend then
