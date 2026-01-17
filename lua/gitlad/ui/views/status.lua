@@ -1036,7 +1036,17 @@ function StatusBuffer:close()
     local empty_buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_win_set_buf(self.winnr, empty_buf)
   else
-    vim.api.nvim_win_close(self.winnr, false)
+    -- Try to close the window, but handle the case where it's actually
+    -- the last "real" window (can happen with floating windows)
+    local ok, err = pcall(vim.api.nvim_win_close, self.winnr, false)
+    if not ok and err and err:match("E444") then
+      -- Fall back to switching to empty buffer
+      local empty_buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_win_set_buf(self.winnr, empty_buf)
+    elseif not ok then
+      -- Re-throw other errors
+      error(err)
+    end
   end
 
   self.winnr = nil

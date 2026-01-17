@@ -269,25 +269,137 @@ T["commit editor"]["can close status with q after abort"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
   child.lua([[vim.wait(500, function() return false end)]])
 
-  -- Open commit popup and editor
+  -- Record initial window count
+  local initial_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(initial_win_count, 1)
+
+  -- Open commit popup
   child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Should have popup window now
+  local popup_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(popup_win_count, 2)
+
+  -- Press c to open commit editor (popup closes, editor opens in main window)
   child.type_keys("c")
   child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should be back to 1 window (popup closed)
+  local editor_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(editor_win_count, 1)
+
+  -- Verify we're in commit editor
+  local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+  eq(bufname:match("COMMIT_EDITMSG") ~= nil, true)
+
+  -- Clear any error messages before abort
+  child.lua([[vim.cmd("messages clear")]])
 
   -- Abort
   child.type_keys("<C-c><C-k>")
   child.lua([[vim.wait(200, function() return false end)]])
 
   -- Verify we're in status buffer
-  local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+  bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
+
+  -- Verify still 1 window
+  local post_abort_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(post_abort_win_count, 1)
+
+  -- Clear messages again before pressing q
+  child.lua([[vim.cmd("messages clear")]])
 
   -- Press q to close status - should not error
   child.type_keys("q")
   child.lua([[vim.wait(100, function() return false end)]])
 
+  -- Check for error messages
+  local messages = child.lua_get([[vim.fn.execute("messages")]])
+  eq(messages:match("E444") == nil, true) -- No "Cannot close last window" error
+  eq(messages:match("Cannot close last window") == nil, true)
+
   -- Verify we're no longer in status buffer (switched to empty buffer since last window)
   bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+  eq(bufname:match("gitlad://status") == nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["commit editor"]["rapid q after abort does not error"] = function()
+  -- Test with minimal delays to simulate fast key presses
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Rapid sequence: open popup, open editor, abort, close status
+  child.type_keys("c")
+  child.lua([[vim.wait(50, function() return false end)]])
+  child.type_keys("c")
+  child.lua([[vim.wait(50, function() return false end)]])
+
+  -- Clear messages before abort/close sequence
+  child.lua([[vim.cmd("messages clear")]])
+
+  -- Rapid abort then q
+  child.type_keys("<C-c><C-k>")
+  -- Immediate q without waiting for scheduled callbacks
+  child.type_keys("q")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Check for error messages
+  local messages = child.lua_get([[vim.fn.execute("messages")]])
+  eq(messages:match("E444") == nil, true)
+  eq(messages:match("Cannot close last window") == nil, true)
+
+  -- Verify we ended up in an empty buffer (not status)
+  local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+  eq(bufname:match("gitlad://status") == nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["commit editor"]["q works immediately after abort without error"] = function()
+  -- Regression test: pressing q immediately after C-c C-k should work
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open popup then editor
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Clear all messages
+  child.lua([[vim.cmd("messages clear")]])
+
+  -- Abort and immediately press q (simulating user pressing q very quickly)
+  child.type_keys("<C-c><C-k>q")
+  child.lua([[vim.wait(300, function() return false end)]])
+
+  -- Check that no error was shown
+  local messages = child.lua_get([[vim.fn.execute("messages")]])
+  -- Should only have the abort message, not any errors
+  eq(messages:match("E444") == nil, true)
+  eq(messages:match("Cannot close") == nil, true)
+  eq(messages:match("Error") == nil, true)
+
+  -- Should not be in status buffer anymore
+  local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") == nil, true)
 
   cleanup_repo(child, repo)
