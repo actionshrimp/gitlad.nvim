@@ -162,7 +162,8 @@ function StatusBuffer:_setup_keymaps()
 
   -- Help
   keymap.set(bufnr, "n", "?", function()
-    self:_show_help()
+    local help_popup = require("gitlad.popups.help")
+    help_popup.open(self)
   end, "Show help")
 
   -- Commit popup
@@ -806,70 +807,6 @@ function StatusBuffer:_discard_current()
   end
 end
 
---- Show help popup
-function StatusBuffer:_show_help()
-  local help_lines = {
-    "Gitlad Status - Keybindings",
-    "",
-    "Navigation:",
-    "  j      Next file",
-    "  k      Previous file",
-    "  M-n    Next section",
-    "  M-p    Previous section",
-    "",
-    "Staging:",
-    "  s      Stage file/hunk at cursor",
-    "  u      Unstage file/hunk at cursor",
-    "  v+s    Stage visual selection",
-    "  v+u    Unstage visual selection",
-    "  S      Stage all",
-    "  U      Unstage all",
-    "",
-    "Actions:",
-    "  <CR>   Visit file",
-    "  x      Discard changes",
-    "  <Tab>  Toggle inline diff",
-    "  c      Commit popup",
-    "  p      Push popup",
-    "",
-    "Other:",
-    "  g      Refresh",
-    "  $      Git command history",
-    "  q      Close",
-    "  ?      This help",
-  }
-
-  -- Create floating window
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, help_lines)
-  vim.bo[buf].modifiable = false
-
-  local width = 35
-  local height = #help_lines
-  local win = vim.api.nvim_open_win(buf, true, {
-    relative = "editor",
-    width = width,
-    height = height,
-    col = (vim.o.columns - width) / 2,
-    row = (vim.o.lines - height) / 2,
-    style = "minimal",
-    border = "rounded",
-  })
-
-  -- Close on any key
-  vim.keymap.set("n", "q", function()
-    vim.api.nvim_win_close(win, true)
-  end, { buffer = buf })
-
-  vim.keymap.set("n", "<Esc>", function()
-    vim.api.nvim_win_close(win, true)
-  end, { buffer = buf })
-
-  vim.keymap.set("n", "?", function()
-    vim.api.nvim_win_close(win, true)
-  end, { buffer = buf })
-end
-
 --- Render the status buffer
 function StatusBuffer:render()
   if not vim.api.nvim_buf_is_valid(self.bufnr) then
@@ -996,7 +933,7 @@ function StatusBuffer:render()
 
   -- Help line
   table.insert(lines, "")
-  table.insert(lines, "s=stage  u=unstage  g=refresh  $=history  q=close")
+  table.insert(lines, "Press ? for help")
 
   vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, lines)
 end

@@ -1,0 +1,84 @@
+---@mod gitlad.popups.help Help popup
+---@brief [[
+--- Transient-style help popup showing all keybindings.
+--- Pressing a key executes that action (where applicable).
+---@brief ]]
+
+local M = {}
+
+local popup = require("gitlad.ui.popup")
+
+---@class HelpPopupContext
+---@field status_buffer StatusBuffer
+---@field repo_state RepoState
+
+--- Create and show the help popup
+---@param status_buffer StatusBuffer
+function M.open(status_buffer)
+  local repo_state = status_buffer.repo_state
+
+  local help_popup = popup
+    .builder()
+    :name("Help")
+    -- Navigation
+    :group_heading("Navigation")
+    :action("j", "Next item", function()
+      -- Just close, user can navigate normally
+    end)
+    :action("k", "Previous item", function()
+      -- Just close, user can navigate normally
+    end)
+    :action("<Tab>", "Toggle inline diff", function()
+      -- Context-dependent, just close
+    end)
+    :action("<CR>", "Visit file at point", function()
+      -- Context-dependent, just close
+    end)
+    -- Staging
+    :group_heading("Staging")
+    :action("s", "Stage file/hunk at cursor", function()
+      -- Context-dependent, just close
+    end)
+    :action("u", "Unstage file/hunk at cursor", function()
+      -- Context-dependent, just close
+    end)
+    :action("S", "Stage all", function()
+      status_buffer:_stage_all()
+    end)
+    :action("U", "Unstage all", function()
+      status_buffer:_unstage_all()
+    end)
+    :action("x", "Discard changes at point", function()
+      -- Context-dependent, just close
+    end)
+    -- Popups
+    :group_heading("Popups")
+    :action("c", "Commit", function()
+      local commit_popup = require("gitlad.popups.commit")
+      commit_popup.open(repo_state)
+    end)
+    :action("p", "Push", function()
+      local push_popup = require("gitlad.popups.push")
+      push_popup.open(repo_state)
+    end)
+    -- Other
+    :group_heading("Other")
+    :action("g", "Refresh", function()
+      repo_state:refresh_status(true)
+    end)
+    :action("$", "Git command history", function()
+      local history_view = require("gitlad.ui.views.history")
+      history_view.open()
+    end)
+    :action("q", "Close status buffer", function()
+      -- This closes help; 'q' again will close status
+    end)
+    :action("?", "This help", function()
+      -- Already in help, just close
+    end)
+    :build()
+
+  help_popup:show()
+end
+
+return M
