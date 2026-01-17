@@ -169,6 +169,12 @@ function StatusBuffer:_setup_keymaps()
   vim.keymap.set("n", "?", function()
     self:_show_help()
   end, vim.tbl_extend("force", opts, { desc = "Show help" }))
+
+  -- Commit popup
+  vim.keymap.set("n", "c", function()
+    local commit_popup = require("gitlad.popups.commit")
+    commit_popup.open(self.repo_state)
+  end, vim.tbl_extend("force", opts, { desc = "Commit popup" }))
 end
 
 --- Get the file path at the current cursor position
@@ -822,6 +828,7 @@ function StatusBuffer:_show_help()
     "  <CR>   Visit file",
     "  x      Discard changes",
     "  <Tab>  Toggle inline diff",
+    "  c      Commit popup",
     "",
     "Other:",
     "  g      Refresh",
@@ -994,10 +1001,14 @@ end
 
 --- Open the status buffer in a window
 function StatusBuffer:open()
-  -- Check if already open in a window
+  -- Check if already open in a window with the status buffer displayed
   if self.winnr and vim.api.nvim_win_is_valid(self.winnr) then
-    vim.api.nvim_set_current_win(self.winnr)
-    return
+    local win_buf = vim.api.nvim_win_get_buf(self.winnr)
+    if win_buf == self.bufnr then
+      -- Status buffer is already displayed in this window, just focus it
+      vim.api.nvim_set_current_win(self.winnr)
+      return
+    end
   end
 
   -- Open in current window
@@ -1032,8 +1043,9 @@ function StatusBuffer:close()
 end
 
 --- Open status view for current repository
-function M.open()
-  local repo_state = state.get()
+---@param repo_state_override? RepoState Optional repo state to use instead of detecting from cwd
+function M.open(repo_state_override)
+  local repo_state = repo_state_override or state.get()
   if not repo_state then
     vim.notify("[gitlad] Not in a git repository", vim.log.levels.WARN)
     return

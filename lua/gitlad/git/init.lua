@@ -150,6 +150,35 @@ function M.apply_patch(patch_lines, reverse, opts, callback)
   end)
 end
 
+--- Create a commit with a message
+---@param message_lines string[] Commit message lines
+---@param args string[] Extra arguments (from popup switches/options)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.commit(message_lines, args, opts, callback)
+  -- Build commit args: commit -F - <extra_args>
+  -- Using -F - to read message from stdin avoids shell escaping issues
+  local commit_args = { "commit", "-F", "-" }
+  vim.list_extend(commit_args, args)
+
+  cli.run_async_with_stdin(commit_args, message_lines, opts, function(result)
+    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+  end)
+end
+
+--- Amend the current commit without editing the message
+---@param args string[] Extra arguments (from popup switches/options)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.commit_amend_no_edit(args, opts, callback)
+  local commit_args = { "commit", "--amend", "--no-edit" }
+  vim.list_extend(commit_args, args)
+
+  cli.run_async(commit_args, opts, function(result)
+    callback(result.code == 0, result.code ~= 0 and table.concat(result.stderr, "\n") or nil)
+  end)
+end
+
 --- Check if path is inside a git repository
 ---@param path? string Path to check (defaults to cwd)
 ---@return boolean
