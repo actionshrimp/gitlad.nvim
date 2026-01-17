@@ -234,12 +234,18 @@ lua/gitlad/
    - `keymap.lua`: Simplified buffer-local keymap setup
    - Reduces duplication and ensures consistent patterns across codebase
 
-## Keybindings (Magit-Style)
+## Keybindings (evil-collection-magit Style)
+
+**Note:** We follow [evil-collection-magit](https://github.com/emacs-evil/evil-collection/blob/master/modes/magit/evil-collection-magit.el) conventions, not vanilla magit. Key differences from vanilla magit:
+- Navigation uses `j`/`k` (vim-style) instead of `n`/`p`
+- Push uses `p` (lowercase) instead of `P` (freeing up `p` since navigation moved to `j`/`k`)
+
+This makes the plugin more comfortable for vim/evil users.
 
 ### Navigation
 | Key | Action |
 |-----|--------|
-| `n` / `p` | Next/previous item |
+| `j` / `k` | Next/previous item |
 | `M-n` / `M-p` | Next/previous section |
 | `TAB` | Expand/collapse section or diff |
 | `RET` | Visit file at point |
@@ -260,7 +266,7 @@ lua/gitlad/
 | `b` | Branch |
 | `f` | Fetch |
 | `F` | Pull |
-| `P` | Push |
+| `p` | Push |
 | `l` | Log |
 | `d` | Diff |
 | `m` | Merge |
@@ -283,7 +289,7 @@ lua/gitlad/
 
 See **PLAN.md** for the detailed development roadmap with specific tasks, files to create/modify, and implementation notes.
 
-### Current Status: Phase 2 Complete
+### Current Status: Phase 3 In Progress
 
 **What's built:**
 - Async git CLI wrapper with porcelain v2 parsing
@@ -294,10 +300,10 @@ See **PLAN.md** for the detailed development roadmap with specific tasks, files 
 - Git command history view (`$` keybinding)
 - Transient-style popup system (PopupBuilder)
 - Commit popup with switches, options, and actions
-- 135+ tests passing, CI configured
+- Push popup with switches, options, and actions
+- 179 tests passing, CI configured
 
-**Next up (Phase 3):**
-- Push popup
+**Next up (Phase 3 continued):**
 - Pull/Fetch popups
 - Branch popup
 - Log view

@@ -63,7 +63,7 @@ local T = MiniTest.new_set({
 -- Push popup tests
 T["push popup"] = MiniTest.new_set()
 
-T["push popup"]["opens from status buffer with P key"] = function()
+T["push popup"]["opens from status buffer with p key"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -79,8 +79,8 @@ T["push popup"]["opens from status buffer with P key"] = function()
   -- Wait for status to load
   child.lua([[vim.wait(500, function() return false end)]])
 
-  -- Press P to open push popup
-  child.type_keys("P")
+  -- Press p to open push popup (evil-collection-magit style)
+  child.type_keys("p")
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -125,7 +125,7 @@ T["push popup"]["has all expected switches"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
   child.lua([[vim.wait(500, function() return false end)]])
 
-  child.type_keys("P")
+  child.type_keys("p")
 
   -- Check for switches in popup
   child.lua([[
@@ -181,7 +181,7 @@ T["push popup"]["switch toggling with -f"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
   child.lua([[vim.wait(500, function() return false end)]])
 
-  child.type_keys("P")
+  child.type_keys("p")
 
   -- Check initial state - force-with-lease should not be enabled
   child.lua([[
@@ -237,7 +237,7 @@ T["push popup"]["shows warning when no upstream configured"] = function()
   child.lua([[vim.cmd("messages clear")]])
 
   -- Open push popup
-  child.type_keys("P")
+  child.type_keys("p")
   child.lua([[vim.wait(100, function() return false end)]])
 
   -- Try to push to upstream (should fail - no upstream)
@@ -265,7 +265,7 @@ T["push popup"]["closes with q"] = function()
   child.lua([[vim.wait(500, function() return false end)]])
 
   -- Open push popup
-  child.type_keys("P")
+  child.type_keys("p")
   local win_count_popup = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_popup, 2)
 
@@ -284,7 +284,7 @@ T["push popup"]["closes with q"] = function()
   cleanup_repo(child, repo)
 end
 
-T["push popup"]["P keybinding appears in help"] = function()
+T["push popup"]["p keybinding appears in help"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -309,7 +309,7 @@ T["push popup"]["P keybinding appears in help"] = function()
 
   local found_push = false
   for _, line in ipairs(lines) do
-    if line:match("P.*Push popup") then
+    if line:match("p%s+Push popup") then
       found_push = true
     end
   end
