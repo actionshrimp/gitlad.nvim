@@ -136,22 +136,27 @@ Transient-style popup system inspired by neogit/magit:
 - [x] Close with `q` or `<Esc>`
 - [ ] Persistent switch state between sessions (enhancement for later)
 
-### 2.8 Commit Popup
-- [ ] `c` opens commit popup
-- [ ] Switches: `-a` (all), `-e` (edit), `-v` (verbose), `--amend`
-- [ ] Options: `--author=`, `--signoff`
-- [ ] Actions:
-  - `c` - Commit
-  - `e` - Extend (amend without editing message)
-  - `a` - Amend
-  - `f` - Fixup
-  - `s` - Squash
-- [ ] Open `COMMIT_EDITMSG` in buffer for message editing
-- [ ] Handle commit hooks (pre-commit, commit-msg)
+### 2.8 Commit Popup - COMPLETE (MVP)
 
-**Files to create:**
-- `lua/gitlad/popups/commit/init.lua`
-- `lua/gitlad/popups/commit/actions.lua`
+- [x] `c` opens commit popup
+- [x] Switches: `-a` (all), `-e` (allow-empty), `-v` (verbose), `-n` (no-verify)
+- [x] Options: `--author=`, `--signoff`
+- [x] Actions:
+  - [x] `c` - Commit (opens message editor buffer)
+  - [x] `e` - Extend (amend without editing message)
+  - [x] `a` - Amend (opens editor with previous message)
+  - [ ] `f` - Fixup (future: requires commit selection)
+  - [ ] `s` - Squash (future: requires commit selection)
+- [x] Open `COMMIT_EDITMSG` buffer for message editing
+- [x] `C-c C-c` to confirm commit, `C-c C-k` to abort
+- [x] Verbose mode shows diff in editor
+- [ ] Handle commit hooks (pre-commit, commit-msg) - hooks run automatically via git
+
+**Files created:**
+- `lua/gitlad/popups/commit.lua` - Popup definition and actions
+- `lua/gitlad/ui/views/commit_editor.lua` - Commit message buffer
+- `tests/unit/test_commit_popup.lua` - Unit tests
+- `tests/e2e/test_commit.lua` - E2E tests
 
 ---
 
