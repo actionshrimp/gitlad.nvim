@@ -172,14 +172,14 @@ T["commit popup"]["creates actions correctly"] = function()
   eq(data.actions[5].type, "action")
   eq(data.actions[5].key, "a")
 
-  -- Test callbacks
-  data.actions[2].callback()
+  -- Test callbacks (pass data as popup argument, matching actual invocation)
+  data.actions[2].callback(data)
   eq(commit_called, true)
 
-  data.actions[4].callback()
+  data.actions[4].callback(data)
   eq(extend_called, true)
 
-  data.actions[5].callback()
+  data.actions[5].callback(data)
   eq(amend_called, true)
 end
 
