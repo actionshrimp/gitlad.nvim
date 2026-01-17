@@ -326,11 +326,14 @@ External dependency (integrate, don't reinvent):
 
 ### Starting a New Feature
 
-**Always start new features from an up-to-date `main` branch:**
+> **⚠️ CRITICAL: Always start from an up-to-date main branch!**
+>
+> Before starting ANY new work, you MUST fetch and update main first. Failing to do this causes merge conflicts and wastes time rebasing later.
 
 ```bash
 git checkout main
-git pull
+git fetch origin
+git reset --hard origin/main   # Ensure local main matches remote
 git checkout -b feature/your-feature-name
 ```
 
@@ -338,6 +341,8 @@ This ensures:
 - You're building on the latest code
 - No conflicts from stale branches
 - Clean git history
+
+**Never skip this step.** Even if you think main hasn't changed, always verify.
 
 ### Planning First
 
