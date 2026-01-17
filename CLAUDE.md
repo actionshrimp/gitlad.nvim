@@ -161,51 +161,68 @@ local helpers = require("tests.helpers")
 
 ```
 lua/gitlad/
-├── init.lua          # Entry point, setup()
-├── config.lua        # User configuration
-├── commands.lua      # :Gitlad command dispatcher
+├── init.lua              # Entry point, setup()
+├── config.lua            # User configuration
+├── commands.lua          # :Gitlad command dispatcher
 ├── git/
-│   ├── init.lua      # High-level git operations
-│   ├── cli.lua       # Async job execution (vim.fn.jobstart)
-│   ├── parse.lua     # Git output parsers (porcelain v2)
-│   └── history.lua   # Git command history (TODO)
+│   ├── init.lua          # High-level git operations
+│   ├── cli.lua           # Async job execution (vim.fn.jobstart)
+│   ├── parse.lua         # Git output parsers (porcelain v2)
+│   └── history.lua       # Git command history ring buffer
 ├── state/
-│   ├── init.lua      # RepoState coordinator + optimistic updates
-│   ├── cache.lua     # Cache utilities (simplified)
-│   └── async.lua     # AsyncHandler, debounce, throttle
+│   ├── init.lua          # RepoState coordinator + optimistic updates
+│   ├── commands.lua      # Elm-style command definitions
+│   ├── reducer.lua       # Pure state reducer (commands → state)
+│   ├── cache.lua         # Timestamp-based cache utilities
+│   └── async.lua         # AsyncHandler, debounce, throttle
+├── popups/
+│   └── commit.lua        # Commit popup with switches/options/actions
 └── ui/
-    ├── popup/        # Transient-style popup system (TODO)
+    ├── popup/
+    │   └── init.lua      # PopupBuilder - transient-style popup system
     └── views/
-        ├── status.lua
-        └── history.lua  # Command history view (TODO)
+        ├── status.lua        # Main status buffer view
+        ├── commit_editor.lua # Commit message editor buffer
+        └── history.lua       # Git command history view
 ```
 
 ### Key Patterns
 
-1. **Optimistic State Updates** (`state/init.lua`)
+1. **Elm Architecture: Commands + Reducer** (`state/commands.lua`, `state/reducer.lua`)
+   - Commands are data structures describing state changes (stage_file, unstage_file, etc.)
+   - Reducer is a pure function: `(status, command) → new_status`
+   - Enables predictable, testable state transitions
+   - State is immutable - reducer returns new state, doesn't mutate
+
+2. **Optimistic State Updates** (`state/init.lua`)
    - On stage/unstage: run git command, check exit code
-   - On success: mutate Lua state directly (move file between sections)
-   - On failure: show error, no state change
+   - On success: create command, apply via reducer, notify listeners
+   - On failure: show error, state unchanged
    - **Never** automatically call `git status` after operations
 
-2. **Git Command History** (`git/history.lua`)
+3. **Event-Driven Views** (`state/init.lua`, `ui/views/status.lua`)
+   - RepoState emits events ("status") when state changes
+   - Views subscribe to events and re-render on notification
+   - Decouples state management from UI rendering
+
+4. **Git Command History** (`git/history.lua`)
    - Ring buffer of all git commands run
    - Each entry: command, args, exit code, stdout, stderr, duration
    - Accessible via `$` keybinding
 
-3. **AsyncHandler** (`state/async.lua`)
+5. **AsyncHandler** (`state/async.lua`)
    - Tracks request IDs for manual refreshes
    - Only applies the latest result
    - Prevents stale async results from overwriting fresh data
 
-4. **RepoState** (`state/init.lua`)
-   - One instance per repository
-   - Emits events ("status", "branches", etc.)
-   - Views subscribe to events for updates
-
-5. **Porcelain v2 parsing** (`git/parse.lua`)
+6. **Porcelain v2 parsing** (`git/parse.lua`)
    - Uses `git status --porcelain=v2` for stable output
    - Machine-readable, won't break with git updates
+
+7. **PopupBuilder** (`ui/popup/init.lua`)
+   - Fluent API for building transient-style popups
+   - Switches (boolean), options (key-value), actions (callbacks)
+   - Used for commit popup, will be used for all git operation popups
 
 ## Keybindings (Magit-Style)
 
@@ -256,26 +273,26 @@ lua/gitlad/
 
 See **PLAN.md** for the detailed development roadmap with specific tasks, files to create/modify, and implementation notes.
 
-### Current Status: Phase 1 Complete, Architecture Refactor Needed
+### Current Status: Phase 2 Complete
 
 **What's built:**
 - Async git CLI wrapper with porcelain v2 parsing
-- AsyncHandler pattern for request ordering
-- Status buffer with staging/unstaging
-- 37 tests passing, CI configured
+- Elm Architecture (Commands/Reducer) for predictable state updates
+- Optimistic state updates - instant UI response without git status refresh
+- Status buffer with full staging workflow (file, hunk, visual selection)
+- Inline diff expansion with syntax highlighting
+- Git command history view (`$` keybinding)
+- Transient-style popup system (PopupBuilder)
+- Commit popup with switches, options, and actions
+- 135+ tests passing, CI configured
 
-**Architecture refactor needed:**
-- Current stage/unstage triggers full `git status` refresh (wrong)
-- Need to implement optimistic state updates instead
+**Next up (Phase 3):**
+- Push popup
+- Pull/Fetch popups
+- Branch popup
+- Log view
 
-**Next up (Phase 2):**
-- Optimistic state updates (move files between sections on success)
-- Refresh indicator ("Refreshing..." during manual refresh)
-- Git command history module
-- Full magit keybindings
-- Inline diff expansion
-- Popup system
-- Commit popup
+See PLAN.md for the detailed roadmap.
 
 ## Reference Projects
 
