@@ -7,6 +7,7 @@
 local M = {}
 
 local keymap = require("gitlad.utils.keymap")
+local hl = require("gitlad.ui.hl")
 
 ---@class PopupSwitch
 ---@field key string Single character key binding
@@ -276,6 +277,9 @@ function PopupData:show()
   }
   self.window = vim.api.nvim_open_win(self.buffer, true, win_opts)
 
+  -- Apply syntax highlighting
+  hl.apply_popup_highlights(self.buffer, lines, self.switches, self.options, self.actions)
+
   -- Set up keymaps
   self:_setup_keymaps()
 end
@@ -299,6 +303,9 @@ function PopupData:refresh()
   vim.bo[self.buffer].modifiable = true
   vim.api.nvim_buf_set_lines(self.buffer, 0, -1, false, lines)
   vim.bo[self.buffer].modifiable = false
+
+  -- Apply syntax highlighting
+  hl.apply_popup_highlights(self.buffer, lines, self.switches, self.options, self.actions)
 end
 
 --- Set up keymaps for the popup buffer

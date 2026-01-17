@@ -8,6 +8,7 @@ local M = {}
 
 local history = require("gitlad.git.history")
 local keymap = require("gitlad.utils.keymap")
+local hl = require("gitlad.ui.hl")
 
 ---@class HistoryLineInfo
 ---@field entry_index number Index into history entries
@@ -151,6 +152,9 @@ function HistoryBuffer:render()
   end
 
   vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, lines)
+
+  -- Apply syntax highlighting
+  hl.apply_history_highlights(self.bufnr, lines)
 end
 
 --- Open the history buffer in a window

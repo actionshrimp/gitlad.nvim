@@ -10,6 +10,7 @@ local config = require("gitlad.config")
 local history_view = require("gitlad.ui.views.history")
 local git = require("gitlad.git")
 local keymap = require("gitlad.utils.keymap")
+local hl = require("gitlad.ui.hl")
 
 ---@class LineInfo
 ---@field path string File path
@@ -998,6 +999,12 @@ function StatusBuffer:render()
   table.insert(lines, "Press ? for help")
 
   vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, lines)
+
+  -- Apply syntax highlighting
+  hl.apply_status_highlights(self.bufnr, lines, self.line_map, self.section_lines)
+
+  -- Apply treesitter highlighting to expanded diffs
+  hl.apply_diff_treesitter_highlights(self.bufnr, lines, self.line_map, self.diff_cache)
 end
 
 --- Open the status buffer in a window
