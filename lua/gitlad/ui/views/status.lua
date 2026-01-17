@@ -131,11 +131,11 @@ function StatusBuffer:_setup_keymaps()
     self:close()
   end, "Close status")
 
-  -- Navigation
-  keymap.set(bufnr, "n", "n", function()
+  -- Navigation (evil-collection-magit style: j/k instead of n/p)
+  keymap.set(bufnr, "n", "j", function()
     self:_goto_next_file()
   end, "Next file")
-  keymap.set(bufnr, "n", "p", function()
+  keymap.set(bufnr, "n", "k", function()
     self:_goto_prev_file()
   end, "Previous file")
   keymap.set(bufnr, "n", "<M-n>", function()
@@ -170,6 +170,12 @@ function StatusBuffer:_setup_keymaps()
     local commit_popup = require("gitlad.popups.commit")
     commit_popup.open(self.repo_state)
   end, "Commit popup")
+
+  -- Push popup (evil-collection-magit style: p instead of P)
+  keymap.set(bufnr, "n", "p", function()
+    local push_popup = require("gitlad.popups.push")
+    push_popup.open(self.repo_state)
+  end, "Push popup")
 end
 
 --- Get the file path at the current cursor position
@@ -806,8 +812,8 @@ function StatusBuffer:_show_help()
     "Gitlad Status - Keybindings",
     "",
     "Navigation:",
-    "  n      Next file",
-    "  p      Previous file",
+    "  j      Next file",
+    "  k      Previous file",
     "  M-n    Next section",
     "  M-p    Previous section",
     "",
@@ -824,6 +830,7 @@ function StatusBuffer:_show_help()
     "  x      Discard changes",
     "  <Tab>  Toggle inline diff",
     "  c      Commit popup",
+    "  p      Push popup",
     "",
     "Other:",
     "  g      Refresh",

@@ -195,4 +195,34 @@ function M.repo_root(path)
   return cli.find_repo_root(path)
 end
 
+--- Get list of remotes
+---@param opts? GitCommandOptions
+---@param callback fun(remotes: GitRemote[]|nil, err: string|nil)
+function M.remotes(opts, callback)
+  cli.run_async({ "remote", "-v" }, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(parse.parse_remotes(result.stdout), nil)
+  end)
+end
+
+--- Push to a remote
+---@param args string[] Push arguments (e.g., { "origin", "main" } or { "--force-with-lease" })
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.push(args, opts, callback)
+  local push_args = { "push" }
+  vim.list_extend(push_args, args)
+
+  cli.run_async(push_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    -- Git push outputs progress to stderr even on success
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
 return M

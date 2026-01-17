@@ -162,4 +162,46 @@ function M.status_description(code)
   return STATUS_CODES[code] or "unknown"
 end
 
+---@class GitRemote
+---@field name string Remote name (e.g., "origin")
+---@field fetch_url string Fetch URL
+---@field push_url string Push URL
+
+--- Parse git remote -v output
+---@param lines string[] Output lines from git remote -v
+---@return GitRemote[]
+function M.parse_remotes(lines)
+  local remotes = {}
+  local remote_map = {} -- name -> { fetch_url, push_url }
+
+  for _, line in ipairs(lines) do
+    -- Format: "origin\thttps://github.com/user/repo.git (fetch)"
+    -- or: "origin\tgit@github.com:user/repo.git (push)"
+    local name, url, type_str = line:match("^(%S+)\t(%S+)%s+%((%w+)%)$")
+    if name and url and type_str then
+      if not remote_map[name] then
+        remote_map[name] = { name = name, fetch_url = "", push_url = "" }
+      end
+      if type_str == "fetch" then
+        remote_map[name].fetch_url = url
+      elseif type_str == "push" then
+        remote_map[name].push_url = url
+      end
+    end
+  end
+
+  -- Convert map to array (maintain consistent ordering)
+  local names = {}
+  for name, _ in pairs(remote_map) do
+    table.insert(names, name)
+  end
+  table.sort(names)
+
+  for _, name in ipairs(names) do
+    table.insert(remotes, remote_map[name])
+  end
+
+  return remotes
+end
+
 return M
