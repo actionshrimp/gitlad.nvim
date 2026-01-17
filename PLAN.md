@@ -65,8 +65,9 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Push popup** - `p` keybinding for push with switches/options/actions
 - **Fetch popup** - `f` keybinding for fetch with switches/options/actions
 - **Pull popup** - `F` keybinding for pull with switches/options/actions
-- **Branch popup** - `b` keybinding for branch operations (checkout, create, delete, rename)
-- Test infrastructure with mini.test (250 tests passing)
+- **Branch popup** - `b` keybinding for branch operations (checkout, create, delete, rename, set upstream, configure push remote)
+- **Upstream/Push tracking** - Status shows Head/Merge/Push with commit messages, unpushed/unpulled commit sections
+- Test infrastructure with mini.test (271 tests passing)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -206,14 +207,33 @@ Transient-style popup system inspired by neogit/magit:
 - [x] Create from: current HEAD, specific ref (via base prompt)
 - [x] Force delete switch (`-f`) for unmerged branches
 - [x] Show branch list with current indicator (via vim.ui.select)
+- [x] Configure group: set upstream (`u`), configure push remote (`r`)
 
 **Files created:**
 - `lua/gitlad/popups/branch.lua` - Popup definition and actions
-- `lua/gitlad/git/init.lua` - Added `checkout()`, `checkout_new_branch()`, `create_branch()`, `delete_branch()`, `rename_branch()` functions
-- `tests/unit/test_branch_popup.lua` - Unit tests (9 tests)
+- `lua/gitlad/git/init.lua` - Added `checkout()`, `checkout_new_branch()`, `create_branch()`, `delete_branch()`, `rename_branch()`, `set_upstream()`, `set_push_remote()`, `remote_branches()`, `remote_names()` functions
+- `tests/unit/test_branch_popup.lua` - Unit tests (10 tests)
 - `tests/e2e/test_branch.lua` - E2E tests (11 tests)
 
-### 3.4 Log View
+### 3.4 Upstream/Push Remote Tracking in Status - COMPLETE
+
+- [x] Status header shows Head/Merge/Push with commit messages
+- [x] "Merge:" line replaces "Upstream:" (shows upstream tracking branch)
+- [x] "Push:" line shows push remote when different from merge remote
+- [x] Ahead/behind counts shown for both remotes
+- [x] Unpushed/Unpulled commit sections (when commits exist)
+
+**Files modified:**
+- `lua/gitlad/git/parse.lua` - Added `GitCommitInfo` type, `parse_log_oneline()`, `parse_remote_branches()`, extended `GitStatusResult`
+- `lua/gitlad/git/init.lua` - Added `get_commit_subject()`, `get_commits_between()`, `get_push_remote()`
+- `lua/gitlad/state/reducer.lua` - Extended `copy_status()` with new fields
+- `lua/gitlad/state/init.lua` - Added `_fetch_extended_status()`, extended `refresh_status()`
+- `lua/gitlad/ui/views/status.lua` - Updated header rendering, added commit sections
+- `tests/unit/test_parse.lua` - Tests for parse functions
+- `tests/unit/test_status.lua` - Tests for header rendering
+- `tests/e2e/test_status_view.lua` - Tests for Merge line display
+
+### 3.5 Log View
 - [ ] `l` opens log popup, then actions open log buffer
 - [ ] Show commit list with: hash, author, date, message
 - [ ] Navigation through commits
@@ -225,7 +245,7 @@ Transient-style popup system inspired by neogit/magit:
 - `lua/gitlad/ui/views/log.lua`
 - `lua/gitlad/popups/log/init.lua`
 
-### 3.5 Diff View (via diffview.nvim)
+### 3.6 Diff View (via diffview.nvim)
 
 **Note:** Full-buffer diff views delegate to `diffview.nvim` - see "Leverage diffview.nvim" section above.
 
@@ -237,7 +257,7 @@ Transient-style popup system inspired by neogit/magit:
 - [ ] Graceful fallback if diffview.nvim not installed (error message with install hint)
 - [ ] Optional: config to use built-in `vimdiff` instead
 
-### 3.6 Stash Popup
+### 3.7 Stash Popup
 - [ ] `z` opens stash popup
 - [ ] Actions: stash, pop, apply, drop, list
 - [ ] Switches: `--include-untracked`, `--keep-index`

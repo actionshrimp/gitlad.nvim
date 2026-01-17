@@ -164,4 +164,109 @@ T["status_description"]["returns correct descriptions"] = function()
   eq(parse.status_description("X"), "unknown")
 end
 
+T["parse_log_oneline"] = MiniTest.new_set()
+
+T["parse_log_oneline"]["parses commits correctly"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_log_oneline({
+    "abc1234 Add feature X",
+    "def5678 Fix bug Y",
+    "111aaaa Initial commit",
+  })
+
+  eq(#result, 3)
+  eq(result[1].hash, "abc1234")
+  eq(result[1].subject, "Add feature X")
+  eq(result[2].hash, "def5678")
+  eq(result[2].subject, "Fix bug Y")
+  eq(result[3].hash, "111aaaa")
+  eq(result[3].subject, "Initial commit")
+end
+
+T["parse_log_oneline"]["handles empty input"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_log_oneline({})
+
+  eq(#result, 0)
+end
+
+T["parse_log_oneline"]["handles commit messages with spaces"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_log_oneline({
+    "abc1234 feat: add new feature with multiple words",
+  })
+
+  eq(#result, 1)
+  eq(result[1].hash, "abc1234")
+  eq(result[1].subject, "feat: add new feature with multiple words")
+end
+
+T["parse_log_oneline"]["handles hash-only lines"] = function()
+  local parse = require("gitlad.git.parse")
+
+  -- Edge case: commit with empty subject
+  local result = parse.parse_log_oneline({
+    "abc1234 ",
+  })
+
+  eq(#result, 1)
+  eq(result[1].hash, "abc1234")
+  eq(result[1].subject, "")
+end
+
+T["parse_remote_branches"] = MiniTest.new_set()
+
+T["parse_remote_branches"]["parses remote branches correctly"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_remote_branches({
+    "  origin/main",
+    "  origin/develop",
+    "  upstream/main",
+  })
+
+  eq(#result, 3)
+  eq(result[1], "origin/main")
+  eq(result[2], "origin/develop")
+  eq(result[3], "upstream/main")
+end
+
+T["parse_remote_branches"]["skips HEAD pointers"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_remote_branches({
+    "  origin/HEAD -> origin/main",
+    "  origin/main",
+    "  origin/develop",
+  })
+
+  eq(#result, 2)
+  eq(result[1], "origin/main")
+  eq(result[2], "origin/develop")
+end
+
+T["parse_remote_branches"]["handles empty input"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_remote_branches({})
+
+  eq(#result, 0)
+end
+
+T["parse_remote_branches"]["handles branches with slashes"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_remote_branches({
+    "  origin/feature/add-login",
+    "  origin/bugfix/fix-crash",
+  })
+
+  eq(#result, 2)
+  eq(result[1], "origin/feature/add-login")
+  eq(result[2], "origin/bugfix/fix-crash")
+end
+
 return T

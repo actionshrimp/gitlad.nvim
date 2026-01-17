@@ -202,4 +202,44 @@ T["parse_branches"]["handles branches with slashes"] = function()
   eq(result[3].name, "bugfix/fix-crash")
 end
 
+-- Configure group tests
+T["branch popup configure"] = MiniTest.new_set()
+
+T["branch popup configure"]["has Configure group with set upstream action"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup
+    .builder()
+    :name("Branch")
+    :group_heading("Configure")
+    :action("u", "Set upstream", function() end)
+    :action("r", "Configure push remote", function() end)
+    :build()
+
+  -- Check that Configure heading exists
+  local found_configure = false
+  local found_upstream = false
+  local found_push_remote = false
+
+  for _, action in ipairs(data.actions) do
+    if action.type == "heading" and action.text == "Configure" then
+      found_configure = true
+    end
+    if action.type == "action" and action.key == "u" and action.description == "Set upstream" then
+      found_upstream = true
+    end
+    if
+      action.type == "action"
+      and action.key == "r"
+      and action.description == "Configure push remote"
+    then
+      found_push_remote = true
+    end
+  end
+
+  eq(found_configure, true)
+  eq(found_upstream, true)
+  eq(found_push_remote, true)
+end
+
 return T

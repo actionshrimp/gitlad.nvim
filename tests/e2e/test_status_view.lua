@@ -897,4 +897,105 @@ T["visual selection"]["stages multiple selected lines"] = function()
   assert_truthy(unstaged_diff:find("+D"), "Unstaged diff should still contain +D")
 end
 
+-- =============================================================================
+-- Head/Merge/Push Header Tests
+-- =============================================================================
+
+T["status header"] = MiniTest.new_set()
+
+-- Helper to create a test repo with upstream tracking
+local function create_test_repo_with_upstream(child)
+  local repo = child.lua_get("vim.fn.tempname()")
+  local remote = child.lua_get("vim.fn.tempname()")
+  child.lua(string.format(
+    [[
+    local repo = %q
+    local remote = %q
+
+    -- Create the bare remote
+    vim.fn.mkdir(remote, "p")
+    vim.fn.system("git -C " .. remote .. " init --bare")
+
+    -- Create the local repo
+    vim.fn.mkdir(repo, "p")
+    vim.fn.system("git -C " .. repo .. " init")
+    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
+    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
+
+    -- Create initial commit
+    local f = io.open(repo .. "/init.txt", "w")
+    f:write("initial content")
+    f:close()
+    vim.fn.system("git -C " .. repo .. " add .")
+    vim.fn.system("git -C " .. repo .. " commit -m 'Initial commit'")
+
+    -- Add remote and push with tracking
+    vim.fn.system("git -C " .. repo .. " remote add origin " .. remote)
+
+    -- Get default branch and push
+    local branch = vim.fn.system("git -C " .. repo .. " branch --show-current"):gsub("\n", "")
+    vim.fn.system("git -C " .. repo .. " push -u origin " .. branch)
+  ]],
+    repo,
+    remote
+  ))
+  return repo
+end
+
+T["status header"]["shows Head line with commit message"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit with a specific message
+  create_file(child, repo, "init.txt", "initial content")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Add initial file"')
+
+  open_gitlad(child, repo)
+
+  local lines = get_buffer_lines(child)
+  local _, head_line = find_line_with(lines, "Head:")
+  assert_truthy(head_line, "Should have Head: line")
+  -- The head line should contain the commit message
+  assert_truthy(head_line:find("Add initial file"), "Head line should show commit message")
+end
+
+T["status header"]["shows Merge line when upstream exists"] = function()
+  local child = _G.child
+  local repo = create_test_repo_with_upstream(child)
+
+  -- Open gitlad
+  child.cmd("cd " .. repo)
+  child.cmd("Gitlad")
+
+  -- Wait for async status fetch including extended status data
+  child.lua([[vim.wait(2000, function()
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for _, line in ipairs(lines) do
+      if line:find("Merge:", 1, true) then return true end
+    end
+    return false
+  end)]])
+
+  local lines = get_buffer_lines(child)
+  local merge_line = find_line_with(lines, "Merge:")
+  assert_truthy(merge_line, "Should have Merge: line when upstream exists")
+end
+
+T["status header"]["hides Merge line when no upstream"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit without any remote
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial commit"')
+
+  open_gitlad(child, repo)
+
+  local lines = get_buffer_lines(child)
+  local merge_line = find_line_with(lines, "Merge:")
+  eq(merge_line, nil, "Should not have Merge: line when no upstream")
+end
+
 return T

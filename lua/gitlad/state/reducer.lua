@@ -67,6 +67,17 @@ local function copy_status(status)
     unstaged = vim.deepcopy(status.unstaged),
     untracked = vim.deepcopy(status.untracked),
     conflicted = vim.deepcopy(status.conflicted),
+    -- Extended fields
+    head_commit_msg = status.head_commit_msg,
+    merge_commit_msg = status.merge_commit_msg,
+    push_remote = status.push_remote,
+    push_ahead = status.push_ahead,
+    push_behind = status.push_behind,
+    push_commit_msg = status.push_commit_msg,
+    unpulled_upstream = vim.deepcopy(status.unpulled_upstream or {}),
+    unpushed_upstream = vim.deepcopy(status.unpushed_upstream or {}),
+    unpulled_push = vim.deepcopy(status.unpulled_push or {}),
+    unpushed_push = vim.deepcopy(status.unpushed_push or {}),
   }
 end
 

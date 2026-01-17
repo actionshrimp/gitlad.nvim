@@ -335,4 +335,110 @@ function M.rename_branch(old_name, new_name, opts, callback)
   end)
 end
 
+--- Get the commit subject for a ref
+---@param ref string Git ref (branch, tag, commit hash)
+---@param opts? GitCommandOptions
+---@param callback fun(subject: string|nil, err: string|nil)
+function M.get_commit_subject(ref, opts, callback)
+  cli.run_async({ "log", "-1", "--format=%s", ref }, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(result.stdout[1] or "", nil)
+  end)
+end
+
+--- Get commits between two refs
+---@param base string Base ref (the older end)
+---@param target string Target ref (the newer end)
+---@param opts? GitCommandOptions
+---@param callback fun(commits: GitCommitInfo[]|nil, err: string|nil)
+function M.get_commits_between(base, target, opts, callback)
+  -- git log base..target shows commits reachable from target but not from base
+  cli.run_async({ "log", "--oneline", base .. ".." .. target }, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(parse.parse_log_oneline(result.stdout), nil)
+  end)
+end
+
+--- Get push remote for a branch
+---@param branch string Branch name
+---@param opts? GitCommandOptions
+---@param callback fun(remote: string|nil, err: string|nil)
+function M.get_push_remote(branch, opts, callback)
+  -- First try branch.<branch>.pushRemote
+  cli.run_async({ "config", "--get", "branch." .. branch .. ".pushRemote" }, opts, function(result)
+    if result.code == 0 and result.stdout[1] and result.stdout[1] ~= "" then
+      callback(result.stdout[1], nil)
+      return
+    end
+
+    -- Fallback to remote.pushDefault
+    cli.run_async({ "config", "--get", "remote.pushDefault" }, opts, function(fallback_result)
+      if
+        fallback_result.code == 0
+        and fallback_result.stdout[1]
+        and fallback_result.stdout[1] ~= ""
+      then
+        callback(fallback_result.stdout[1], nil)
+      else
+        -- No push remote configured
+        callback(nil, nil)
+      end
+    end)
+  end)
+end
+
+--- Set upstream (tracking branch) for a branch
+---@param branch string Branch name
+---@param upstream_ref string Upstream ref (e.g., "origin/main")
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.set_upstream(branch, upstream_ref, opts, callback)
+  cli.run_async({ "branch", "--set-upstream-to=" .. upstream_ref, branch }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Set push remote for a branch
+---@param branch string Branch name
+---@param remote string Remote name (e.g., "origin")
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.set_push_remote(branch, remote, opts, callback)
+  cli.run_async({ "config", "branch." .. branch .. ".pushRemote", remote }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Get list of remote branches
+---@param opts? GitCommandOptions
+---@param callback fun(branches: string[]|nil, err: string|nil)
+function M.remote_branches(opts, callback)
+  cli.run_async({ "branch", "-r" }, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(parse.parse_remote_branches(result.stdout), nil)
+  end)
+end
+
+--- Get list of remote names
+---@param opts? GitCommandOptions
+---@param callback fun(remotes: string[]|nil, err: string|nil)
+function M.remote_names(opts, callback)
+  cli.run_async({ "remote" }, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(result.stdout, nil)
+  end)
+end
+
 return M

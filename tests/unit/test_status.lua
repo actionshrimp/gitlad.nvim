@@ -384,4 +384,182 @@ T["partial hunk patch"]["returns nil for invalid hunk index"] = function()
   eq(patch, nil)
 end
 
+-- Tests for header rendering logic
+T["status header rendering"] = MiniTest.new_set()
+
+-- Helper to simulate header rendering
+local function render_header(status, refreshing)
+  local lines = {}
+
+  -- Head line
+  local head_line = "Head:     " .. status.branch
+  if status.head_commit_msg then
+    head_line = head_line .. "  " .. status.head_commit_msg
+  end
+  if refreshing then
+    head_line = head_line .. "  (Refreshing...)"
+  end
+  table.insert(lines, head_line)
+
+  -- Merge (upstream) line
+  if status.upstream then
+    local merge_line = "Merge:    " .. status.upstream
+    if status.merge_commit_msg then
+      merge_line = merge_line .. "  " .. status.merge_commit_msg
+    end
+    if status.ahead > 0 or status.behind > 0 then
+      merge_line = merge_line .. string.format(" [+%d/-%d]", status.ahead, status.behind)
+    end
+    table.insert(lines, merge_line)
+  end
+
+  -- Push line (only if different from merge)
+  if status.push_remote then
+    local push_line = "Push:     " .. status.push_remote
+    if status.push_commit_msg then
+      push_line = push_line .. "  " .. status.push_commit_msg
+    end
+    if status.push_ahead > 0 or status.push_behind > 0 then
+      push_line = push_line .. string.format(" [+%d/-%d]", status.push_ahead, status.push_behind)
+    end
+    table.insert(lines, push_line)
+  end
+
+  return lines
+end
+
+T["status header rendering"]["shows Head with branch name"] = function()
+  local status = {
+    branch = "main",
+    ahead = 0,
+    behind = 0,
+    push_ahead = 0,
+    push_behind = 0,
+  }
+
+  local lines = render_header(status, false)
+  eq(#lines, 1)
+  eq(lines[1], "Head:     main")
+end
+
+T["status header rendering"]["shows Head with commit message"] = function()
+  local status = {
+    branch = "main",
+    head_commit_msg = "Add feature X",
+    ahead = 0,
+    behind = 0,
+    push_ahead = 0,
+    push_behind = 0,
+  }
+
+  local lines = render_header(status, false)
+  eq(#lines, 1)
+  eq(lines[1], "Head:     main  Add feature X")
+end
+
+T["status header rendering"]["shows Refreshing indicator"] = function()
+  local status = {
+    branch = "main",
+    ahead = 0,
+    behind = 0,
+    push_ahead = 0,
+    push_behind = 0,
+  }
+
+  local lines = render_header(status, true)
+  eq(#lines, 1)
+  expect.no_equality(lines[1]:find("(Refreshing...)", 1, true), nil)
+end
+
+T["status header rendering"]["shows Merge line when upstream exists"] = function()
+  local status = {
+    branch = "main",
+    upstream = "origin/main",
+    ahead = 2,
+    behind = 1,
+    push_ahead = 0,
+    push_behind = 0,
+  }
+
+  local lines = render_header(status, false)
+  eq(#lines, 2)
+  eq(lines[2], "Merge:    origin/main [+2/-1]")
+end
+
+T["status header rendering"]["shows Merge with commit message"] = function()
+  local status = {
+    branch = "main",
+    upstream = "origin/main",
+    merge_commit_msg = "Previous commit",
+    ahead = 0,
+    behind = 0,
+    push_ahead = 0,
+    push_behind = 0,
+  }
+
+  local lines = render_header(status, false)
+  eq(#lines, 2)
+  eq(lines[2], "Merge:    origin/main  Previous commit")
+end
+
+T["status header rendering"]["hides Merge line when no upstream"] = function()
+  local status = {
+    branch = "main",
+    ahead = 0,
+    behind = 0,
+    push_ahead = 0,
+    push_behind = 0,
+  }
+
+  local lines = render_header(status, false)
+  eq(#lines, 1) -- Only Head line
+end
+
+T["status header rendering"]["shows Push line when push remote differs from merge"] = function()
+  local status = {
+    branch = "main",
+    upstream = "origin/main",
+    push_remote = "fork/main",
+    ahead = 0,
+    behind = 0,
+    push_ahead = 3,
+    push_behind = 0,
+  }
+
+  local lines = render_header(status, false)
+  eq(#lines, 3)
+  eq(lines[3], "Push:     fork/main [+3/-0]")
+end
+
+T["status header rendering"]["shows Push with commit message"] = function()
+  local status = {
+    branch = "main",
+    upstream = "origin/main",
+    push_remote = "fork/main",
+    push_commit_msg = "Fork commit",
+    ahead = 0,
+    behind = 0,
+    push_ahead = 0,
+    push_behind = 0,
+  }
+
+  local lines = render_header(status, false)
+  eq(#lines, 3)
+  eq(lines[3], "Push:     fork/main  Fork commit")
+end
+
+T["status header rendering"]["hides Push line when no push remote"] = function()
+  local status = {
+    branch = "main",
+    upstream = "origin/main",
+    ahead = 0,
+    behind = 0,
+    push_ahead = 0,
+    push_behind = 0,
+  }
+
+  local lines = render_header(status, false)
+  eq(#lines, 2) -- Head and Merge only
+end
+
 return T

@@ -16,13 +16,23 @@ local M = {}
 ---@class GitStatusResult
 ---@field branch string Current branch name
 ---@field oid string Current commit OID
----@field upstream? string Upstream branch name
+---@field upstream? string Upstream branch name (merge remote)
 ---@field ahead number Commits ahead of upstream
 ---@field behind number Commits behind upstream
 ---@field staged GitStatusEntry[] Staged files
 ---@field unstaged GitStatusEntry[] Unstaged files
 ---@field untracked GitStatusEntry[] Untracked files
 ---@field conflicted GitStatusEntry[] Files with conflicts
+---@field head_commit_msg? string HEAD commit subject
+---@field merge_commit_msg? string Upstream commit subject
+---@field push_remote? string Push remote ref (e.g., "origin/feature")
+---@field push_ahead number Commits ahead of push remote
+---@field push_behind number Commits behind push remote
+---@field push_commit_msg? string Push remote commit subject
+---@field unpulled_upstream GitCommitInfo[] Commits to pull from upstream
+---@field unpushed_upstream GitCommitInfo[] Commits to push to upstream
+---@field unpulled_push GitCommitInfo[] Commits to pull from push remote
+---@field unpushed_push GitCommitInfo[] Commits to push to push remote
 
 -- Status codes from git status --porcelain=v2
 local STATUS_CODES = {
@@ -50,6 +60,17 @@ function M.parse_status(lines)
     unstaged = {},
     untracked = {},
     conflicted = {},
+    -- Extended fields (populated by refresh_status)
+    head_commit_msg = nil,
+    merge_commit_msg = nil,
+    push_remote = nil,
+    push_ahead = 0,
+    push_behind = 0,
+    push_commit_msg = nil,
+    unpulled_upstream = {},
+    unpushed_upstream = {},
+    unpulled_push = {},
+    unpushed_push = {},
   }
 
   for _, line in ipairs(lines) do
@@ -162,6 +183,10 @@ function M.status_description(code)
   return STATUS_CODES[code] or "unknown"
 end
 
+---@class GitCommitInfo
+---@field hash string Short commit hash
+---@field subject string Commit subject line
+
 ---@class GitRemote
 ---@field name string Remote name (e.g., "origin")
 ---@field fetch_url string Fetch URL
@@ -202,6 +227,42 @@ function M.parse_remotes(lines)
   end
 
   return remotes
+end
+
+--- Parse git log --oneline output
+---@param lines string[] Output lines from git log --oneline
+---@return GitCommitInfo[]
+function M.parse_log_oneline(lines)
+  local commits = {}
+
+  for _, line in ipairs(lines) do
+    -- Format: "<hash> <subject>" (space separated, hash is first word)
+    local hash, subject = line:match("^(%S+)%s+(.*)$")
+    if hash then
+      table.insert(commits, {
+        hash = hash,
+        subject = subject or "",
+      })
+    end
+  end
+
+  return commits
+end
+
+--- Parse git branch -r output (remote branches)
+---@param lines string[] Output lines from git branch -r
+---@return string[] Array of remote branch names (e.g., "origin/main")
+function M.parse_remote_branches(lines)
+  local branches = {}
+  for _, line in ipairs(lines) do
+    -- Format: "  origin/main" or "  origin/HEAD -> origin/main"
+    local trimmed = vim.trim(line)
+    -- Skip HEAD pointers
+    if not trimmed:match("^%S+/HEAD%s*->") then
+      table.insert(branches, trimmed)
+    end
+  end
+  return branches
 end
 
 return M

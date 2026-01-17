@@ -888,20 +888,64 @@ function StatusBuffer:render()
     end
   end
 
+  -- Helper to render a commit section
+  local function add_commit_section(title, commits)
+    if #commits > 0 then
+      table.insert(lines, string.format("%s (%d)", title, #commits))
+      for _, commit in ipairs(commits) do
+        table.insert(lines, string.format("  %s %s", commit.hash, commit.subject))
+      end
+      table.insert(lines, "")
+    end
+  end
+
   -- Header
-  local head_line = string.format("Head:     %s", status.branch)
+  local head_line = "Head:     " .. status.branch
+  if status.head_commit_msg then
+    head_line = head_line .. "  " .. status.head_commit_msg
+  end
   if self.repo_state.refreshing then
     head_line = head_line .. "  (Refreshing...)"
   end
   table.insert(lines, head_line)
+
+  -- Merge (upstream) line
   if status.upstream then
-    local ahead_behind = ""
-    if status.ahead > 0 or status.behind > 0 then
-      ahead_behind = string.format(" [+%d/-%d]", status.ahead, status.behind)
+    local merge_line = "Merge:    " .. status.upstream
+    if status.merge_commit_msg then
+      merge_line = merge_line .. "  " .. status.merge_commit_msg
     end
-    table.insert(lines, string.format("Upstream: %s%s", status.upstream, ahead_behind))
+    if status.ahead > 0 or status.behind > 0 then
+      merge_line = merge_line .. string.format(" [+%d/-%d]", status.ahead, status.behind)
+    end
+    table.insert(lines, merge_line)
   end
+
+  -- Push line (only if different from merge)
+  if status.push_remote then
+    local push_line = "Push:     " .. status.push_remote
+    if status.push_commit_msg then
+      push_line = push_line .. "  " .. status.push_commit_msg
+    end
+    if status.push_ahead > 0 or status.push_behind > 0 then
+      push_line = push_line .. string.format(" [+%d/-%d]", status.push_ahead, status.push_behind)
+    end
+    table.insert(lines, push_line)
+  end
+
   table.insert(lines, "")
+
+  -- Unmerged/Unpulled sections for upstream (merge branch)
+  if status.upstream then
+    add_commit_section("Unpulled from " .. status.upstream, status.unpulled_upstream or {})
+    add_commit_section("Unmerged into " .. status.upstream, status.unpushed_upstream or {})
+  end
+
+  -- Unpulled/Unpushed sections for push remote (if different)
+  if status.push_remote then
+    add_commit_section("Unpulled from " .. status.push_remote, status.unpulled_push or {})
+    add_commit_section("Unpushed to " .. status.push_remote, status.unpushed_push or {})
+  end
 
   -- Staged changes
   if #status.staged > 0 then
