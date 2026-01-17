@@ -121,6 +121,118 @@ function RepoState:apply_command(cmd)
   self:_notify("status")
 end
 
+--- Fetch extended status data (commit messages, unpushed/unpulled lists)
+---@param result GitStatusResult The base status result to extend
+---@param callback fun(result: GitStatusResult) Callback with extended result
+function RepoState:_fetch_extended_status(result, callback)
+  local opts = { cwd = self.repo_root }
+
+  -- Counter to track parallel operations
+  local pending = 0
+  local function complete_one()
+    pending = pending - 1
+    if pending == 0 then
+      callback(result)
+    end
+  end
+
+  -- Helper to start a parallel operation
+  local function start_op()
+    pending = pending + 1
+  end
+
+  -- 1. Fetch HEAD commit message
+  start_op()
+  git.get_commit_subject("HEAD", opts, function(subject, _err)
+    result.head_commit_msg = subject
+    complete_one()
+  end)
+
+  -- 2. If upstream exists, fetch upstream commit message and commit lists
+  if result.upstream then
+    -- Fetch upstream commit message
+    start_op()
+    git.get_commit_subject(result.upstream, opts, function(subject, _err)
+      result.merge_commit_msg = subject
+      complete_one()
+    end)
+
+    -- Fetch unpulled commits (commits in upstream but not in HEAD)
+    start_op()
+    git.get_commits_between("HEAD", result.upstream, opts, function(commits, _err)
+      result.unpulled_upstream = commits or {}
+      complete_one()
+    end)
+
+    -- Fetch unpushed commits (commits in HEAD but not in upstream)
+    start_op()
+    git.get_commits_between(result.upstream, "HEAD", opts, function(commits, _err)
+      result.unpushed_upstream = commits or {}
+      complete_one()
+    end)
+  end
+
+  -- 3. Determine push destination
+  -- Push goes to <push-remote>/<branch-name> where push-remote is:
+  --   1. branch.<name>.pushRemote (explicit config)
+  --   2. remote.pushDefault (global default)
+  --   3. branch.<name>.remote (derived from upstream, e.g., "origin/main" -> "origin")
+  start_op()
+  git.get_push_remote(result.branch, opts, function(explicit_push_remote, _err)
+    local push_remote_name = explicit_push_remote
+
+    -- If no explicit push remote, derive from upstream remote
+    if (not push_remote_name or push_remote_name == "") and result.upstream then
+      -- Extract remote name from upstream (e.g., "origin/main" -> "origin")
+      push_remote_name = result.upstream:match("^([^/]+)/")
+    end
+
+    if not push_remote_name or push_remote_name == "" then
+      -- No way to determine push remote
+      complete_one()
+      return
+    end
+
+    -- Construct push ref (e.g., "origin/feature-branch")
+    local push_ref = push_remote_name .. "/" .. result.branch
+
+    -- Only show Push line if it differs from upstream
+    if result.upstream and push_ref == result.upstream then
+      -- Same as upstream, no need to show separately
+      complete_one()
+      return
+    end
+
+    result.push_remote = push_ref
+
+    -- Check if the push ref exists on remote (branch might not be pushed yet)
+    start_op()
+    git.get_commit_subject(push_ref, opts, function(subject, err)
+      if not err and subject and subject ~= "" then
+        result.push_commit_msg = subject
+
+        -- Only fetch ahead/behind if the remote branch exists
+        start_op()
+        git.get_commits_between("HEAD", push_ref, opts, function(commits, _err)
+          result.unpulled_push = commits or {}
+          result.push_behind = #(commits or {})
+          complete_one()
+        end)
+
+        start_op()
+        git.get_commits_between(push_ref, "HEAD", opts, function(commits, _err)
+          result.unpushed_push = commits or {}
+          result.push_ahead = #(commits or {})
+          complete_one()
+        end)
+      end
+      complete_one()
+    end)
+
+    complete_one()
+  end)
+end
+
 --- Refresh status (async with request ordering)
 ---@param force? boolean Force refresh even if cache valid
 function RepoState:refresh_status(force)
@@ -147,12 +259,17 @@ function RepoState:refresh_status(force)
         return
       end
 
-      -- Cache the result
-      if result then
-        self.cache:set("status", self.git_dir, result)
+      if not result then
+        done(nil)
+        return
       end
 
-      done(result)
+      -- Fetch extended status data (commit messages, unpushed/unpulled)
+      self:_fetch_extended_status(result, function(extended_result)
+        -- Cache the extended result
+        self.cache:set("status", self.git_dir, extended_result)
+        done(extended_result)
+      end)
     end)
   end)
 end

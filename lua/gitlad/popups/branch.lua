@@ -80,6 +80,14 @@ function M.open(repo_state)
     :action("D", "Delete", function(popup_data)
       M._delete_branch(repo_state, popup_data)
     end)
+    -- Actions - Configure group
+    :group_heading("Configure")
+    :action("u", "Set upstream", function(popup_data)
+      M._set_upstream(repo_state, popup_data)
+    end)
+    :action("r", "Configure push remote", function(popup_data)
+      M._set_push_remote(repo_state, popup_data)
+    end)
     :build()
 
   branch_popup:show()
@@ -276,6 +284,118 @@ function M._rename_branch(repo_state, _popup_data)
             end
           )
         end)
+      end)
+    end)
+  end)
+end
+
+--- Set upstream (tracking branch) for current branch
+---@param repo_state RepoState
+---@param _popup_data PopupData
+function M._set_upstream(repo_state, _popup_data)
+  local current_branch = get_current_branch(repo_state)
+  if not current_branch then
+    vim.notify("[gitlad] No current branch", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Get list of remote branches
+  git.remote_branches({ cwd = repo_state.repo_root }, function(branches, err)
+    vim.schedule(function()
+      if err then
+        vim.notify("[gitlad] Failed to get remote branches: " .. err, vim.log.levels.ERROR)
+        return
+      end
+
+      if not branches or #branches == 0 then
+        vim.notify("[gitlad] No remote branches found", vim.log.levels.WARN)
+        return
+      end
+
+      vim.ui.select(branches, {
+        prompt = "Set upstream for '" .. current_branch .. "':",
+      }, function(choice)
+        if not choice then
+          return
+        end
+
+        git.set_upstream(
+          current_branch,
+          choice,
+          { cwd = repo_state.repo_root },
+          function(success, set_err)
+            vim.schedule(function()
+              if success then
+                vim.notify(
+                  "[gitlad] Set upstream of '" .. current_branch .. "' to '" .. choice .. "'",
+                  vim.log.levels.INFO
+                )
+                repo_state:refresh_status(true)
+              else
+                vim.notify(
+                  "[gitlad] Set upstream failed: " .. (set_err or "unknown error"),
+                  vim.log.levels.ERROR
+                )
+              end
+            end)
+          end
+        )
+      end)
+    end)
+  end)
+end
+
+--- Set push remote for current branch
+---@param repo_state RepoState
+---@param _popup_data PopupData
+function M._set_push_remote(repo_state, _popup_data)
+  local current_branch = get_current_branch(repo_state)
+  if not current_branch then
+    vim.notify("[gitlad] No current branch", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Get list of remotes
+  git.remote_names({ cwd = repo_state.repo_root }, function(remotes, err)
+    vim.schedule(function()
+      if err then
+        vim.notify("[gitlad] Failed to get remotes: " .. err, vim.log.levels.ERROR)
+        return
+      end
+
+      if not remotes or #remotes == 0 then
+        vim.notify("[gitlad] No remotes configured", vim.log.levels.WARN)
+        return
+      end
+
+      vim.ui.select(remotes, {
+        prompt = "Set push remote for '" .. current_branch .. "':",
+      }, function(choice)
+        if not choice then
+          return
+        end
+
+        git.set_push_remote(
+          current_branch,
+          choice,
+          { cwd = repo_state.repo_root },
+          function(success, set_err)
+            vim.schedule(function()
+              if success then
+                vim.notify(
+                  "[gitlad] Set push remote of '" .. current_branch .. "' to '" .. choice .. "'",
+                  vim.log.levels.INFO
+                )
+                repo_state:refresh_status(true)
+              else
+                vim.notify(
+                  "[gitlad] Set push remote failed: " .. (set_err or "unknown error"),
+                  vim.log.levels.ERROR
+                )
+              end
+            end)
+          end
+        )
       end)
     end)
   end)
