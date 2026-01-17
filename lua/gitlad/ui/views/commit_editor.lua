@@ -8,6 +8,7 @@ local M = {}
 
 local git = require("gitlad.git")
 local config = require("gitlad.config")
+local keymap_util = require("gitlad.utils.keymap")
 
 ---@class CommitEditorState
 ---@field bufnr number Buffer number
@@ -246,34 +247,22 @@ end
 --- Set up keymaps for the commit editor buffer
 ---@param bufnr number
 local function setup_keymaps(bufnr)
-  local opts = { buffer = bufnr, silent = true }
-
   -- C-c C-c to commit
-  vim.keymap.set(
-    "n",
-    "<C-c><C-c>",
-    do_commit,
-    vim.tbl_extend("force", opts, { desc = "Confirm commit" })
-  )
-  vim.keymap.set("i", "<C-c><C-c>", function()
+  keymap_util.set(bufnr, "n", "<C-c><C-c>", do_commit, "Confirm commit")
+  keymap_util.set(bufnr, "i", "<C-c><C-c>", function()
     vim.cmd("stopinsert")
     do_commit()
-  end, vim.tbl_extend("force", opts, { desc = "Confirm commit" }))
+  end, "Confirm commit")
 
   -- C-c C-k to abort
-  vim.keymap.set(
-    "n",
-    "<C-c><C-k>",
-    abort_commit,
-    vim.tbl_extend("force", opts, { desc = "Abort commit" })
-  )
-  vim.keymap.set("i", "<C-c><C-k>", function()
+  keymap_util.set(bufnr, "n", "<C-c><C-k>", abort_commit, "Abort commit")
+  keymap_util.set(bufnr, "i", "<C-c><C-k>", function()
     vim.cmd("stopinsert")
     abort_commit()
-  end, vim.tbl_extend("force", opts, { desc = "Abort commit" }))
+  end, "Abort commit")
 
   -- q to abort (when not in insert mode)
-  vim.keymap.set("n", "q", abort_commit, vim.tbl_extend("force", opts, { desc = "Abort commit" }))
+  keymap_util.set(bufnr, "n", "q", abort_commit, "Abort commit")
 end
 
 --- Open the commit editor

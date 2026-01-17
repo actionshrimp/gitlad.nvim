@@ -11,6 +11,7 @@ local async = require("gitlad.state.async")
 local git = require("gitlad.git")
 local commands = require("gitlad.state.commands")
 local reducer = require("gitlad.state.reducer")
+local errors = require("gitlad.utils.errors")
 
 ---@class RepoState
 ---@field git_dir string Path to .git directory
@@ -141,7 +142,7 @@ function RepoState:refresh_status(force)
   self.status_handler:dispatch(function(done)
     git.status({ cwd = self.repo_root }, function(result, err)
       if err then
-        vim.notify("[gitlad] Status error: " .. err, vim.log.levels.ERROR)
+        errors.notify("Status", err)
         done(nil)
         return
       end
@@ -169,7 +170,7 @@ function RepoState:get_status_sync(force)
 
   local result, err = git.status_sync({ cwd = self.repo_root })
   if err then
-    vim.notify("[gitlad] Status error: " .. err, vim.log.levels.ERROR)
+    errors.notify("Status", err)
     return nil
   end
 
@@ -188,7 +189,7 @@ end
 function RepoState:stage(path, section, callback)
   git.stage(path, { cwd = self.repo_root }, function(success, err)
     if not success then
-      vim.notify("[gitlad] Stage error: " .. (err or "unknown"), vim.log.levels.ERROR)
+      errors.notify("Stage", err)
     else
       -- Optimistic update: apply command to state
       local cmd = commands.stage_file(path, section)
@@ -206,7 +207,7 @@ end
 function RepoState:unstage(path, callback)
   git.unstage(path, { cwd = self.repo_root }, function(success, err)
     if not success then
-      vim.notify("[gitlad] Unstage error: " .. (err or "unknown"), vim.log.levels.ERROR)
+      errors.notify("Unstage", err)
     else
       -- Optimistic update: apply command to state
       local cmd = commands.unstage_file(path)
@@ -223,7 +224,7 @@ end
 function RepoState:stage_all(callback)
   git.stage_all({ cwd = self.repo_root }, function(success, err)
     if not success then
-      vim.notify("[gitlad] Stage all error: " .. (err or "unknown"), vim.log.levels.ERROR)
+      errors.notify("Stage all", err)
     else
       -- Optimistic update: apply command to state
       local cmd = commands.stage_all()
@@ -240,7 +241,7 @@ end
 function RepoState:unstage_all(callback)
   git.unstage_all({ cwd = self.repo_root }, function(success, err)
     if not success then
-      vim.notify("[gitlad] Unstage all error: " .. (err or "unknown"), vim.log.levels.ERROR)
+      errors.notify("Unstage all", err)
     else
       -- Optimistic update: apply command to state
       local cmd = commands.unstage_all()
@@ -259,9 +260,9 @@ end
 function RepoState:discard(path, section, callback)
   if section == "untracked" then
     -- Delete the untracked file
-    git.delete_untracked(path, self.repo_root, function(success, err)
+    git.delete_untracked(path, { cwd = self.repo_root }, function(success, err)
       if not success then
-        vim.notify("[gitlad] Delete error: " .. (err or "unknown"), vim.log.levels.ERROR)
+        errors.notify("Delete", err)
       else
         -- Optimistic update: remove from state
         local cmd = commands.remove_file(path, section)
@@ -275,7 +276,7 @@ function RepoState:discard(path, section, callback)
     -- Discard changes with git checkout
     git.discard(path, { cwd = self.repo_root }, function(success, err)
       if not success then
-        vim.notify("[gitlad] Discard error: " .. (err or "unknown"), vim.log.levels.ERROR)
+        errors.notify("Discard", err)
       else
         -- Optimistic update: remove from state
         local cmd = commands.remove_file(path, section)

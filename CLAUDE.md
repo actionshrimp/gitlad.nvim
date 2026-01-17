@@ -164,6 +164,7 @@ lua/gitlad/
 ├── init.lua              # Entry point, setup()
 ├── config.lua            # User configuration
 ├── commands.lua          # :Gitlad command dispatcher
+├── constants.lua         # Shared constants (section types, etc.)
 ├── git/
 │   ├── init.lua          # High-level git operations
 │   ├── cli.lua           # Async job execution (vim.fn.jobstart)
@@ -175,6 +176,10 @@ lua/gitlad/
 │   ├── reducer.lua       # Pure state reducer (commands → state)
 │   ├── cache.lua         # Timestamp-based cache utilities
 │   └── async.lua         # AsyncHandler, debounce, throttle
+├── utils/
+│   ├── init.lua          # Utility module index
+│   ├── errors.lua        # Centralized error handling
+│   └── keymap.lua        # Buffer-local keymap helpers
 ├── popups/
 │   └── commit.lua        # Commit popup with switches/options/actions
 └── ui/
@@ -223,6 +228,11 @@ lua/gitlad/
    - Fluent API for building transient-style popups
    - Switches (boolean), options (key-value), actions (callbacks)
    - Used for commit popup, will be used for all git operation popups
+
+8. **Utility Modules** (`utils/`)
+   - `errors.lua`: Centralized error handling (`result_to_callback`, `notify`)
+   - `keymap.lua`: Simplified buffer-local keymap setup
+   - Reduces duplication and ensures consistent patterns across codebase
 
 ## Keybindings (Magit-Style)
 
