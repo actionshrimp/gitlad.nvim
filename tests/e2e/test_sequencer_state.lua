@@ -9,7 +9,7 @@ local function create_test_repo(child)
     [[
     local repo = %q
     vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
+    vim.fn.system("git -C " .. repo .. " init -b main")
     vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
     vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
   ]],
