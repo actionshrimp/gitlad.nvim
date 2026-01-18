@@ -11,6 +11,7 @@ M.SECTION = {
   UNSTAGED = "unstaged",
   UNTRACKED = "untracked",
   CONFLICTED = "conflicted",
+  STASHES = "stashes",
 }
 
 return M

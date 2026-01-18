@@ -37,6 +37,8 @@ local M = {}
 ---@field revert_in_progress? boolean Whether a revert is in progress
 ---@field sequencer_head_oid? string OID of the commit being cherry-picked/reverted
 ---@field sequencer_head_subject? string Subject of the commit being cherry-picked/reverted
+---@field stashes StashEntry[] Recent stashes (populated by refresh_status)
+---@field recent_commits GitCommitInfo[] Recent commits (populated by refresh_status)
 
 -- Status codes from git status --porcelain=v2
 local STATUS_CODES = {
