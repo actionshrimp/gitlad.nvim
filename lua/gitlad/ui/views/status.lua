@@ -207,6 +207,14 @@ function StatusBuffer:_setup_keymaps()
     local log_popup = require("gitlad.popups.log")
     log_popup.open(self.repo_state)
   end, "Log popup")
+
+  -- Commit operations (works on commits in unpulled/unpushed/recent sections)
+  keymap.set(bufnr, "n", "d", function()
+    self:_diff_commit()
+  end, "Show commit diff")
+  keymap.set(bufnr, "n", "y", function()
+    self:_yank_commit_hash()
+  end, "Yank commit hash")
 end
 
 --- Get the file path at the current cursor position
@@ -259,6 +267,37 @@ function StatusBuffer:_get_selected_commits()
     end
   end
   return {}
+end
+
+--- Show commit diff via diffview.nvim (or fallback)
+function StatusBuffer:_diff_commit()
+  local commit = self:_get_current_commit()
+  if not commit then
+    return
+  end
+
+  -- Check if diffview is available
+  local has_diffview, diffview = pcall(require, "diffview")
+  if has_diffview then
+    diffview.open({ commit.hash .. "^!" })
+  else
+    -- Fallback to git show in a split
+    vim.cmd("botright split")
+    vim.cmd("terminal git show " .. commit.hash)
+    vim.cmd("startinsert")
+  end
+end
+
+--- Yank commit hash to clipboard
+function StatusBuffer:_yank_commit_hash()
+  local commit = self:_get_current_commit()
+  if not commit then
+    return
+  end
+
+  vim.fn.setreg("+", commit.hash)
+  vim.fn.setreg('"', commit.hash)
+  vim.notify("[gitlad] Yanked: " .. commit.hash, vim.log.levels.INFO)
 end
 
 --- Get the cache key for a file's diff
@@ -813,14 +852,19 @@ end
 --- Visit the file at cursor
 function StatusBuffer:_visit_file()
   local path = self:_get_current_file()
-  if not path then
+  if path then
+    local full_path = self.repo_state.repo_root .. path
+    -- Close status and open file
+    self:close()
+    vim.cmd("edit " .. vim.fn.fnameescape(full_path))
     return
   end
 
-  local full_path = self.repo_state.repo_root .. path
-  -- Close status and open file
-  self:close()
-  vim.cmd("edit " .. vim.fn.fnameescape(full_path))
+  -- If not on a file, check if on a commit - toggle expand
+  local commit = self:_get_current_commit()
+  if commit then
+    self:_toggle_diff()
+  end
 end
 
 --- Stage all unstaged and untracked files

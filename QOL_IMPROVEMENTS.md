@@ -11,9 +11,11 @@ This document tracks Quality of Life improvements being worked on.
 - Matches magit's typical section ordering
 
 ### 2. Support log keybinds on status buffer commits
-**Status:** Pending
-- Commits shown in status buffer (recent commits, unpushed, unpulled) should support the same keybinds as the full log view
-- e.g., viewing commit details, cherry-pick, revert, etc.
+**Status:** Complete
+- Added `d` keybind to show commit diff (via diffview.nvim or fallback to terminal)
+- Added `y` keybind to yank commit hash to clipboard
+- `<CR>` now toggles commit expansion when on a commit line (same as `<Tab>`)
+- Works on commits in unpulled/unpushed/recent sections
 
 ### 3. Make section headers bold and standout
 **Status:** Pending
