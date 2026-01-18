@@ -1442,7 +1442,7 @@ function StatusBuffer:render()
 
     if not is_collapsed then
       for _, stash in ipairs(status.stashes) do
-        table.insert(lines, string.format("  %s %s", stash.ref, stash.message))
+        table.insert(lines, string.format("%s %s", stash.ref, stash.message))
         self.line_map[#lines] = {
           type = "stash",
           stash = stash,
