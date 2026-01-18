@@ -325,10 +325,25 @@ Transient-style popup system inspired by neogit/magit:
 - [ ] Navigate to commit from blame line
 - [ ] Blame at specific revision
 
-### 4.4 Cherry-pick & Revert
-- [ ] `A` cherry-pick popup
-- [ ] `V` revert popup
-- [ ] Handle conflicts
+### 4.4 Cherry-pick & Revert (COMPLETE)
+- [x] `A` cherry-pick popup
+- [x] `_` revert popup (uses `_` like evil-collection-magit - "subtracting" a commit)
+- [x] Handle conflicts (in-progress state detection)
+- [x] Status header shows "Cherry-picking: <hash> <subject>" or "Reverting: <hash> <subject>"
+
+**Files created/modified:**
+- `lua/gitlad/git/init.lua` - cherry_pick, revert, get_sequencer_state functions
+- `lua/gitlad/popups/cherrypick.lua` - Cherry-pick popup with switches/options/actions
+- `lua/gitlad/popups/revert.lua` - Revert popup with switches/options/actions
+- `lua/gitlad/ui/views/status.lua` - Added keybindings, sequencer state in header
+- `lua/gitlad/popups/help.lua` - Added help entries
+- `lua/gitlad/git/parse.lua` - Extended GitStatusResult with sequencer fields
+- `lua/gitlad/state/init.lua` - Fetch sequencer state during refresh
+- `lua/gitlad/state/reducer.lua` - Copy sequencer fields in reducer
+- `tests/unit/test_cherrypick_popup.lua` - Cherry-pick popup tests
+- `tests/unit/test_revert_popup.lua` - Revert popup tests
+- `tests/e2e/test_cherrypick.lua` - E2E tests for cherry-pick and revert
+- `tests/e2e/test_sequencer_state.lua` - Sequencer state detection tests
 
 ---
 

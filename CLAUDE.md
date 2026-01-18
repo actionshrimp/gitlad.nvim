@@ -275,7 +275,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `r` | Rebase |
 | `z` | Stash |
 | `A` | Cherry-pick |
-| `V` | Revert |
+| `_` | Revert |
 | `t` | Tag |
 | `!` | Run git command |
 

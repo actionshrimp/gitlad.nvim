@@ -693,4 +693,146 @@ function M.get_upstream(branch, opts, callback)
   end)
 end
 
+--- Cherry-pick one or more commits
+---@param commits string[] Commit hashes to cherry-pick
+---@param args string[] Extra arguments (from popup switches, e.g., {"-x", "--signoff"})
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.cherry_pick(commits, args, opts, callback)
+  local cherry_pick_args = { "cherry-pick" }
+  vim.list_extend(cherry_pick_args, args)
+  vim.list_extend(cherry_pick_args, commits)
+
+  cli.run_async(cherry_pick_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Continue an in-progress cherry-pick
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.cherry_pick_continue(opts, callback)
+  cli.run_async({ "cherry-pick", "--continue" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Abort an in-progress cherry-pick
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.cherry_pick_abort(opts, callback)
+  cli.run_async({ "cherry-pick", "--abort" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Skip the current commit during cherry-pick
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.cherry_pick_skip(opts, callback)
+  cli.run_async({ "cherry-pick", "--skip" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Revert one or more commits
+---@param commits string[] Commit hashes to revert
+---@param args string[] Extra arguments (from popup switches, e.g., {"--no-edit", "--signoff"})
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.revert(commits, args, opts, callback)
+  local revert_args = { "revert" }
+  vim.list_extend(revert_args, args)
+  vim.list_extend(revert_args, commits)
+
+  cli.run_async(revert_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Continue an in-progress revert
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.revert_continue(opts, callback)
+  cli.run_async({ "revert", "--continue" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Abort an in-progress revert
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.revert_abort(opts, callback)
+  cli.run_async({ "revert", "--abort" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Skip the current commit during revert
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.revert_skip(opts, callback)
+  cli.run_async({ "revert", "--skip" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+---@class SequencerState
+---@field cherry_pick_in_progress boolean
+---@field revert_in_progress boolean
+---@field sequencer_head_oid string|nil The commit being cherry-picked/reverted
+
+--- Check if a cherry-pick or revert is in progress
+---@param opts? GitCommandOptions
+---@param callback fun(state: SequencerState)
+function M.get_sequencer_state(opts, callback)
+  local git_dir = cli.find_git_dir(opts and opts.cwd or nil)
+  if not git_dir then
+    callback({
+      cherry_pick_in_progress = false,
+      revert_in_progress = false,
+      sequencer_head_oid = nil,
+    })
+    return
+  end
+
+  local state = {
+    cherry_pick_in_progress = false,
+    revert_in_progress = false,
+    sequencer_head_oid = nil,
+  }
+
+  -- Check for CHERRY_PICK_HEAD
+  local cherry_pick_head = git_dir .. "/CHERRY_PICK_HEAD"
+  if vim.fn.filereadable(cherry_pick_head) == 1 then
+    state.cherry_pick_in_progress = true
+    local content = vim.fn.readfile(cherry_pick_head)
+    if content[1] then
+      state.sequencer_head_oid = content[1]:match("^(%x+)")
+    end
+    callback(state)
+    return
+  end
+
+  -- Check for REVERT_HEAD
+  local revert_head = git_dir .. "/REVERT_HEAD"
+  if vim.fn.filereadable(revert_head) == 1 then
+    state.revert_in_progress = true
+    local content = vim.fn.readfile(revert_head)
+    if content[1] then
+      state.sequencer_head_oid = content[1]:match("^(%x+)")
+    end
+    callback(state)
+    return
+  end
+
+  callback(state)
+end
+
 return M

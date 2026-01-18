@@ -233,6 +233,22 @@ function StatusBuffer:_setup_keymaps()
     local stash_popup = require("gitlad.popups.stash")
     stash_popup.open(self.repo_state)
   end, "Stash popup")
+
+  -- Cherry-pick popup
+  keymap.set(bufnr, "n", "A", function()
+    local cherrypick_popup = require("gitlad.popups.cherrypick")
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    cherrypick_popup.open(self.repo_state, context)
+  end, "Cherry-pick popup")
+
+  -- Revert popup (evil-collection-magit uses '_' - you're "subtracting" a commit)
+  keymap.set(bufnr, "n", "_", function()
+    local revert_popup = require("gitlad.popups.revert")
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    revert_popup.open(self.repo_state, context)
+  end, "Revert popup")
 end
 
 --- Get the file path at the current cursor position
@@ -1246,6 +1262,23 @@ function StatusBuffer:render()
       push_line = push_line .. string.format(" [+%d/-%d]", status.push_ahead, status.push_behind)
     end
     table.insert(lines, push_line)
+  end
+
+  -- Sequencer state (cherry-pick/revert in progress)
+  if status.cherry_pick_in_progress then
+    local short_oid = status.sequencer_head_oid and status.sequencer_head_oid:sub(1, 7) or "unknown"
+    local seq_line = "Cherry-picking: " .. short_oid
+    if status.sequencer_head_subject then
+      seq_line = seq_line .. " " .. status.sequencer_head_subject
+    end
+    table.insert(lines, seq_line)
+  elseif status.revert_in_progress then
+    local short_oid = status.sequencer_head_oid and status.sequencer_head_oid:sub(1, 7) or "unknown"
+    local seq_line = "Reverting: " .. short_oid
+    if status.sequencer_head_subject then
+      seq_line = seq_line .. " " .. status.sequencer_head_subject
+    end
+    table.insert(lines, seq_line)
   end
 
   table.insert(lines, "")
