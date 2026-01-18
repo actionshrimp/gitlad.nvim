@@ -1206,4 +1206,174 @@ T["recent commits"]["shows Recent commits section when no upstream"] = function(
   assert_truthy(recent_line, "Should show Recent commits section when no upstream")
 end
 
+-- =============================================================================
+-- Section-Level Staging Tests
+-- =============================================================================
+
+T["section staging"] = MiniTest.new_set()
+
+T["section staging"]["s on Untracked header stages all untracked files"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create multiple untracked files
+  create_file(child, repo, "new1.txt", "content1")
+  create_file(child, repo, "new2.txt", "content2")
+  create_file(child, repo, "new3.txt", "content3")
+
+  open_gitlad(child, repo)
+
+  -- Find and go to the Untracked section header
+  local lines = get_buffer_lines(child)
+  local untracked_header = find_line_with(lines, "Untracked")
+  assert_truthy(untracked_header, "Should have Untracked section")
+
+  -- Go to the section header and press 's' to stage the entire section
+  child.cmd(tostring(untracked_header))
+  child.type_keys("s")
+  wait(child, 200)
+
+  -- Verify all files are now staged
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("A  new1.txt"), "new1.txt should be staged")
+  assert_truthy(status:find("A  new2.txt"), "new2.txt should be staged")
+  assert_truthy(status:find("A  new3.txt"), "new3.txt should be staged")
+  eq(status:find("%?%?"), nil, "No untracked files should remain")
+end
+
+T["section staging"]["s on Unstaged header stages all unstaged files"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create and commit files
+  create_file(child, repo, "file1.txt", "original1")
+  create_file(child, repo, "file2.txt", "original2")
+  create_file(child, repo, "file3.txt", "original3")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Modify all files without staging
+  create_file(child, repo, "file1.txt", "modified1")
+  create_file(child, repo, "file2.txt", "modified2")
+  create_file(child, repo, "file3.txt", "modified3")
+
+  open_gitlad(child, repo)
+
+  -- Find and go to the Unstaged section header
+  local lines = get_buffer_lines(child)
+  local unstaged_header = find_line_with(lines, "Unstaged")
+  assert_truthy(unstaged_header, "Should have Unstaged section")
+
+  -- Go to the section header and press 's' to stage the entire section
+  child.cmd(tostring(unstaged_header))
+  child.type_keys("s")
+  wait(child, 200)
+
+  -- Verify all files are now staged
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("M  file1.txt"), "file1.txt should be staged")
+  assert_truthy(status:find("M  file2.txt"), "file2.txt should be staged")
+  assert_truthy(status:find("M  file3.txt"), "file3.txt should be staged")
+  eq(status:find(" M "), nil, "No unstaged modified files should remain")
+end
+
+T["section staging"]["u on Staged header unstages all staged files"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Stage multiple new files
+  create_file(child, repo, "staged1.txt", "content1")
+  create_file(child, repo, "staged2.txt", "content2")
+  create_file(child, repo, "staged3.txt", "content3")
+  git(child, repo, "add .")
+
+  open_gitlad(child, repo)
+
+  -- Find and go to the Staged section header
+  local lines = get_buffer_lines(child)
+  local staged_header = find_line_with(lines, "Staged")
+  assert_truthy(staged_header, "Should have Staged section")
+
+  -- Go to the section header and press 'u' to unstage the entire section
+  child.cmd(tostring(staged_header))
+  child.type_keys("u")
+  wait(child, 200)
+
+  -- Verify all files are now untracked
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("%?%? staged1.txt"), "staged1.txt should be untracked")
+  assert_truthy(status:find("%?%? staged2.txt"), "staged2.txt should be untracked")
+  assert_truthy(status:find("%?%? staged3.txt"), "staged3.txt should be untracked")
+  eq(status:find("A "), nil, "No staged files should remain")
+end
+
+T["section staging"]["s on Staged header does nothing"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Stage a file
+  create_file(child, repo, "staged.txt", "content")
+  git(child, repo, "add staged.txt")
+
+  open_gitlad(child, repo)
+
+  -- Find and go to the Staged section header
+  local lines = get_buffer_lines(child)
+  local staged_header = find_line_with(lines, "Staged")
+  assert_truthy(staged_header, "Should have Staged section")
+
+  -- Go to the section header and press 's' (should do nothing)
+  child.cmd(tostring(staged_header))
+  child.type_keys("s")
+  wait(child, 200)
+
+  -- Verify file is still staged (unchanged)
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("A  staged.txt"), "staged.txt should still be staged")
+end
+
+T["section staging"]["u on Unstaged header does nothing"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create and commit a file
+  create_file(child, repo, "file.txt", "original")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Modify without staging
+  create_file(child, repo, "file.txt", "modified")
+
+  open_gitlad(child, repo)
+
+  -- Find and go to the Unstaged section header
+  local lines = get_buffer_lines(child)
+  local unstaged_header = find_line_with(lines, "Unstaged")
+  assert_truthy(unstaged_header, "Should have Unstaged section")
+
+  -- Go to the section header and press 'u' (should do nothing)
+  child.cmd(tostring(unstaged_header))
+  child.type_keys("u")
+  wait(child, 200)
+
+  -- Verify file is still unstaged (unchanged)
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find(" M file.txt"), "file.txt should still be unstaged")
+end
+
 return T
