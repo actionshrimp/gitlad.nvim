@@ -495,4 +495,24 @@ function M.log_detailed(args, opts, callback)
   end)
 end
 
+--- Get commit message body
+---@param hash string Commit hash
+---@param opts? GitCommandOptions
+---@param callback fun(body: string|nil, err: string|nil)
+function M.show_commit(hash, opts, callback)
+  -- Get just the commit body (message after subject)
+  local args = { "log", "-1", "--format=%b", hash }
+
+  cli.run_async(args, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    local body = table.concat(result.stdout, "\n")
+    -- Trim trailing whitespace
+    body = body:gsub("%s+$", "")
+    callback(body ~= "" and body or nil, nil)
+  end)
+end
+
 return M
