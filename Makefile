@@ -1,4 +1,4 @@
-.PHONY: test test-unit test-e2e deps lint dev test-repo dev-repo setup-gh
+.PHONY: test test-unit test-e2e test-e2e-sequential deps lint dev test-repo dev-repo setup-gh
 
 # Run plugin in development mode
 dev:
@@ -12,16 +12,25 @@ test-repo:
 dev-repo: test-repo
 	cd /tmp/gitlad-test-repo && nvim -u $(CURDIR)/dev/init.lua
 
-# Run all tests
-test: deps
-	nvim --headless -u tests/minimal_init.lua -c "lua require('mini.test').setup(); MiniTest.run()" -c "qa!"
+# Run all tests (unit sequential + e2e parallel)
+test: test-unit test-e2e
 
 # Run only unit tests
 test-unit: deps
 	nvim --headless -u tests/minimal_init.lua -c "lua require('mini.test').setup(); MiniTest.run({collect = {find_files = function() return vim.fn.glob('tests/unit/*.lua', false, true) end}})" -c "qa!"
 
-# Run only e2e tests
+# Run only e2e tests (parallel by default, requires GNU parallel)
+# Use JOBS=N to control parallelism (default: 4)
 test-e2e: deps
+	@if command -v parallel > /dev/null; then \
+		./scripts/run-tests-parallel.sh --e2e-only; \
+	else \
+		echo "GNU parallel not found, running sequentially..."; \
+		$(MAKE) test-e2e-sequential; \
+	fi
+
+# Run e2e tests sequentially (useful for debugging)
+test-e2e-sequential: deps
 	nvim --headless -u tests/minimal_init.lua -c "lua require('mini.test').setup(); MiniTest.run({collect = {find_files = function() return vim.fn.glob('tests/e2e/*.lua', false, true) end}})" -c "qa!"
 
 # Install test dependencies

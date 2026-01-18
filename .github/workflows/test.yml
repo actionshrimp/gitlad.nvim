@@ -25,18 +25,16 @@ jobs:
           neovim: true
           version: ${{ matrix.neovim_version }}
 
-      - name: Install mini.nvim
+      - name: Install dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y parallel
           mkdir -p ~/.local/share/nvim/site/pack/deps/start
           git clone --depth 1 https://github.com/echasnovski/mini.nvim \
             ~/.local/share/nvim/site/pack/deps/start/mini.nvim
 
       - name: Run tests
-        run: |
-          nvim --headless -u tests/minimal_init.lua \
-            -c "lua require('mini.test').setup()" \
-            -c "lua MiniTest.run()" \
-            -c "qa!"
+        run: make test
 
   lint:
     runs-on: ubuntu-latest
