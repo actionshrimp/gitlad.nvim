@@ -490,7 +490,7 @@ end
 
 T["refresh"] = MiniTest.new_set()
 
-T["refresh"]["g refreshes status"] = function()
+T["refresh"]["gr refreshes status"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -509,9 +509,9 @@ T["refresh"]["g refreshes status"] = function()
   -- Create a new file externally
   create_file(child, repo, "newfile.txt", "content")
 
-  -- Simulate pressing 'g' using feedkeys and process events
+  -- Simulate pressing 'gr' using feedkeys and process events
   child.lua([[
-    vim.api.nvim_feedkeys("g", "x", false)
+    vim.api.nvim_feedkeys("gr", "x", false)
   ]])
 
   -- Wait for async refresh to complete
@@ -551,9 +551,9 @@ T["refresh"]["shows updated status after external git changes"] = function()
   -- Stage externally via git
   git(child, repo, "add new.txt")
 
-  -- Simulate pressing 'g' using feedkeys and process events
+  -- Simulate pressing 'gr' using feedkeys and process events
   child.lua([[
-    vim.api.nvim_feedkeys("g", "x", false)
+    vim.api.nvim_feedkeys("gr", "x", false)
   ]])
 
   -- Wait for refresh to complete - use vim.wait with a condition
@@ -996,6 +996,214 @@ T["status header"]["hides Merge line when no upstream"] = function()
   local lines = get_buffer_lines(child)
   local merge_line = find_line_with(lines, "Merge:")
   eq(merge_line, nil, "Should not have Merge: line when no upstream")
+end
+
+-- =============================================================================
+-- Navigation Tests
+-- =============================================================================
+
+T["navigation"] = MiniTest.new_set()
+
+T["navigation"]["gj/gk keymaps are set up"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create a file to have something to navigate
+  create_file(child, repo, "file.txt", "content")
+
+  open_gitlad(child, repo)
+
+  -- Check that gj and gk keymaps exist
+  child.lua([[
+    _G.has_gj = false
+    _G.has_gk = false
+    local keymaps = vim.api.nvim_buf_get_keymap(0, 'n')
+    for _, km in ipairs(keymaps) do
+      if km.lhs == "gj" then _G.has_gj = true end
+      if km.lhs == "gk" then _G.has_gk = true end
+    end
+  ]])
+  local has_gj = child.lua_get("_G.has_gj")
+  local has_gk = child.lua_get("_G.has_gk")
+  eq(has_gj, true)
+  eq(has_gk, true)
+end
+
+T["navigation"]["gj navigates to next file entry"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create multiple files
+  create_file(child, repo, "aaa.txt", "content a")
+  create_file(child, repo, "bbb.txt", "content b")
+
+  open_gitlad(child, repo)
+
+  -- Move to first line (header)
+  child.cmd("1")
+
+  -- Press gj to navigate to first file
+  child.type_keys("gj")
+  wait(child, 100)
+
+  local lines = get_buffer_lines(child)
+  local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+
+  -- Should be on a file line
+  local line_content = lines[cursor_line]
+  assert_truthy(
+    line_content:find("aaa.txt") or line_content:find("bbb.txt"),
+    "gj should move to a file entry, got: " .. (line_content or "nil")
+  )
+end
+
+T["navigation"]["j/k are not overridden (normal vim movement)"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "file.txt", "content")
+
+  open_gitlad(child, repo)
+
+  -- Check that j and k are NOT mapped (normal vim movement)
+  child.lua([[
+    _G.has_j_mapping = false
+    _G.has_k_mapping = false
+    local keymaps = vim.api.nvim_buf_get_keymap(0, 'n')
+    for _, km in ipairs(keymaps) do
+      if km.lhs == "j" then _G.has_j_mapping = true end
+      if km.lhs == "k" then _G.has_k_mapping = true end
+    end
+  ]])
+  local has_j = child.lua_get("_G.has_j_mapping")
+  local has_k = child.lua_get("_G.has_k_mapping")
+  -- j and k should NOT be mapped (allow normal line movement)
+  eq(has_j, false)
+  eq(has_k, false)
+end
+
+T["navigation"]["gr is mapped for refresh"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "file.txt", "content")
+
+  open_gitlad(child, repo)
+
+  -- Check that gr keymap exists
+  child.lua([[
+    _G.has_gr = false
+    local keymaps = vim.api.nvim_buf_get_keymap(0, 'n')
+    for _, km in ipairs(keymaps) do
+      if km.lhs == "gr" then _G.has_gr = true end
+    end
+  ]])
+  local has_gr = child.lua_get("_G.has_gr")
+  eq(has_gr, true)
+end
+
+T["navigation"]["gg works to jump to top of buffer"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create files to have content in buffer
+  create_file(child, repo, "file1.txt", "content 1")
+  create_file(child, repo, "file2.txt", "content 2")
+  create_file(child, repo, "file3.txt", "content 3")
+
+  open_gitlad(child, repo)
+
+  -- Move to the bottom
+  child.type_keys("G")
+  wait(child, 100)
+
+  local cursor_after_G = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  assert_truthy(cursor_after_G > 1, "G should move to end of buffer")
+
+  -- Now press gg to go to top
+  child.type_keys("gg")
+  wait(child, 100)
+
+  local cursor_after_gg = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  eq(cursor_after_gg, 1, "gg should move to line 1")
+end
+
+-- =============================================================================
+-- Buffer Protection Tests
+-- =============================================================================
+
+T["buffer protection"] = MiniTest.new_set()
+
+T["buffer protection"]["status buffer is not modifiable"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "file.txt", "content")
+
+  open_gitlad(child, repo)
+
+  -- Check that buffer is not modifiable
+  local modifiable = child.lua_get("vim.bo.modifiable")
+  eq(modifiable, false)
+end
+
+T["buffer protection"]["cannot edit status buffer with normal commands"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "file.txt", "content")
+
+  open_gitlad(child, repo)
+
+  -- Get line count before attempting edit
+  local line_count_before = child.lua_get("vim.api.nvim_buf_line_count(0)")
+
+  -- Try to add a line with 'o' (should fail silently or error)
+  -- Since buffer is non-modifiable, this should not change anything
+  child.lua([[
+    pcall(function()
+      vim.cmd("normal! o")
+    end)
+  ]])
+
+  -- Line count should remain the same
+  local line_count_after = child.lua_get("vim.api.nvim_buf_line_count(0)")
+  eq(line_count_before, line_count_after)
+end
+
+-- =============================================================================
+-- Recent Commits Tests
+-- =============================================================================
+
+T["recent commits"] = MiniTest.new_set()
+
+T["recent commits"]["shows Recent commits section when no upstream"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create multiple commits (no remote/upstream)
+  create_file(child, repo, "file1.txt", "content 1")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "First commit"')
+
+  create_file(child, repo, "file2.txt", "content 2")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Second commit"')
+
+  open_gitlad(child, repo)
+
+  -- Wait for extended status fetch (includes recent commits)
+  child.lua([[vim.wait(2000, function()
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for _, line in ipairs(lines) do
+      if line:find("Recent commits", 1, true) then return true end
+    end
+    return false
+  end)]])
+
+  local lines = get_buffer_lines(child)
+  local recent_line = find_line_with(lines, "Recent commits")
+  assert_truthy(recent_line, "Should show Recent commits section when no upstream")
 end
 
 return T

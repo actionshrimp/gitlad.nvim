@@ -65,11 +65,11 @@ end
 function LogBuffer:_setup_keymaps()
   local bufnr = self.bufnr
 
-  -- Navigation (evil-collection-magit style)
-  keymap.set(bufnr, "n", "j", function()
+  -- Navigation (evil-collection-magit style: gj/gk for commits, j/k for normal line movement)
+  keymap.set(bufnr, "n", "gj", function()
     self:_goto_next_commit()
   end, "Next commit")
-  keymap.set(bufnr, "n", "k", function()
+  keymap.set(bufnr, "n", "gk", function()
     self:_goto_prev_commit()
   end, "Previous commit")
 
@@ -91,8 +91,8 @@ function LogBuffer:_setup_keymaps()
     self:_yank_hash()
   end, "Yank commit hash")
 
-  -- Refresh
-  keymap.set(bufnr, "n", "g", function()
+  -- Refresh (gr to free up g prefix for vim motions like gg)
+  keymap.set(bufnr, "n", "gr", function()
     self:refresh()
   end, "Refresh log")
 
@@ -318,10 +318,15 @@ function LogBuffer:render()
     end
   end
 
+  -- Allow modification while updating buffer
+  vim.bo[self.bufnr].modifiable = true
   vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, lines)
 
   -- Apply syntax highlighting
   self:_apply_highlights(header_lines)
+
+  -- Make buffer non-modifiable to prevent accidental edits
+  vim.bo[self.bufnr].modifiable = false
 end
 
 --- Apply syntax highlighting

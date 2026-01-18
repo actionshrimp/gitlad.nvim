@@ -172,7 +172,15 @@ function RepoState:_fetch_extended_status(result, callback)
     end)
   end
 
-  -- 3. Determine push destination
+  -- 3. Fetch recent commits (shown when no unpushed commits exist, like magit)
+  -- Always fetch these so they're available as a fallback
+  start_op()
+  git.log({ "-10" }, opts, function(commits, _err)
+    result.recent_commits = commits or {}
+    complete_one()
+  end)
+
+  -- 4. Determine push destination
   -- Push goes to <push-remote>/<branch-name> where push-remote is:
   --   1. branch.<name>.pushRemote (explicit config)
   --   2. remote.pushDefault (global default)

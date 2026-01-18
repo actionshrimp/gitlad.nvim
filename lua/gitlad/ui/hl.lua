@@ -30,12 +30,14 @@ local highlight_groups = {
   GitladCommitBody = { link = "Normal" },
 
   -- Section headers
+  GitladSectionHeading = { link = "Title" },
   GitladSectionStaged = { link = "DiffAdd" },
   GitladSectionUnstaged = { link = "DiffChange" },
   GitladSectionUntracked = { link = "Comment" },
   GitladSectionConflicted = { link = "DiagnosticError" },
   GitladSectionUnpulled = { link = "DiagnosticWarn" },
   GitladSectionUnpushed = { link = "DiagnosticInfo" },
+  GitladSectionRecent = { link = "Comment" },
 
   -- File entries
   GitladFileAdded = { link = "DiffAdd" },
@@ -410,11 +412,16 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
         M.set(bufnr, ns_status, line_idx, 0, #line, hl_group)
       end
 
-      -- Unpulled/Unpushed/Unmerged sections
-    elseif line:match("^Unpulled from") then
-      M.set(bufnr, ns_status, line_idx, 0, #line, "GitladSectionUnpulled")
-    elseif line:match("^Unpushed to") or line:match("^Unmerged into") then
-      M.set(bufnr, ns_status, line_idx, 0, #line, "GitladSectionUnpushed")
+      -- Unpulled/Unpushed/Unmerged/Recent sections (with collapse indicator)
+    elseif line:match("^[>v] Unpulled from") then
+      M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
+      M.set(bufnr, ns_status, line_idx, 2, #line, "GitladSectionUnpulled")
+    elseif line:match("^[>v] Unpushed to") or line:match("^[>v] Unmerged into") then
+      M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
+      M.set(bufnr, ns_status, line_idx, 2, #line, "GitladSectionUnpushed")
+    elseif line:match("^[>v] Recent commits") then
+      M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
+      M.set(bufnr, ns_status, line_idx, 2, #line, "GitladSectionRecent")
 
       -- File entries: "  > ● M path" or "  > ●   path"
       -- Note: line_map may also contain commit entries (with type="commit"), so check for path
@@ -534,16 +541,12 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
       end
       -- Context lines (starting with space) don't need special highlighting
 
-      -- Commit lines in unpulled/unpushed sections: "  hash subject"
-    elseif line:match("^%s%s%x%x%x%x%x%x%x") then
-      -- Commit line format: "  abcdef1 commit message"
-      local hash_start = line:find("%x")
-      if hash_start then
-        M.set(bufnr, ns_status, line_idx, hash_start - 1, hash_start - 1 + 7, "GitladCommitHash")
-        local msg_start = hash_start + 8
-        if msg_start <= #line then
-          M.set(bufnr, ns_status, line_idx, msg_start - 1, #line, "GitladCommitMsg")
-        end
+      -- Commit lines in unpulled/unpushed sections: "hash subject" (no indent)
+    elseif line:match("^%x%x%x%x%x%x%x") then
+      -- Commit line format: "abcdef1 commit message"
+      M.set(bufnr, ns_status, line_idx, 0, 7, "GitladCommitHash")
+      if #line > 8 then
+        M.set(bufnr, ns_status, line_idx, 8, #line, "GitladCommitMsg")
       end
 
       -- Help line

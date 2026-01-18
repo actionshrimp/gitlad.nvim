@@ -286,7 +286,7 @@ T["log view"]["closes with q"] = function()
   cleanup_test_repo(child, repo)
 end
 
-T["log view"]["j/k keymaps are set up"] = function()
+T["log view"]["gj/gk keymaps are set up"] = function()
   local repo = create_test_repo(child)
   cd(child, repo)
 
@@ -310,20 +310,43 @@ T["log view"]["j/k keymaps are set up"] = function()
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
   eq(buf_name:match("gitlad://log") ~= nil, true)
 
-  -- Check that j and k keymaps exist by checking if they have mappings
+  -- Check that gj and gk keymaps exist by checking if they have mappings
   child.lua([[
-    _G.has_j = false
-    _G.has_k = false
+    _G.has_gj = false
+    _G.has_gk = false
     local keymaps = vim.api.nvim_buf_get_keymap(0, 'n')
     for _, km in ipairs(keymaps) do
-      if km.lhs == "j" then _G.has_j = true end
-      if km.lhs == "k" then _G.has_k = true end
+      if km.lhs == "gj" then _G.has_gj = true end
+      if km.lhs == "gk" then _G.has_gk = true end
     end
   ]])
-  local has_j = child.lua_get("_G.has_j")
-  local has_k = child.lua_get("_G.has_k")
-  eq(has_j, true)
-  eq(has_k, true)
+  local has_gj = child.lua_get("_G.has_gj")
+  local has_gk = child.lua_get("_G.has_gk")
+  eq(has_gj, true)
+  eq(has_gk, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["buffer is not modifiable"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create a commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  -- Check that buffer is not modifiable
+  local modifiable = child.lua_get("vim.bo.modifiable")
+  eq(modifiable, false)
 
   cleanup_test_repo(child, repo)
 end

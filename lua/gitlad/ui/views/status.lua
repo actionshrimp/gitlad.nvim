@@ -62,6 +62,7 @@ local function get_or_create_buffer(repo_state)
   self.section_lines = {} -- Maps line numbers to section headers
   self.expanded_files = {} -- Tracks which files have diffs expanded
   self.expanded_commits = {} -- Tracks which commits have details expanded
+  self.collapsed_sections = {} -- Tracks which commit sections are collapsed
   self.diff_cache = {} -- Caches fetched diff lines
 
   -- Create buffer
@@ -126,8 +127,8 @@ function StatusBuffer:_setup_keymaps()
     self:_discard_current()
   end, "Discard changes")
 
-  -- Refresh
-  keymap.set(bufnr, "n", "g", function()
+  -- Refresh (gr to free up g prefix for vim motions like gg)
+  keymap.set(bufnr, "n", "gr", function()
     self.repo_state:refresh_status(true)
   end, "Refresh status")
 
@@ -136,13 +137,13 @@ function StatusBuffer:_setup_keymaps()
     self:close()
   end, "Close status")
 
-  -- Navigation (evil-collection-magit style: j/k instead of n/p)
-  keymap.set(bufnr, "n", "j", function()
+  -- Navigation (evil-collection-magit style: gj/gk for items, j/k for normal line movement)
+  keymap.set(bufnr, "n", "gj", function()
     self:_goto_next_file()
-  end, "Next file")
-  keymap.set(bufnr, "n", "k", function()
+  end, "Next file/commit")
+  keymap.set(bufnr, "n", "gk", function()
     self:_goto_prev_file()
-  end, "Previous file")
+  end, "Previous file/commit")
   keymap.set(bufnr, "n", "<M-n>", function()
     self:_goto_next_section()
   end, "Next section")
@@ -677,8 +678,31 @@ local function parse_diff(lines)
   return data
 end
 
---- Toggle diff view for current file
+--- Toggle diff view for current file or collapse section
 function StatusBuffer:_toggle_diff()
+  -- First check if we're on a section header (for commit sections)
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+  local section_info = self.section_lines[line]
+
+  if section_info then
+    -- Check if this is a collapsible commit section
+    local collapsible_sections = {
+      unpulled_upstream = true,
+      unpushed_upstream = true,
+      unpulled_push = true,
+      unpushed_push = true,
+      recent = true,
+    }
+    if collapsible_sections[section_info.section] then
+      -- Toggle the section collapsed state
+      local section_key = section_info.section
+      self.collapsed_sections[section_key] = not self.collapsed_sections[section_key]
+      self:render()
+      return
+    end
+  end
+
   local path, section = self:_get_current_file()
   if not path then
     return
@@ -911,20 +935,25 @@ function StatusBuffer:render()
       return
     end
 
-    table.insert(lines, string.format("%s (%d)", title, #commits))
+    local is_collapsed = self.collapsed_sections[section_type]
+    local indicator = is_collapsed and ">" or "v"
+    table.insert(lines, string.format("%s %s (%d)", indicator, title, #commits))
     self.section_lines[#lines] = { name = title, section = section_type }
 
-    local result = log_list.render(commits, self.expanded_commits, {
-      indent = 2,
-      section = section_type,
-    })
+    -- Only render commits if section is not collapsed
+    if not is_collapsed then
+      local result = log_list.render(commits, self.expanded_commits, {
+        indent = 0,
+        section = section_type,
+      })
 
-    for i, line in ipairs(result.lines) do
-      table.insert(lines, line)
-      local info = result.line_info[i]
-      if info then
-        -- Commits now tracked in line_map with CommitLineInfo
-        self.line_map[#lines] = info
+      for i, line in ipairs(result.lines) do
+        table.insert(lines, line)
+        local info = result.line_info[i]
+        if info then
+          -- Commits now tracked in line_map with CommitLineInfo
+          self.line_map[#lines] = info
+        end
       end
     end
     table.insert(lines, "")
@@ -967,17 +996,28 @@ function StatusBuffer:render()
   table.insert(lines, "")
 
   -- Unmerged/Unpulled sections for upstream (merge branch)
+  -- Following magit's approach: show unpushed if any, otherwise show recent commits
+  local has_unpushed_upstream = status.upstream
+    and status.unpushed_upstream
+    and #status.unpushed_upstream > 0
+  local has_unpulled_upstream = status.upstream
+    and status.unpulled_upstream
+    and #status.unpulled_upstream > 0
+
   if status.upstream then
     add_commit_section(
       "Unpulled from " .. status.upstream,
       status.unpulled_upstream or {},
       "unpulled_upstream"
     )
-    add_commit_section(
-      "Unmerged into " .. status.upstream,
-      status.unpushed_upstream or {},
-      "unpushed_upstream"
-    )
+
+    if has_unpushed_upstream then
+      add_commit_section(
+        "Unmerged into " .. status.upstream,
+        status.unpushed_upstream or {},
+        "unpushed_upstream"
+      )
+    end
   end
 
   -- Unpulled/Unpushed sections for push remote (if different)
@@ -992,6 +1032,15 @@ function StatusBuffer:render()
       status.unpushed_push or {},
       "unpushed_push"
     )
+  end
+
+  -- Show "Recent commits" when there's nothing to push (like magit)
+  -- This provides context even when the branch is in sync with upstream
+  local has_any_unpushed = has_unpushed_upstream
+    or (status.unpushed_push and #status.unpushed_push > 0)
+
+  if not has_any_unpushed and status.recent_commits and #status.recent_commits > 0 then
+    add_commit_section("Recent commits", status.recent_commits, "recent")
   end
 
   -- Staged changes
@@ -1044,6 +1093,8 @@ function StatusBuffer:render()
   table.insert(lines, "")
   table.insert(lines, "Press ? for help")
 
+  -- Allow modification while updating buffer
+  vim.bo[self.bufnr].modifiable = true
   vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, lines)
 
   -- Apply syntax highlighting
@@ -1051,6 +1102,9 @@ function StatusBuffer:render()
 
   -- Apply treesitter highlighting to expanded diffs
   hl.apply_diff_treesitter_highlights(self.bufnr, lines, self.line_map, self.diff_cache)
+
+  -- Make buffer non-modifiable to prevent accidental edits
+  vim.bo[self.bufnr].modifiable = false
 end
 
 --- Open the status buffer in a window

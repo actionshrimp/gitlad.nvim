@@ -237,15 +237,17 @@ lua/gitlad/
 ## Keybindings (evil-collection-magit Style)
 
 **Note:** We follow [evil-collection-magit](https://github.com/emacs-evil/evil-collection/blob/master/modes/magit/evil-collection-magit.el) conventions, not vanilla magit. Key differences from vanilla magit:
-- Navigation uses `j`/`k` (vim-style) instead of `n`/`p`
-- Push uses `p` (lowercase) instead of `P` (freeing up `p` since navigation moved to `j`/`k`)
+- `j`/`k` for standard line movement (vim default)
+- `gj`/`gk` for section sibling navigation (jump to next/previous file or commit)
+- Push uses `p` (lowercase) instead of `P`
 
 This makes the plugin more comfortable for vim/evil users.
 
 ### Navigation
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Next/previous item |
+| `j` / `k` | Normal line movement (vim default) |
+| `gj` / `gk` | Next/previous file or commit |
 | `M-n` / `M-p` | Next/previous section |
 | `TAB` | Expand/collapse section or diff |
 | `RET` | Visit file at point |
@@ -280,7 +282,7 @@ This makes the plugin more comfortable for vim/evil users.
 ### Other
 | Key | Action |
 |-----|--------|
-| `g` | Refresh |
+| `gr` | Refresh |
 | `q` | Close buffer |
 | `$` | Show git process output |
 | `?` | Show help / all keybindings |
