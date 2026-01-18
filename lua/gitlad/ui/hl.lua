@@ -6,6 +6,26 @@
 
 local M = {}
 
+--- Get the foreground color from a highlight group
+---@param group string Highlight group name
+---@return string|nil fg Hex color string or nil
+local function get_fg_from_group(group)
+  local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = group, link = false })
+  if ok and hl and hl.fg then
+    return string.format("#%06x", hl.fg)
+  end
+  return nil
+end
+
+--- Create a bold section header highlight, inheriting color from a base group
+---@param base_group string The group to inherit foreground from
+---@param fallback_fg string Fallback color if base group has no foreground
+---@return table highlight definition
+local function bold_section_hl(base_group, fallback_fg)
+  local fg = get_fg_from_group(base_group) or fallback_fg
+  return { bold = true, fg = fg }
+end
+
 -- Namespaces for extmark highlighting
 local ns_status = vim.api.nvim_create_namespace("gitlad_status")
 local ns_diff_lang = vim.api.nvim_create_namespace("gitlad_diff_lang")
@@ -29,7 +49,7 @@ local highlight_groups = {
   GitladCommitDate = { link = "Comment" },
   GitladCommitBody = { link = "Normal" },
 
-  -- Section headers
+  -- Section headers - linked to base groups (setup() adds bold)
   GitladSectionHeading = { link = "Title" },
   GitladSectionStaged = { link = "DiffAdd" },
   GitladSectionUnstaged = { link = "DiffChange" },
@@ -80,11 +100,31 @@ local highlight_groups = {
   GitladHelpText = { link = "Comment" },
 }
 
+-- Section header definitions: group name -> { base_group, fallback_fg }
+local section_header_defs = {
+  GitladSectionHeading = { "Title", "#61afef" },
+  GitladSectionStaged = { "DiffAdd", "#98c379" },
+  GitladSectionUnstaged = { "DiffChange", "#e5c07b" },
+  GitladSectionUntracked = { "Comment", "#abb2bf" },
+  GitladSectionConflicted = { "DiagnosticError", "#e06c75" },
+  GitladSectionUnpulled = { "DiagnosticWarn", "#d19a66" },
+  GitladSectionUnpushed = { "DiagnosticInfo", "#56b6c2" },
+  GitladSectionRecent = { "Comment", "#c678dd" },
+}
+
 --- Set up all highlight groups
 --- Should be called once during plugin setup
 function M.setup()
+  -- First set up all base highlight groups
   for group, def in pairs(highlight_groups) do
     vim.api.nvim_set_hl(0, group, def)
+  end
+
+  -- Then override section headers with bold versions
+  -- This runs after the base groups are set, so we can derive colors from them
+  for group, def in pairs(section_header_defs) do
+    local base_group, fallback_fg = def[1], def[2]
+    vim.api.nvim_set_hl(0, group, bold_section_hl(base_group, fallback_fg))
   end
 end
 
@@ -283,10 +323,17 @@ local status_char_hl = {
 
 -- Map section names to highlight groups
 local section_hl = {
+  -- File sections
   staged = "GitladSectionStaged",
   unstaged = "GitladSectionUnstaged",
   untracked = "GitladSectionUntracked",
   conflicted = "GitladSectionConflicted",
+  -- Commit sections
+  unpulled_upstream = "GitladSectionUnpulled",
+  unpushed_upstream = "GitladSectionUnpushed",
+  unpulled_push = "GitladSectionUnpulled",
+  unpushed_push = "GitladSectionUnpushed",
+  recent = "GitladSectionRecent",
 }
 
 --- Apply highlights to the status buffer
@@ -404,24 +451,19 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
         end
       end
 
-      -- Section headers: "Staged (n)", "Unstaged (n)", etc.
+      -- Section headers: "Staged (n)", "Unstaged (n)", or commit sections with indicators
     elseif section_lines[i] then
       local section_info = section_lines[i]
       local hl_group = section_hl[section_info.section]
       if hl_group then
-        M.set(bufnr, ns_status, line_idx, 0, #line, hl_group)
+        -- Check if this is a commit section with expand indicator (starts with > or v)
+        if line:match("^[>v] ") then
+          M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
+          M.set(bufnr, ns_status, line_idx, 2, #line, hl_group)
+        else
+          M.set(bufnr, ns_status, line_idx, 0, #line, hl_group)
+        end
       end
-
-      -- Unpulled/Unpushed/Unmerged/Recent sections (with collapse indicator)
-    elseif line:match("^[>v] Unpulled from") then
-      M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
-      M.set(bufnr, ns_status, line_idx, 2, #line, "GitladSectionUnpulled")
-    elseif line:match("^[>v] Unpushed to") or line:match("^[>v] Unmerged into") then
-      M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
-      M.set(bufnr, ns_status, line_idx, 2, #line, "GitladSectionUnpushed")
-    elseif line:match("^[>v] Recent commits") then
-      M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
-      M.set(bufnr, ns_status, line_idx, 2, #line, "GitladSectionRecent")
 
       -- File entries: "  > ● M path" or "  > ●   path"
       -- Note: line_map may also contain commit entries (with type="commit"), so check for path
