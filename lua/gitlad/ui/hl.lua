@@ -417,7 +417,8 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
       M.set(bufnr, ns_status, line_idx, 0, #line, "GitladSectionUnpushed")
 
       -- File entries: "  > ● M path" or "  > ●   path"
-    elseif line_map[i] and not line_map[i].hunk_index then
+      -- Note: line_map may also contain commit entries (with type="commit"), so check for path
+    elseif line_map[i] and line_map[i].path and not line_map[i].hunk_index then
       -- This is a file entry line (not a diff line)
       -- Format: "  > ● M path" or "  v ● M path" (expanded)
       local expand_indicator_pos = line:find("[>v]")
