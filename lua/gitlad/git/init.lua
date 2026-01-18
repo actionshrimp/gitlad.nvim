@@ -678,6 +678,39 @@ function M.reset(ref, mode, opts, callback)
   end)
 end
 
+--- Reset current branch to a ref with --keep (preserves uncommitted changes)
+---@param ref string The ref to reset to (e.g., "origin/main", "HEAD~1")
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.reset_keep(ref, opts, callback)
+  local reset_args = { "reset", "--keep", ref }
+
+  cli.run_async(reset_args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Reset index only (unstage all files, equivalent to git reset HEAD .)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.reset_index(opts, callback)
+  cli.run_async({ "reset", "HEAD", "." }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Reset worktree only to a ref (checkout all files without changing HEAD or index)
+---@param ref string The ref to reset worktree to
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.reset_worktree(ref, opts, callback)
+  -- Use git checkout to restore worktree from the specified ref
+  -- --force overwrites local changes
+  cli.run_async({ "checkout", "--force", ref, "--", "." }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
 --- Get the upstream ref for a branch
 ---@param branch string Branch name
 ---@param opts? GitCommandOptions

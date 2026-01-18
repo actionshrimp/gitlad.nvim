@@ -275,6 +275,14 @@ function StatusBuffer:_setup_keymaps()
     local context = commit and { commit = commit.hash } or nil
     revert_popup.open(self.repo_state, context)
   end, "Revert popup")
+
+  -- Reset popup (neogit/evil-collection-magit style: X for destructive reset)
+  keymap.set(bufnr, "n", "X", function()
+    local reset_popup = require("gitlad.popups.reset")
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    reset_popup.open(self.repo_state, context)
+  end, "Reset popup")
 end
 
 --- Get the file path at the current cursor position
