@@ -78,7 +78,7 @@ T["branch popup"]["has correct action groups"] = function()
     :action("m", "Rename", function()
       rename_called = true
     end)
-    :action("x", "Spin-off", function()
+    :action("s", "Spin-off", function()
       spinoff_called = true
     end)
     :action("D", "Delete", function()
@@ -115,7 +115,7 @@ T["branch popup"]["has correct action groups"] = function()
   eq(data.actions[7].description, "Rename")
 
   eq(data.actions[8].type, "action")
-  eq(data.actions[8].key, "x")
+  eq(data.actions[8].key, "s")
   eq(data.actions[8].description, "Spin-off")
 
   eq(data.actions[9].type, "action")
