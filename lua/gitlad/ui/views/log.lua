@@ -332,8 +332,8 @@ function LogBuffer:_apply_highlights(header_lines)
   -- Clear existing highlights
   vim.api.nvim_buf_clear_namespace(self.bufnr, ns, 0, -1)
 
-  -- Header highlighting
-  hl.set(self.bufnr, ns, 0, 0, -1, "GitladSectionHeading")
+  -- Header highlighting (use set_line for entire line)
+  hl.set_line(self.bufnr, ns, 0, "GitladSectionHeading")
 
   -- Use log_list's highlight function for commit lines
   if #self.commits > 0 then
