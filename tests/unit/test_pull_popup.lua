@@ -93,13 +93,17 @@ end
 T["pull popup"]["creates actions correctly"] = function()
   local popup = require("gitlad.ui.popup")
 
+  local pull_pushremote_called = false
   local pull_upstream_called = false
   local pull_elsewhere_called = false
 
   local data = popup
     .builder()
     :group_heading("Pull")
-    :action("p", "Pull from upstream", function()
+    :action("p", "Pull from pushremote", function()
+      pull_pushremote_called = true
+    end)
+    :action("u", "Pull from upstream", function()
       pull_upstream_called = true
     end)
     :action("e", "Pull elsewhere", function()
@@ -107,22 +111,28 @@ T["pull popup"]["creates actions correctly"] = function()
     end)
     :build()
 
-  -- 1 heading + 2 actions
-  eq(#data.actions, 3)
+  -- 1 heading + 3 actions
+  eq(#data.actions, 4)
   eq(data.actions[1].type, "heading")
   eq(data.actions[1].text, "Pull")
   eq(data.actions[2].type, "action")
   eq(data.actions[2].key, "p")
-  eq(data.actions[2].description, "Pull from upstream")
+  eq(data.actions[2].description, "Pull from pushremote")
   eq(data.actions[3].type, "action")
-  eq(data.actions[3].key, "e")
-  eq(data.actions[3].description, "Pull elsewhere")
+  eq(data.actions[3].key, "u")
+  eq(data.actions[3].description, "Pull from upstream")
+  eq(data.actions[4].type, "action")
+  eq(data.actions[4].key, "e")
+  eq(data.actions[4].description, "Pull elsewhere")
 
   -- Test callbacks
   data.actions[2].callback(data)
-  eq(pull_upstream_called, true)
+  eq(pull_pushremote_called, true)
 
   data.actions[3].callback(data)
+  eq(pull_upstream_called, true)
+
+  data.actions[4].callback(data)
   eq(pull_elsewhere_called, true)
 end
 

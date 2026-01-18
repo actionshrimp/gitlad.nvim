@@ -133,6 +133,9 @@ function StatusBuffer:_setup_keymaps()
   keymap.set(bufnr, "n", "x", function()
     self:_discard_current()
   end, "Discard changes")
+  keymap.set(bufnr, "v", "x", function()
+    self:_discard_visual()
+  end, "Discard selection")
 
   -- Refresh (gr to free up g prefix for vim motions like gg)
   keymap.set(bufnr, "n", "gr", function()
@@ -463,23 +466,90 @@ function StatusBuffer:_build_partial_hunk_patch(
   return patch_lines
 end
 
+--- Collect file entries from a line range for staging/unstaging
+---@param start_line number
+---@param end_line number
+---@param allowed_sections table<string, boolean> Map of section names that are valid
+---@return table[] files Array of {path, section} for file entries in range
+---@return LineInfo|nil first_diff First diff line info if any diff lines selected
+local function collect_files_in_range(line_map, start_line, end_line, allowed_sections)
+  local files = {}
+  local seen_paths = {}
+  local first_diff = nil
+
+  for buf_line = start_line, end_line do
+    local info = line_map[buf_line]
+    if info and info.path then
+      if info.hunk_index then
+        -- This is a diff line
+        if not first_diff then
+          first_diff = info
+        end
+      elseif allowed_sections[info.section] then
+        -- This is a file entry line
+        local key = info.section .. ":" .. info.path
+        if not seen_paths[key] then
+          seen_paths[key] = true
+          table.insert(files, { path = info.path, section = info.section })
+        end
+      end
+    end
+  end
+
+  return files, first_diff
+end
+
+--- Collect all files in a specific section from the status object
+---@param status table The git status object
+---@param section_type string The section type: "staged", "unstaged", "untracked"
+---@return table[] files Array of {path, section} for all files in the section
+local function collect_section_files(status, section_type)
+  local files = {}
+
+  if section_type == "untracked" and status.untracked then
+    for _, entry in ipairs(status.untracked) do
+      table.insert(files, { path = entry.path, section = "untracked" })
+    end
+  elseif section_type == "unstaged" and status.unstaged then
+    for _, entry in ipairs(status.unstaged) do
+      table.insert(files, { path = entry.path, section = "unstaged" })
+    end
+  elseif section_type == "staged" and status.staged then
+    for _, entry in ipairs(status.staged) do
+      table.insert(files, { path = entry.path, section = "staged" })
+    end
+  end
+
+  return files
+end
+
 --- Stage visual selection
 function StatusBuffer:_stage_visual()
   local start_line, end_line = get_visual_selection_range()
 
-  -- Get file info from first selected line
-  local info = self.line_map[start_line]
-  if not info or not info.hunk_index then
-    vim.notify("[gitlad] Visual staging only works on diff lines", vim.log.levels.INFO)
+  -- Collect all file entries and diff lines in the selection
+  local allowed_sections = { unstaged = true, untracked = true }
+  local files, first_diff =
+    collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
+
+  -- If we have file entries selected, stage them all in a single git command
+  if #files > 0 then
+    self.repo_state:stage_files(files)
     return
   end
 
-  local path = info.path
-  local section = info.section
-  local hunk_index = info.hunk_index
+  -- No file entries - try partial hunk staging on diff lines
+  if not first_diff then
+    vim.notify("[gitlad] No stageable files or diff lines in selection", vim.log.levels.INFO)
+    return
+  end
+
+  local path = first_diff.path
+  local section = first_diff.section
+  local hunk_index = first_diff.hunk_index
 
   if section ~= "unstaged" then
-    vim.notify("[gitlad] Visual staging only works on unstaged changes", vim.log.levels.INFO)
+    vim.notify("[gitlad] Partial hunk staging only works on unstaged changes", vim.log.levels.INFO)
     return
   end
 
@@ -536,19 +606,33 @@ end
 function StatusBuffer:_unstage_visual()
   local start_line, end_line = get_visual_selection_range()
 
-  -- Get file info from first selected line
-  local info = self.line_map[start_line]
-  if not info or not info.hunk_index then
-    vim.notify("[gitlad] Visual unstaging only works on diff lines", vim.log.levels.INFO)
+  -- Collect all file entries and diff lines in the selection
+  local allowed_sections = { staged = true }
+  local files, first_diff =
+    collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
+
+  -- If we have file entries selected, unstage them all in a single git command
+  if #files > 0 then
+    local paths = {}
+    for _, file in ipairs(files) do
+      table.insert(paths, file.path)
+    end
+    self.repo_state:unstage_files(paths)
     return
   end
 
-  local path = info.path
-  local section = info.section
-  local hunk_index = info.hunk_index
+  -- No file entries - try partial hunk unstaging on diff lines
+  if not first_diff then
+    vim.notify("[gitlad] No unstageable files or diff lines in selection", vim.log.levels.INFO)
+    return
+  end
+
+  local path = first_diff.path
+  local section = first_diff.section
+  local hunk_index = first_diff.hunk_index
 
   if section ~= "staged" then
-    vim.notify("[gitlad] Visual unstaging only works on staged changes", vim.log.levels.INFO)
+    vim.notify("[gitlad] Partial hunk unstaging only works on staged changes", vim.log.levels.INFO)
     return
   end
 
@@ -598,8 +682,27 @@ function StatusBuffer:_unstage_visual()
   end)
 end
 
---- Stage the file or hunk under cursor
+--- Stage the file or hunk under cursor, or entire section if on section header
 function StatusBuffer:_stage_current()
+  -- First check if we're on a section header
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+  local section_info = self.section_lines[line]
+
+  if section_info then
+    -- We're on a section header - stage all files in this section
+    local section_type = section_info.section
+    if section_type == "unstaged" or section_type == "untracked" then
+      local files = collect_section_files(self.repo_state.status, section_type)
+      if #files > 0 then
+        self.repo_state:stage_files(files)
+      end
+    end
+    -- Do nothing if on staged section (already staged)
+    return
+  end
+
+  -- Not on section header - check for file or hunk
   local path, section, hunk_index = self:_get_current_file()
   if not path then
     return
@@ -639,8 +742,31 @@ function StatusBuffer:_stage_current()
   end
 end
 
---- Unstage the file or hunk under cursor
+--- Unstage the file or hunk under cursor, or entire section if on section header
 function StatusBuffer:_unstage_current()
+  -- First check if we're on a section header
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+  local section_info = self.section_lines[line]
+
+  if section_info then
+    -- We're on a section header - unstage all files in this section
+    local section_type = section_info.section
+    if section_type == "staged" then
+      local files = collect_section_files(self.repo_state.status, section_type)
+      if #files > 0 then
+        local paths = {}
+        for _, file in ipairs(files) do
+          table.insert(paths, file.path)
+        end
+        self.repo_state:unstage_files(paths)
+      end
+    end
+    -- Do nothing if on unstaged/untracked section (can't unstage)
+    return
+  end
+
+  -- Not on section header - check for file or hunk
   local path, section, hunk_index = self:_get_current_file()
   if not path then
     return
@@ -881,8 +1007,45 @@ function StatusBuffer:_unstage_all()
   self.repo_state:unstage_all()
 end
 
---- Discard changes for file at cursor
+--- Discard changes for file at cursor, or entire section if on section header
 function StatusBuffer:_discard_current()
+  -- First check if we're on a section header
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+  local section_info = self.section_lines[line]
+
+  if section_info then
+    -- We're on a section header - discard all files in this section
+    local section_type = section_info.section
+    if section_type == "staged" then
+      vim.notify("[gitlad] Cannot discard staged changes. Unstage first.", vim.log.levels.WARN)
+      return
+    end
+
+    local files = collect_section_files(self.repo_state.status, section_type)
+    if #files == 0 then
+      return
+    end
+
+    -- Build confirmation message
+    local prompt
+    if section_type == "untracked" then
+      prompt = string.format("Delete all %d untracked file(s)?", #files)
+    else
+      prompt = string.format("Discard changes to all %d file(s)?", #files)
+    end
+
+    vim.ui.select({ "Yes", "No" }, {
+      prompt = prompt,
+    }, function(choice)
+      if choice == "Yes" then
+        self.repo_state:discard_files(files)
+      end
+    end)
+    return
+  end
+
+  -- Not on section header - check for file
   local path, section = self:_get_current_file()
   if not path then
     return
@@ -912,6 +1075,48 @@ function StatusBuffer:_discard_current()
       end
     end)
   end
+end
+
+--- Discard changes for visually selected files
+function StatusBuffer:_discard_visual()
+  local start_line, end_line = get_visual_selection_range()
+
+  -- Collect all file entries in the selection that can be discarded
+  local allowed_sections = { unstaged = true, untracked = true }
+  local files, _ = collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
+
+  if #files == 0 then
+    vim.notify("[gitlad] No discardable files in selection", vim.log.levels.INFO)
+    return
+  end
+
+  -- Build confirmation message
+  local untracked_count = 0
+  local unstaged_count = 0
+  for _, file in ipairs(files) do
+    if file.section == "untracked" then
+      untracked_count = untracked_count + 1
+    else
+      unstaged_count = unstaged_count + 1
+    end
+  end
+
+  local prompt_parts = {}
+  if unstaged_count > 0 then
+    table.insert(prompt_parts, string.format("discard changes to %d file(s)", unstaged_count))
+  end
+  if untracked_count > 0 then
+    table.insert(prompt_parts, string.format("delete %d untracked file(s)", untracked_count))
+  end
+  local prompt = table.concat(prompt_parts, " and ") .. "?"
+
+  vim.ui.select({ "Yes", "No" }, {
+    prompt = string.format("Really %s", prompt),
+  }, function(choice)
+    if choice == "Yes" then
+      self.repo_state:discard_files(files)
+    end
+  end)
 end
 
 --- Render the status buffer

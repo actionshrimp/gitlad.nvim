@@ -344,6 +344,65 @@ function RepoState:unstage(path, callback)
   end)
 end
 
+--- Stage multiple files in a single git command (optimistic update)
+---@param files table[] Array of {path: string, section: string}
+---@param callback? fun(success: boolean)
+function RepoState:stage_files(files, callback)
+  if #files == 0 then
+    if callback then
+      callback(true)
+    end
+    return
+  end
+
+  local paths = {}
+  for _, file in ipairs(files) do
+    table.insert(paths, file.path)
+  end
+
+  git.stage_files(paths, { cwd = self.repo_root }, function(success, err)
+    if not success then
+      errors.notify("Stage files", err)
+    else
+      -- Optimistic update: apply command for each file
+      for _, file in ipairs(files) do
+        local cmd = commands.stage_file(file.path, file.section)
+        self:apply_command(cmd)
+      end
+    end
+    if callback then
+      callback(success)
+    end
+  end)
+end
+
+--- Unstage multiple files in a single git command (optimistic update)
+---@param paths string[] File paths to unstage
+---@param callback? fun(success: boolean)
+function RepoState:unstage_files(paths, callback)
+  if #paths == 0 then
+    if callback then
+      callback(true)
+    end
+    return
+  end
+
+  git.unstage_files(paths, { cwd = self.repo_root }, function(success, err)
+    if not success then
+      errors.notify("Unstage files", err)
+    else
+      -- Optimistic update: apply command for each file
+      for _, path in ipairs(paths) do
+        local cmd = commands.unstage_file(path)
+        self:apply_command(cmd)
+      end
+    end
+    if callback then
+      callback(success)
+    end
+  end)
+end
+
 --- Stage all files (optimistic update)
 ---@param callback? fun(success: boolean)
 function RepoState:stage_all(callback)
@@ -410,6 +469,78 @@ function RepoState:discard(path, section, callback)
       if callback then
         callback(success)
       end
+    end)
+  end
+end
+
+--- Discard changes to multiple files (optimistic update)
+--- Handles both untracked (delete) and unstaged (checkout) files in a single operation
+---@param files table[] Array of {path: string, section: string}
+---@param callback? fun(success: boolean)
+function RepoState:discard_files(files, callback)
+  if #files == 0 then
+    if callback then
+      callback(true)
+    end
+    return
+  end
+
+  -- Separate files by section
+  local untracked_paths = {}
+  local unstaged_paths = {}
+  local untracked_files = {}
+  local unstaged_files = {}
+
+  for _, file in ipairs(files) do
+    if file.section == "untracked" then
+      table.insert(untracked_paths, file.path)
+      table.insert(untracked_files, file)
+    elseif file.section == "unstaged" then
+      table.insert(unstaged_paths, file.path)
+      table.insert(unstaged_files, file)
+    end
+  end
+
+  -- Track completion of both operations
+  local pending = 0
+  local any_failed = false
+
+  local function complete_one(success, files_to_update)
+    if success then
+      -- Optimistic update: apply command for each file
+      for _, file in ipairs(files_to_update) do
+        local cmd = commands.remove_file(file.path, file.section)
+        self:apply_command(cmd)
+      end
+    else
+      any_failed = true
+    end
+
+    pending = pending - 1
+    if pending == 0 and callback then
+      callback(not any_failed)
+    end
+  end
+
+  -- Delete untracked files
+  if #untracked_paths > 0 then
+    pending = pending + 1
+    git.delete_untracked_files(untracked_paths, { cwd = self.repo_root }, function(success, err)
+      if not success then
+        errors.notify("Delete files", err)
+      end
+      complete_one(success, untracked_files)
+    end)
+  end
+
+  -- Discard unstaged changes
+  if #unstaged_paths > 0 then
+    pending = pending + 1
+    git.discard_files(unstaged_paths, { cwd = self.repo_root }, function(success, err)
+      if not success then
+        errors.notify("Discard files", err)
+      end
+      complete_one(success, unstaged_files)
     end)
   end
 end
