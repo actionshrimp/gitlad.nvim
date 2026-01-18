@@ -33,6 +33,10 @@ local M = {}
 ---@field unpushed_upstream GitCommitInfo[] Commits to push to upstream
 ---@field unpulled_push GitCommitInfo[] Commits to pull from push remote
 ---@field unpushed_push GitCommitInfo[] Commits to push to push remote
+---@field cherry_pick_in_progress? boolean Whether a cherry-pick is in progress
+---@field revert_in_progress? boolean Whether a revert is in progress
+---@field sequencer_head_oid? string OID of the commit being cherry-picked/reverted
+---@field sequencer_head_subject? string Subject of the commit being cherry-picked/reverted
 
 -- Status codes from git status --porcelain=v2
 local STATUS_CODES = {

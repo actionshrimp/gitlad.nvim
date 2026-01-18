@@ -180,7 +180,26 @@ function RepoState:_fetch_extended_status(result, callback)
     complete_one()
   end)
 
-  -- 4. Determine push destination
+  -- 4. Fetch sequencer state (cherry-pick/revert in progress)
+  start_op()
+  git.get_sequencer_state(opts, function(seq_state)
+    result.cherry_pick_in_progress = seq_state.cherry_pick_in_progress
+    result.revert_in_progress = seq_state.revert_in_progress
+    result.sequencer_head_oid = seq_state.sequencer_head_oid
+
+    -- If there's a sequencer operation in progress, fetch the commit subject
+    if seq_state.sequencer_head_oid then
+      start_op()
+      git.get_commit_subject(seq_state.sequencer_head_oid, opts, function(subject, _err)
+        result.sequencer_head_subject = subject
+        complete_one()
+      end)
+    end
+
+    complete_one()
+  end)
+
+  -- 5. Determine push destination
   -- Push goes to <push-remote>/<branch-name> where push-remote is:
   --   1. branch.<name>.pushRemote (explicit config)
   --   2. remote.pushDefault (global default)
