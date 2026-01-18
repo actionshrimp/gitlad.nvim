@@ -17,3 +17,28 @@ Show the output of git commit hooks (pre-commit, commit-msg, post-commit) in a p
 - Consider making this opt-in via config
 
 ---
+
+## Refs View (like magit-refs)
+
+A dedicated view showing all refs (branches, tags, remotes) in a unified display.
+
+**Inspiration:** magit's `y` (refs) view
+
+**What it would show:**
+- Local branches with their tracking info
+- Remote branches
+- Tags
+- Cherries (commits that exist in one branch but not another)
+
+**Use cases:**
+- Quick overview of all branches and their status
+- Cherry-picking commits between branches
+- Comparing branches visually
+- Managing upstream/push remotes
+
+**Implementation notes:**
+- Would reuse the log component for showing commit lists (cherries)
+- Consistent look/feel with status buffer
+- Cursor context for acting on specific refs/commits
+
+---

@@ -269,4 +269,75 @@ T["parse_remote_branches"]["handles branches with slashes"] = function()
   eq(result[2], "origin/bugfix/fix-crash")
 end
 
+-- =============================================================================
+-- parse_log_format tests
+-- =============================================================================
+
+T["parse_log_format"] = MiniTest.new_set()
+
+T["parse_log_format"]["parses commits with all fields"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local output =
+    "abc1234|||John Doe|||2 hours ago|||Add feature X\ndef5678|||Jane Smith|||1 day ago|||Fix bug Y"
+
+  local result = parse.parse_log_format(output)
+
+  eq(#result, 2)
+  eq(result[1].hash, "abc1234")
+  eq(result[1].author, "John Doe")
+  eq(result[1].date, "2 hours ago")
+  eq(result[1].subject, "Add feature X")
+  eq(result[2].hash, "def5678")
+  eq(result[2].author, "Jane Smith")
+  eq(result[2].date, "1 day ago")
+  eq(result[2].subject, "Fix bug Y")
+end
+
+T["parse_log_format"]["handles empty output"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_log_format("")
+
+  eq(#result, 0)
+end
+
+T["parse_log_format"]["handles commits with empty optional fields"] = function()
+  local parse = require("gitlad.git.parse")
+
+  -- Author and date can be empty (9 pipes = 3 separators)
+  local output = "abc1234|||||||||Just a hash and subject"
+
+  local result = parse.parse_log_format(output)
+
+  eq(#result, 1)
+  eq(result[1].hash, "abc1234")
+  eq(result[1].author, nil)
+  eq(result[1].date, nil)
+  eq(result[1].subject, "Just a hash and subject")
+end
+
+T["parse_log_format"]["handles subjects with special characters"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local output = "abc1234|||John|||1 hour ago|||feat: add login (WIP) [#123]"
+
+  local result = parse.parse_log_format(output)
+
+  eq(#result, 1)
+  eq(result[1].subject, "feat: add login (WIP) [#123]")
+end
+
+T["parse_log_format"]["get_log_format_string returns expected format"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local format = parse.get_log_format_string()
+
+  -- Should contain placeholders for hash, author, date, subject
+  expect.equality(format:match("%%h"), "%h")
+  expect.equality(format:match("%%an"), "%an")
+  expect.equality(format:match("%%ar"), "%ar")
+  expect.equality(format:match("%%s"), "%s")
+end
+
 return T

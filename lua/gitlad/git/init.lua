@@ -460,4 +460,59 @@ function M.remote_names(opts, callback)
   end)
 end
 
+--- Get commit log (basic oneline format)
+---@param args string[] Additional log arguments (e.g., { "-20" }, { "main..HEAD" })
+---@param opts? GitCommandOptions
+---@param callback fun(commits: GitCommitInfo[]|nil, err: string|nil)
+function M.log(args, opts, callback)
+  local log_args = { "log", "--oneline" }
+  vim.list_extend(log_args, args)
+
+  cli.run_async(log_args, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(parse.parse_log_oneline(result.stdout), nil)
+  end)
+end
+
+--- Get commit log with detailed info (author, date)
+---@param args string[] Additional log arguments (e.g., { "-20" }, { "main..HEAD" })
+---@param opts? GitCommandOptions
+---@param callback fun(commits: GitCommitInfo[]|nil, err: string|nil)
+function M.log_detailed(args, opts, callback)
+  local format = parse.get_log_format_string()
+  local log_args = { "log", "--format=" .. format }
+  vim.list_extend(log_args, args)
+
+  cli.run_async(log_args, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(parse.parse_log_format(table.concat(result.stdout, "\n")), nil)
+  end)
+end
+
+--- Get commit message body
+---@param hash string Commit hash
+---@param opts? GitCommandOptions
+---@param callback fun(body: string|nil, err: string|nil)
+function M.show_commit(hash, opts, callback)
+  -- Get just the commit body (message after subject)
+  local args = { "log", "-1", "--format=%b", hash }
+
+  cli.run_async(args, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    local body = table.concat(result.stdout, "\n")
+    -- Trim trailing whitespace
+    body = body:gsub("%s+$", "")
+    callback(body ~= "" and body or nil, nil)
+  end)
+end
+
 return M

@@ -11,6 +11,7 @@ local history_view = require("gitlad.ui.views.history")
 local git = require("gitlad.git")
 local keymap = require("gitlad.utils.keymap")
 local hl = require("gitlad.ui.hl")
+local log_list = require("gitlad.ui.components.log_list")
 
 ---@class LineInfo
 ---@field path string File path
@@ -34,9 +35,10 @@ local hl = require("gitlad.ui.hl")
 ---@field bufnr number Buffer number
 ---@field winnr number|nil Window number if open
 ---@field repo_state RepoState Repository state
----@field line_map table<number, LineInfo> Map of line numbers to file info
+---@field line_map table<number, LineInfo|CommitLineInfo> Map of line numbers to file or commit info
 ---@field section_lines table<number, SectionInfo> Map of line numbers to section headers
 ---@field expanded_files table<string, boolean> Map of "section:path" to expanded state
+---@field expanded_commits table<string, boolean> Map of commit hash to expanded state
 ---@field diff_cache table<string, DiffData> Map of "section:path" to parsed diff data
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
@@ -56,9 +58,10 @@ local function get_or_create_buffer(repo_state)
 
   local self = setmetatable({}, StatusBuffer)
   self.repo_state = repo_state
-  self.line_map = {} -- Maps line numbers to file info
+  self.line_map = {} -- Maps line numbers to file info or commit info
   self.section_lines = {} -- Maps line numbers to section headers
   self.expanded_files = {} -- Tracks which files have diffs expanded
+  self.expanded_commits = {} -- Tracks which commits have details expanded
   self.diff_cache = {} -- Caches fetched diff lines
 
   -- Create buffer
@@ -78,8 +81,9 @@ local function get_or_create_buffer(repo_state)
   -- Listen for status updates
   repo_state:on("status", function()
     vim.schedule(function()
-      -- Clear diff data when status changes to avoid stale diffs
+      -- Clear diff/expansion data when status changes to avoid stale data
       self.expanded_files = {}
+      self.expanded_commits = {}
       self.diff_cache = {}
       self:render()
     end)
@@ -196,6 +200,12 @@ function StatusBuffer:_setup_keymaps()
     local branch_popup = require("gitlad.popups.branch")
     branch_popup.open(self.repo_state)
   end, "Branch popup")
+
+  -- Log popup
+  keymap.set(bufnr, "n", "l", function()
+    local log_popup = require("gitlad.popups.log")
+    log_popup.open(self.repo_state)
+  end, "Log popup")
 end
 
 --- Get the file path at the current cursor position
@@ -207,11 +217,47 @@ function StatusBuffer:_get_current_file()
   local line = cursor[1]
 
   local info = self.line_map[line]
-  if info then
+  if info and info.path then
     return info.path, info.section, info.hunk_index
   end
 
   return nil, nil, nil
+end
+
+--- Get the commit at the current cursor position
+---@return GitCommitInfo|nil commit
+---@return string|nil section The commit section type
+function StatusBuffer:_get_current_commit()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+
+  local info = self.line_map[line]
+  if info and info.type == "commit" then
+    return info.commit, info.section
+  end
+
+  return nil, nil
+end
+
+--- Get selected commits (normal mode: single, visual mode: range)
+---@return GitCommitInfo[] Selected commits
+function StatusBuffer:_get_selected_commits()
+  local mode = vim.fn.mode()
+  if mode:match("[vV]") then
+    -- Visual mode: get range
+    local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
+    vim.api.nvim_feedkeys(esc, "nx", false)
+    local start_line = vim.fn.line("'<")
+    local end_line = vim.fn.line("'>")
+    return log_list.get_commits_in_range(self.line_map, start_line, end_line)
+  else
+    -- Normal mode: single commit
+    local commit = self:_get_current_commit()
+    if commit then
+      return { commit }
+    end
+  end
+  return {}
 end
 
 --- Get the cache key for a file's diff
@@ -859,15 +905,29 @@ function StatusBuffer:render()
     end
   end
 
-  -- Helper to render a commit section
-  local function add_commit_section(title, commits)
-    if #commits > 0 then
-      table.insert(lines, string.format("%s (%d)", title, #commits))
-      for _, commit in ipairs(commits) do
-        table.insert(lines, string.format("  %s %s", commit.hash, commit.subject))
-      end
-      table.insert(lines, "")
+  -- Helper to render a commit section using log_list component
+  local function add_commit_section(title, commits, section_type)
+    if #commits == 0 then
+      return
     end
+
+    table.insert(lines, string.format("%s (%d)", title, #commits))
+    self.section_lines[#lines] = { name = title, section = section_type }
+
+    local result = log_list.render(commits, self.expanded_commits, {
+      indent = 2,
+      section = section_type,
+    })
+
+    for i, line in ipairs(result.lines) do
+      table.insert(lines, line)
+      local info = result.line_info[i]
+      if info then
+        -- Commits now tracked in line_map with CommitLineInfo
+        self.line_map[#lines] = info
+      end
+    end
+    table.insert(lines, "")
   end
 
   -- Header
@@ -908,14 +968,30 @@ function StatusBuffer:render()
 
   -- Unmerged/Unpulled sections for upstream (merge branch)
   if status.upstream then
-    add_commit_section("Unpulled from " .. status.upstream, status.unpulled_upstream or {})
-    add_commit_section("Unmerged into " .. status.upstream, status.unpushed_upstream or {})
+    add_commit_section(
+      "Unpulled from " .. status.upstream,
+      status.unpulled_upstream or {},
+      "unpulled_upstream"
+    )
+    add_commit_section(
+      "Unmerged into " .. status.upstream,
+      status.unpushed_upstream or {},
+      "unpushed_upstream"
+    )
   end
 
   -- Unpulled/Unpushed sections for push remote (if different)
   if status.push_remote then
-    add_commit_section("Unpulled from " .. status.push_remote, status.unpulled_push or {})
-    add_commit_section("Unpushed to " .. status.push_remote, status.unpushed_push or {})
+    add_commit_section(
+      "Unpulled from " .. status.push_remote,
+      status.unpulled_push or {},
+      "unpulled_push"
+    )
+    add_commit_section(
+      "Unpushed to " .. status.push_remote,
+      status.unpushed_push or {},
+      "unpushed_push"
+    )
   end
 
   -- Staged changes

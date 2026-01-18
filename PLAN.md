@@ -67,7 +67,7 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Pull popup** - `F` keybinding for pull with switches/options/actions
 - **Branch popup** - `b` keybinding for branch operations (checkout, create, delete, rename, set upstream, configure push remote)
 - **Upstream/Push tracking** - Status shows Head/Merge/Push with commit messages, unpushed/unpulled commit sections
-- Test infrastructure with mini.test (271 tests passing)
+- Test infrastructure with mini.test (329 tests passing)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -233,17 +233,29 @@ Transient-style popup system inspired by neogit/magit:
 - `tests/unit/test_status.lua` - Tests for header rendering
 - `tests/e2e/test_status_view.lua` - Tests for Merge line display
 
-### 3.5 Log View
-- [ ] `l` opens log popup, then actions open log buffer
-- [ ] Show commit list with: hash, author, date, message
-- [ ] Navigation through commits
-- [ ] `RET` on commit shows commit details
-- [ ] `d` shows diff for commit
-- [ ] Limit options: `-n`, `--since`, `--author`, path filtering
+### 3.5 Log View ✓
+- [x] `l` opens log popup, then actions open log buffer
+- [x] Show commit list with: hash, author, date, message
+- [x] Navigation through commits (j/k)
+- [x] `RET`/`TAB` on commit expands commit details (body)
+- [x] `d` shows diff for commit (via diffview.nvim)
+- [x] `y` yanks commit hash to clipboard
+- [x] Limit options: `-n`, `--since`, `--until`, `--author`
+- [x] Reusable log_list component for embedding in other views
 
-**Files to create:**
-- `lua/gitlad/ui/views/log.lua`
-- `lua/gitlad/popups/log/init.lua`
+**Files created:**
+- `lua/gitlad/ui/views/log.lua` - Log buffer view
+- `lua/gitlad/popups/log.lua` - Log popup with switches/options/actions
+- `lua/gitlad/ui/components/log_list.lua` - Reusable commit list component
+- `tests/unit/test_log_list.lua` - Unit tests for log_list component
+- `tests/unit/test_log_popup.lua` - Unit tests for log popup
+- `tests/e2e/test_log.lua` - E2E tests for log functionality
+
+**Files modified:**
+- `lua/gitlad/git/init.lua` - Added log(), log_detailed(), show_commit()
+- `lua/gitlad/git/parse.lua` - Extended GitCommitInfo, added parse_log_format()
+- `lua/gitlad/ui/views/status.lua` - Added `l` keymap, integrated log_list component
+- `lua/gitlad/ui/hl.lua` - Added commit-related highlight groups
 
 ### 3.6 Diff View (via diffview.nvim)
 

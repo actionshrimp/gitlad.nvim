@@ -186,6 +186,9 @@ end
 ---@class GitCommitInfo
 ---@field hash string Short commit hash
 ---@field subject string Commit subject line
+---@field author? string Author name (optional, for detailed views)
+---@field date? string Relative date (optional)
+---@field body? string Commit body/message (optional, for expansion)
 
 ---@class GitRemote
 ---@field name string Remote name (e.g., "origin")
@@ -247,6 +250,40 @@ function M.parse_log_oneline(lines)
   end
 
   return commits
+end
+
+-- Separator used in git log --format for parsing
+local LOG_FORMAT_SEP = "|||"
+
+--- Parse git log output with custom format
+--- Format: hash|||author|||date|||subject
+--- Each commit is separated by a record separator (newline + COMMIT_START marker)
+---@param output string Raw output from git log
+---@return GitCommitInfo[]
+function M.parse_log_format(output)
+  local commits = {}
+
+  -- Split by newlines and parse each line as a commit
+  for line in output:gmatch("[^\n]+") do
+    -- Format: "hash|||author|||date|||subject"
+    local hash, author, date, subject = line:match("^([^|]+)|||([^|]*)|||([^|]*)|||(.*)$")
+    if hash then
+      table.insert(commits, {
+        hash = hash,
+        author = author ~= "" and author or nil,
+        date = date ~= "" and date or nil,
+        subject = subject or "",
+      })
+    end
+  end
+
+  return commits
+end
+
+--- Get the git log format string for parse_log_format
+---@return string
+function M.get_log_format_string()
+  return "%h" .. LOG_FORMAT_SEP .. "%an" .. LOG_FORMAT_SEP .. "%ar" .. LOG_FORMAT_SEP .. "%s"
 end
 
 --- Parse git branch -r output (remote branches)
