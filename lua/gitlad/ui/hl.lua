@@ -6,6 +6,26 @@
 
 local M = {}
 
+--- Get the foreground color from a highlight group
+---@param group string Highlight group name
+---@return string|nil fg Hex color string or nil
+local function get_fg_from_group(group)
+  local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = group, link = false })
+  if ok and hl and hl.fg then
+    return string.format("#%06x", hl.fg)
+  end
+  return nil
+end
+
+--- Create a bold section header highlight, inheriting color from a base group
+---@param base_group string The group to inherit foreground from
+---@param fallback_fg string Fallback color if base group has no foreground
+---@return table highlight definition
+local function bold_section_hl(base_group, fallback_fg)
+  local fg = get_fg_from_group(base_group) or fallback_fg
+  return { bold = true, fg = fg }
+end
+
 -- Namespaces for extmark highlighting
 local ns_status = vim.api.nvim_create_namespace("gitlad_status")
 local ns_diff_lang = vim.api.nvim_create_namespace("gitlad_diff_lang")
@@ -29,7 +49,7 @@ local highlight_groups = {
   GitladCommitDate = { link = "Comment" },
   GitladCommitBody = { link = "Normal" },
 
-  -- Section headers
+  -- Section headers - linked to base groups (setup() adds bold)
   GitladSectionHeading = { link = "Title" },
   GitladSectionStaged = { link = "DiffAdd" },
   GitladSectionUnstaged = { link = "DiffChange" },
@@ -80,11 +100,31 @@ local highlight_groups = {
   GitladHelpText = { link = "Comment" },
 }
 
+-- Section header definitions: group name -> { base_group, fallback_fg }
+local section_header_defs = {
+  GitladSectionHeading = { "Title", "#61afef" },
+  GitladSectionStaged = { "DiffAdd", "#98c379" },
+  GitladSectionUnstaged = { "DiffChange", "#e5c07b" },
+  GitladSectionUntracked = { "Comment", "#abb2bf" },
+  GitladSectionConflicted = { "DiagnosticError", "#e06c75" },
+  GitladSectionUnpulled = { "DiagnosticWarn", "#d19a66" },
+  GitladSectionUnpushed = { "DiagnosticInfo", "#56b6c2" },
+  GitladSectionRecent = { "Comment", "#c678dd" },
+}
+
 --- Set up all highlight groups
 --- Should be called once during plugin setup
 function M.setup()
+  -- First set up all base highlight groups
   for group, def in pairs(highlight_groups) do
     vim.api.nvim_set_hl(0, group, def)
+  end
+
+  -- Then override section headers with bold versions
+  -- This runs after the base groups are set, so we can derive colors from them
+  for group, def in pairs(section_header_defs) do
+    local base_group, fallback_fg = def[1], def[2]
+    vim.api.nvim_set_hl(0, group, bold_section_hl(base_group, fallback_fg))
   end
 end
 
@@ -283,10 +323,17 @@ local status_char_hl = {
 
 -- Map section names to highlight groups
 local section_hl = {
+  -- File sections
   staged = "GitladSectionStaged",
   unstaged = "GitladSectionUnstaged",
   untracked = "GitladSectionUntracked",
   conflicted = "GitladSectionConflicted",
+  -- Commit sections
+  unpulled_upstream = "GitladSectionUnpulled",
+  unpushed_upstream = "GitladSectionUnpushed",
+  unpulled_push = "GitladSectionUnpulled",
+  unpushed_push = "GitladSectionUnpushed",
+  recent = "GitladSectionRecent",
 }
 
 --- Apply highlights to the status buffer
@@ -404,7 +451,8 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
         end
       end
 
-      -- Section headers: "Staged (n)", "Unstaged (n)", etc.
+      -- Section headers: "Staged (n)", "Unstaged (n)", "Unmerged into X (n)", etc.
+      -- Expand indicators are now in sign column, not in text
     elseif section_lines[i] then
       local section_info = section_lines[i]
       local hl_group = section_hl[section_info.section]
@@ -412,35 +460,11 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
         M.set(bufnr, ns_status, line_idx, 0, #line, hl_group)
       end
 
-      -- Unpulled/Unpushed/Unmerged/Recent sections (with collapse indicator)
-    elseif line:match("^[>v] Unpulled from") then
-      M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
-      M.set(bufnr, ns_status, line_idx, 2, #line, "GitladSectionUnpulled")
-    elseif line:match("^[>v] Unpushed to") or line:match("^[>v] Unmerged into") then
-      M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
-      M.set(bufnr, ns_status, line_idx, 2, #line, "GitladSectionUnpushed")
-    elseif line:match("^[>v] Recent commits") then
-      M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
-      M.set(bufnr, ns_status, line_idx, 2, #line, "GitladSectionRecent")
-
-      -- File entries: "  > ● M path" or "  > ●   path"
+      -- File entries: "● M path" or "●   path"
+      -- Expand indicators are now in sign column, not in text
       -- Note: line_map may also contain commit entries (with type="commit"), so check for path
     elseif line_map[i] and line_map[i].path and not line_map[i].hunk_index then
       -- This is a file entry line (not a diff line)
-      -- Format: "  > ● M path" or "  v ● M path" (expanded)
-      local expand_indicator_pos = line:find("[>v]")
-      if expand_indicator_pos then
-        M.set(
-          bufnr,
-          ns_status,
-          line_idx,
-          expand_indicator_pos - 1,
-          expand_indicator_pos,
-          "GitladExpandIndicator"
-        )
-      end
-
-      -- Find status character and path
       local file_info = line_map[i]
       local section = file_info.section
 
@@ -477,7 +501,7 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
 
       -- Highlight based on section for the sign
       if section == "staged" then
-        -- Find sign position (after expand indicator)
+        -- Find sign position at start of line
         local sign_pos = line:find("[●○✦]")
         if sign_pos then
           M.set(bufnr, ns_status, line_idx, sign_pos - 1, sign_pos + 2, "GitladFileAdded") -- UTF-8 chars are 3 bytes
@@ -493,15 +517,13 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
       -- Match lines with hunk_index OR untracked file content (no hunk headers)
     elseif
       line_map[i]
-      and (
-        line_map[i].hunk_index or (line_map[i].section == "untracked" and line:match("^%s%s%s%s%+"))
-      )
+      and (line_map[i].hunk_index or (line_map[i].section == "untracked" and line:match("^%s%s%+")))
     then
-      -- This is a diff line - format: "    @@ ..." or "    +..." or "    -..." or "     context"
-      local content_start = 4 -- Skip the 4-space indent
+      -- This is a diff line - format: "  @@ ..." or "  +..." or "  -..." or "   context"
+      local content_start = 2 -- Skip the 2-space indent
       local first_char = line:sub(content_start + 1, content_start + 1)
 
-      if line:match("^%s%s%s%s@@") then
+      if line:match("^%s%s@@") then
         -- Hunk header line - use text highlight for the whole line
         M.set(
           bufnr,
@@ -595,10 +617,10 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
   local line_mapping = {}
 
   for i, line in ipairs(diff_lines) do
-    -- Diff lines have 4-space indent, then +/-/space, then content
-    -- Format: "    +content" or "    -content" or "     context"
-    local content_start = 5 -- After "    " and the diff marker
-    local first_char = line:sub(5, 5)
+    -- Diff lines have 2-space indent, then +/-/space, then content
+    -- Format: "  +content" or "  -content" or "   context"
+    local content_start = 3 -- After "  " and the diff marker
+    local first_char = line:sub(3, 3)
 
     if first_char == "+" or first_char == "-" or first_char == " " then
       -- Extract the actual code (after the diff marker)
@@ -608,7 +630,7 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
         buffer_line = start_line + i - 1, -- 0-indexed
         col_offset = content_start, -- Column where code starts (after indent + marker)
       })
-    elseif line:match("^%s%s%s%s@@") then
+    elseif line:match("^%s%s@@") then
       -- Skip hunk headers - they're not code
       table.insert(code_lines, "")
       table.insert(line_mapping, nil)
@@ -716,8 +738,8 @@ function M.apply_diff_treesitter_highlights(bufnr, lines, line_map, diff_cache)
     local info = line_map[i]
     local line = lines[i]
 
-    -- Check if this is a diff content line (starts with 4 spaces then +/-/space/@@)
-    local is_diff_content = line:match("^%s%s%s%s[%+%-%s@]")
+    -- Check if this is a diff content line (starts with 2 spaces then +/-/space/@@)
+    local is_diff_content = line:match("^%s%s[%+%-%s@]")
 
     if info and not is_diff_content then
       -- This is a file entry line (not diff content)

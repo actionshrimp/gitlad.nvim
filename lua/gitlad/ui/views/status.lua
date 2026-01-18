@@ -13,6 +13,9 @@ local keymap = require("gitlad.utils.keymap")
 local hl = require("gitlad.ui.hl")
 local log_list = require("gitlad.ui.components.log_list")
 
+-- Namespace for sign column indicators
+local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
+
 ---@class LineInfo
 ---@field path string File path
 ---@field section "staged"|"unstaged"|"untracked"|"conflicted" Section type
@@ -31,6 +34,9 @@ local log_list = require("gitlad.ui.components.log_list")
 ---@field name string Section name
 ---@field section "staged"|"unstaged"|"untracked"|"conflicted" Section type
 
+---@class SignInfo
+---@field expanded boolean Whether the item is expanded
+
 ---@class StatusBuffer
 ---@field bufnr number Buffer number
 ---@field winnr number|nil Window number if open
@@ -40,6 +46,7 @@ local log_list = require("gitlad.ui.components.log_list")
 ---@field expanded_files table<string, boolean> Map of "section:path" to expanded state
 ---@field expanded_commits table<string, boolean> Map of commit hash to expanded state
 ---@field diff_cache table<string, DiffData> Map of "section:path" to parsed diff data
+---@field sign_lines table<number, SignInfo> Map of line numbers to sign info
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
 
@@ -207,6 +214,14 @@ function StatusBuffer:_setup_keymaps()
     local log_popup = require("gitlad.popups.log")
     log_popup.open(self.repo_state)
   end, "Log popup")
+
+  -- Commit operations (works on commits in unpulled/unpushed/recent sections)
+  keymap.set(bufnr, "n", "d", function()
+    self:_diff_commit()
+  end, "Show commit diff")
+  keymap.set(bufnr, "n", "y", function()
+    self:_yank_commit_hash()
+  end, "Yank commit hash")
 end
 
 --- Get the file path at the current cursor position
@@ -259,6 +274,37 @@ function StatusBuffer:_get_selected_commits()
     end
   end
   return {}
+end
+
+--- Show commit diff via diffview.nvim (or fallback)
+function StatusBuffer:_diff_commit()
+  local commit = self:_get_current_commit()
+  if not commit then
+    return
+  end
+
+  -- Check if diffview is available
+  local has_diffview, diffview = pcall(require, "diffview")
+  if has_diffview then
+    diffview.open({ commit.hash .. "^!" })
+  else
+    -- Fallback to git show in a split
+    vim.cmd("botright split")
+    vim.cmd("terminal git show " .. commit.hash)
+    vim.cmd("startinsert")
+  end
+end
+
+--- Yank commit hash to clipboard
+function StatusBuffer:_yank_commit_hash()
+  local commit = self:_get_current_commit()
+  if not commit then
+    return
+  end
+
+  vim.fn.setreg("+", commit.hash)
+  vim.fn.setreg('"', commit.hash)
+  vim.notify("[gitlad] Yanked: " .. commit.hash, vim.log.levels.INFO)
 end
 
 --- Get the cache key for a file's diff
@@ -813,14 +859,19 @@ end
 --- Visit the file at cursor
 function StatusBuffer:_visit_file()
   local path = self:_get_current_file()
-  if not path then
+  if path then
+    local full_path = self.repo_state.repo_root .. path
+    -- Close status and open file
+    self:close()
+    vim.cmd("edit " .. vim.fn.fnameescape(full_path))
     return
   end
 
-  local full_path = self.repo_state.repo_root .. path
-  -- Close status and open file
-  self:close()
-  vim.cmd("edit " .. vim.fn.fnameescape(full_path))
+  -- If not on a file, check if on a commit - toggle expand
+  local commit = self:_get_current_commit()
+  if commit then
+    self:_toggle_diff()
+  end
 end
 
 --- Stage all unstaged and untracked files
@@ -882,6 +933,7 @@ function StatusBuffer:render()
   local lines = {}
   self.line_map = {} -- Reset line map
   self.section_lines = {} -- Reset section lines
+  self.sign_lines = {} -- Reset sign lines
 
   -- Helper to add a section header and track its line number
   local function add_section_header(name, section, count)
@@ -899,13 +951,13 @@ function StatusBuffer:render()
     -- Check if this file is expanded
     local key = diff_cache_key(entry.path, section)
     local is_expanded = self.expanded_files[key]
-    local expand_indicator = is_expanded and "v" or ">"
 
-    local line_text = status_char
-        and string.format("  %s %s %s %s", expand_indicator, sign, status_char, display)
-      or string.format("  %s %s   %s", expand_indicator, sign, display)
+    -- Format without expand indicator (it goes in sign column)
+    local line_text = status_char and string.format("%s %s %s", sign, status_char, display)
+      or string.format("%s   %s", sign, display)
     table.insert(lines, line_text)
     self.line_map[#lines] = { path = entry.path, section = section }
+    self.sign_lines[#lines] = { expanded = is_expanded }
 
     -- Add diff lines if expanded
     if is_expanded and self.diff_cache[key] then
@@ -918,7 +970,7 @@ function StatusBuffer:render()
           current_hunk_index = current_hunk_index + 1
         end
 
-        table.insert(lines, "    " .. diff_line)
+        table.insert(lines, "  " .. diff_line)
         -- Diff lines map to the file and include hunk index
         self.line_map[#lines] = {
           path = entry.path,
@@ -936,9 +988,10 @@ function StatusBuffer:render()
     end
 
     local is_collapsed = self.collapsed_sections[section_type]
-    local indicator = is_collapsed and ">" or "v"
-    table.insert(lines, string.format("%s %s (%d)", indicator, title, #commits))
+    -- No indicator in text - it goes in sign column
+    table.insert(lines, string.format("%s (%d)", title, #commits))
     self.section_lines[#lines] = { name = title, section = section_type }
+    self.sign_lines[#lines] = { expanded = not is_collapsed }
 
     -- Only render commits if section is not collapsed
     if not is_collapsed then
@@ -995,15 +1048,63 @@ function StatusBuffer:render()
 
   table.insert(lines, "")
 
-  -- Unmerged/Unpulled sections for upstream (merge branch)
-  -- Following magit's approach: show unpushed if any, otherwise show recent commits
+  -- === File sections (staged/unstaged/untracked/conflicted) - shown first, magit style ===
+
+  -- Untracked files
+  if #status.untracked > 0 then
+    add_section_header("Untracked", "untracked", #status.untracked)
+    for _, entry in ipairs(status.untracked) do
+      add_file_line(entry, "untracked", cfg.signs.untracked, nil, false)
+    end
+    table.insert(lines, "")
+  end
+
+  -- Unstaged changes
+  if #status.unstaged > 0 then
+    add_section_header("Unstaged", "unstaged", #status.unstaged)
+    for _, entry in ipairs(status.unstaged) do
+      add_file_line(entry, "unstaged", cfg.signs.unstaged, entry.worktree_status, false)
+    end
+    table.insert(lines, "")
+  end
+
+  -- Staged changes
+  if #status.staged > 0 then
+    add_section_header("Staged", "staged", #status.staged)
+    for _, entry in ipairs(status.staged) do
+      add_file_line(entry, "staged", cfg.signs.staged, entry.index_status, true)
+    end
+    table.insert(lines, "")
+  end
+
+  -- Conflicted files
+  if #status.conflicted > 0 then
+    add_section_header("Conflicted", "conflicted", #status.conflicted)
+    for _, entry in ipairs(status.conflicted) do
+      add_file_line(entry, "conflicted", cfg.signs.conflict, nil, false)
+    end
+    table.insert(lines, "")
+  end
+
+  -- Clean working tree message
+  if
+    #status.staged == 0
+    and #status.unstaged == 0
+    and #status.untracked == 0
+    and #status.conflicted == 0
+  then
+    table.insert(lines, "Nothing to commit, working tree clean")
+    table.insert(lines, "")
+  end
+
+  -- === Commit sections (unpulled/unpushed/recent) - shown after file changes, magit style ===
+
+  -- Track whether we have any unpushed commits (used to decide whether to show recent commits)
   local has_unpushed_upstream = status.upstream
     and status.unpushed_upstream
     and #status.unpushed_upstream > 0
-  local has_unpulled_upstream = status.upstream
-    and status.unpulled_upstream
-    and #status.unpulled_upstream > 0
 
+  -- Unpulled/Unpushed sections for upstream (merge branch)
   if status.upstream then
     add_commit_section(
       "Unpulled from " .. status.upstream,
@@ -1043,52 +1144,6 @@ function StatusBuffer:render()
     add_commit_section("Recent commits", status.recent_commits, "recent")
   end
 
-  -- Staged changes
-  if #status.staged > 0 then
-    add_section_header("Staged", "staged", #status.staged)
-    for _, entry in ipairs(status.staged) do
-      add_file_line(entry, "staged", cfg.signs.staged, entry.index_status, true)
-    end
-    table.insert(lines, "")
-  end
-
-  -- Unstaged changes
-  if #status.unstaged > 0 then
-    add_section_header("Unstaged", "unstaged", #status.unstaged)
-    for _, entry in ipairs(status.unstaged) do
-      add_file_line(entry, "unstaged", cfg.signs.unstaged, entry.worktree_status, false)
-    end
-    table.insert(lines, "")
-  end
-
-  -- Untracked files
-  if #status.untracked > 0 then
-    add_section_header("Untracked", "untracked", #status.untracked)
-    for _, entry in ipairs(status.untracked) do
-      add_file_line(entry, "untracked", cfg.signs.untracked, nil, false)
-    end
-    table.insert(lines, "")
-  end
-
-  -- Conflicted files
-  if #status.conflicted > 0 then
-    add_section_header("Conflicted", "conflicted", #status.conflicted)
-    for _, entry in ipairs(status.conflicted) do
-      add_file_line(entry, "conflicted", cfg.signs.conflict, nil, false)
-    end
-    table.insert(lines, "")
-  end
-
-  -- Clean working tree message
-  if
-    #status.staged == 0
-    and #status.unstaged == 0
-    and #status.untracked == 0
-    and #status.conflicted == 0
-  then
-    table.insert(lines, "Nothing to commit, working tree clean")
-  end
-
   -- Help line
   table.insert(lines, "")
   table.insert(lines, "Press ? for help")
@@ -1103,8 +1158,29 @@ function StatusBuffer:render()
   -- Apply treesitter highlighting to expanded diffs
   hl.apply_diff_treesitter_highlights(self.bufnr, lines, self.line_map, self.diff_cache)
 
+  -- Place expand/collapse indicators in sign column
+  self:_place_signs()
+
   -- Make buffer non-modifiable to prevent accidental edits
   vim.bo[self.bufnr].modifiable = false
+end
+
+--- Place expand/collapse signs in the sign column
+function StatusBuffer:_place_signs()
+  -- Clear existing signs
+  vim.api.nvim_buf_clear_namespace(self.bufnr, ns_signs, 0, -1)
+
+  -- Place signs for lines that have expand indicators
+  for line_num, sign_info in pairs(self.sign_lines) do
+    local sign_text = sign_info.expanded and "v" or ">"
+    local sign_hl = "GitladExpandIndicator"
+
+    vim.api.nvim_buf_set_extmark(self.bufnr, ns_signs, line_num - 1, 0, {
+      sign_text = sign_text,
+      sign_hl_group = sign_hl,
+      priority = 10,
+    })
+  end
 end
 
 --- Open the status buffer in a window
@@ -1122,6 +1198,13 @@ function StatusBuffer:open()
   -- Open in current window
   vim.api.nvim_set_current_buf(self.bufnr)
   self.winnr = vim.api.nvim_get_current_win()
+
+  -- Set window-local options for clean status display
+  vim.wo[self.winnr].number = false
+  vim.wo[self.winnr].relativenumber = false
+  vim.wo[self.winnr].signcolumn = "yes:1"
+  vim.wo[self.winnr].foldcolumn = "0"
+  vim.wo[self.winnr].wrap = false
 
   -- Initial render
   self:render()
