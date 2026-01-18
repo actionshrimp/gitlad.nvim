@@ -345,6 +345,20 @@ Transient-style popup system inspired by neogit/magit:
 - `tests/e2e/test_cherrypick.lua` - E2E tests for cherry-pick and revert
 - `tests/e2e/test_sequencer_state.lua` - Sequencer state detection tests
 
+### 4.5 Reset Popup (COMPLETE)
+- [x] `X` reset popup (neogit/evil-collection-magit style)
+- [x] Reset modes: mixed, soft, hard, keep, index, worktree
+- [x] Context-aware: if cursor on commit, uses that as target
+- [x] Confirmation prompt for destructive operations (hard, worktree)
+
+**Files created/modified:**
+- `lua/gitlad/git/init.lua` - reset_keep, reset_index, reset_worktree functions
+- `lua/gitlad/popups/reset.lua` - Reset popup with all modes
+- `lua/gitlad/ui/views/status.lua` - Added `X` keybinding
+- `lua/gitlad/popups/help.lua` - Added `X` help entry
+- `tests/unit/test_reset_popup.lua` - Reset popup tests
+- `tests/e2e/test_reset.lua` - E2E tests for reset operations
+
 ---
 
 ## Phase 5: Polish & Optional Features
