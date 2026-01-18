@@ -49,15 +49,16 @@ local highlight_groups = {
   GitladCommitDate = { link = "Comment" },
   GitladCommitBody = { link = "Normal" },
 
-  -- Section headers - linked to base groups (setup() adds bold)
-  GitladSectionHeading = { link = "Title" },
-  GitladSectionStaged = { link = "DiffAdd" },
-  GitladSectionUnstaged = { link = "DiffChange" },
-  GitladSectionUntracked = { link = "Comment" },
-  GitladSectionConflicted = { link = "DiagnosticError" },
-  GitladSectionUnpulled = { link = "DiagnosticWarn" },
-  GitladSectionUnpushed = { link = "DiagnosticInfo" },
-  GitladSectionRecent = { link = "Comment" },
+  -- Section headers - all use a single common style (like magit/neogit)
+  -- GitladSectionHeader is the base, all others link to it
+  GitladSectionHeader = { link = "Title" },
+  GitladSectionStaged = { link = "GitladSectionHeader" },
+  GitladSectionUnstaged = { link = "GitladSectionHeader" },
+  GitladSectionUntracked = { link = "GitladSectionHeader" },
+  GitladSectionConflicted = { link = "GitladSectionHeader" },
+  GitladSectionUnpulled = { link = "GitladSectionHeader" },
+  GitladSectionUnpushed = { link = "GitladSectionHeader" },
+  GitladSectionRecent = { link = "GitladSectionHeader" },
 
   -- File entries
   GitladFileAdded = { link = "DiffAdd" },
@@ -100,17 +101,9 @@ local highlight_groups = {
   GitladHelpText = { link = "Comment" },
 }
 
--- Section header definitions: group name -> { base_group, fallback_fg }
-local section_header_defs = {
-  GitladSectionHeading = { "Title", "#61afef" },
-  GitladSectionStaged = { "DiffAdd", "#98c379" },
-  GitladSectionUnstaged = { "DiffChange", "#e5c07b" },
-  GitladSectionUntracked = { "Comment", "#abb2bf" },
-  GitladSectionConflicted = { "DiagnosticError", "#e06c75" },
-  GitladSectionUnpulled = { "DiagnosticWarn", "#d19a66" },
-  GitladSectionUnpushed = { "DiagnosticInfo", "#56b6c2" },
-  GitladSectionRecent = { "Comment", "#c678dd" },
-}
+-- Section header definition: single style for all section headers (like magit/neogit)
+-- We only need to define the base GitladSectionHeader; others link to it
+local section_header_def = { "Title", "#61afef" }
 
 --- Set up all highlight groups
 --- Should be called once during plugin setup
@@ -120,12 +113,10 @@ function M.setup()
     vim.api.nvim_set_hl(0, group, def)
   end
 
-  -- Then override section headers with bold versions
-  -- This runs after the base groups are set, so we can derive colors from them
-  for group, def in pairs(section_header_defs) do
-    local base_group, fallback_fg = def[1], def[2]
-    vim.api.nvim_set_hl(0, group, bold_section_hl(base_group, fallback_fg))
-  end
+  -- Override the base section header with bold version
+  -- All section-specific headers link to this, so they inherit the style
+  local base_group, fallback_fg = section_header_def[1], section_header_def[2]
+  vim.api.nvim_set_hl(0, "GitladSectionHeader", bold_section_hl(base_group, fallback_fg))
 end
 
 --- Get namespace IDs for external use
