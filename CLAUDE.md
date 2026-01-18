@@ -316,6 +316,7 @@ See PLAN.md for the detailed roadmap.
 
 Cloned in parent directory for reference:
 
+- `../magit/` - Popup system architecture, comprehensive features
 - `../neogit/` - Popup system architecture, comprehensive features
 - `../vim-fugitive/` - Performance patterns, vim-way design
 - `../lazygit/` - AsyncHandler pattern, loader architecture
