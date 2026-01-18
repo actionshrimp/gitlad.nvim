@@ -149,6 +149,19 @@ function M.open(repo_state)
   push_popup:show()
 end
 
+--- Check if remote branch exists
+--- Uses the status data which already tracks whether push_commit_msg was fetched
+---@param status GitStatusResult|nil
+---@return boolean
+local function remote_branch_exists(status)
+  if not status then
+    return false
+  end
+  -- If push_remote is set and push_commit_msg exists, the remote branch exists
+  -- state/init.lua only sets push_commit_msg if the remote branch was found
+  return status.push_remote ~= nil and status.push_commit_msg ~= nil
+end
+
 --- Push to push target (same-name branch on remote)
 --- Unlike git's default behavior which can be confused by mismatched upstream,
 --- we explicitly push to <remote>/<branch> like magit does
@@ -184,14 +197,41 @@ function M._push_upstream(repo_state, popup_data)
 
   -- If no explicit remote/refspec, derive from push target
   -- This ensures we push to <remote>/<branch> even when upstream differs
+  local push_ref = nil
   if (not remote or remote == "") and (not refspec or refspec == "") and status then
-    local push_ref, push_remote = get_push_target(status)
+    local push_remote
+    push_ref, push_remote = get_push_target(status)
     if push_ref and push_remote then
       remote = push_remote
       -- Push current branch to same-name branch on remote
-      -- e.g., "git push origin feature/foo:feature/foo" or just "git push origin feature/foo"
       refspec = status.branch
     end
+  end
+
+  -- Check if remote branch exists
+  -- If not, prompt user to create it with -u flag
+  if push_ref and not remote_branch_exists(status) then
+    local prompt = string.format("Create remote branch '%s' and set as push target?", push_ref)
+    vim.ui.select({ "Yes", "No" }, { prompt = prompt }, function(choice)
+      if choice ~= "Yes" then
+        return
+      end
+      -- Add -u flag to set upstream when creating the branch
+      local args = build_push_args(popup_data, remote, refspec)
+      -- Ensure -u is in args if not already
+      local has_set_upstream = false
+      for _, arg in ipairs(args) do
+        if arg == "--set-upstream" or arg == "-u" then
+          has_set_upstream = true
+          break
+        end
+      end
+      if not has_set_upstream then
+        table.insert(args, 1, "-u")
+      end
+      do_push(repo_state, args)
+    end)
+    return
   end
 
   local args = build_push_args(popup_data, remote, refspec)
