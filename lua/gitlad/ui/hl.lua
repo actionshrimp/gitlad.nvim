@@ -451,38 +451,20 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
         end
       end
 
-      -- Section headers: "Staged (n)", "Unstaged (n)", or commit sections with indicators
+      -- Section headers: "Staged (n)", "Unstaged (n)", "Unmerged into X (n)", etc.
+      -- Expand indicators are now in sign column, not in text
     elseif section_lines[i] then
       local section_info = section_lines[i]
       local hl_group = section_hl[section_info.section]
       if hl_group then
-        -- Check if this is a commit section with expand indicator (starts with > or v)
-        if line:match("^[>v] ") then
-          M.set(bufnr, ns_status, line_idx, 0, 1, "GitladExpandIndicator")
-          M.set(bufnr, ns_status, line_idx, 2, #line, hl_group)
-        else
-          M.set(bufnr, ns_status, line_idx, 0, #line, hl_group)
-        end
+        M.set(bufnr, ns_status, line_idx, 0, #line, hl_group)
       end
 
-      -- File entries: "  > ● M path" or "  > ●   path"
+      -- File entries: "● M path" or "●   path"
+      -- Expand indicators are now in sign column, not in text
       -- Note: line_map may also contain commit entries (with type="commit"), so check for path
     elseif line_map[i] and line_map[i].path and not line_map[i].hunk_index then
       -- This is a file entry line (not a diff line)
-      -- Format: "  > ● M path" or "  v ● M path" (expanded)
-      local expand_indicator_pos = line:find("[>v]")
-      if expand_indicator_pos then
-        M.set(
-          bufnr,
-          ns_status,
-          line_idx,
-          expand_indicator_pos - 1,
-          expand_indicator_pos,
-          "GitladExpandIndicator"
-        )
-      end
-
-      -- Find status character and path
       local file_info = line_map[i]
       local section = file_info.section
 
@@ -519,7 +501,7 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
 
       -- Highlight based on section for the sign
       if section == "staged" then
-        -- Find sign position (after expand indicator)
+        -- Find sign position at start of line
         local sign_pos = line:find("[●○✦]")
         if sign_pos then
           M.set(bufnr, ns_status, line_idx, sign_pos - 1, sign_pos + 2, "GitladFileAdded") -- UTF-8 chars are 3 bytes
@@ -535,15 +517,13 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
       -- Match lines with hunk_index OR untracked file content (no hunk headers)
     elseif
       line_map[i]
-      and (
-        line_map[i].hunk_index or (line_map[i].section == "untracked" and line:match("^%s%s%s%s%+"))
-      )
+      and (line_map[i].hunk_index or (line_map[i].section == "untracked" and line:match("^%s%s%+")))
     then
-      -- This is a diff line - format: "    @@ ..." or "    +..." or "    -..." or "     context"
-      local content_start = 4 -- Skip the 4-space indent
+      -- This is a diff line - format: "  @@ ..." or "  +..." or "  -..." or "   context"
+      local content_start = 2 -- Skip the 2-space indent
       local first_char = line:sub(content_start + 1, content_start + 1)
 
-      if line:match("^%s%s%s%s@@") then
+      if line:match("^%s%s@@") then
         -- Hunk header line - use text highlight for the whole line
         M.set(
           bufnr,
@@ -637,10 +617,10 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
   local line_mapping = {}
 
   for i, line in ipairs(diff_lines) do
-    -- Diff lines have 4-space indent, then +/-/space, then content
-    -- Format: "    +content" or "    -content" or "     context"
-    local content_start = 5 -- After "    " and the diff marker
-    local first_char = line:sub(5, 5)
+    -- Diff lines have 2-space indent, then +/-/space, then content
+    -- Format: "  +content" or "  -content" or "   context"
+    local content_start = 3 -- After "  " and the diff marker
+    local first_char = line:sub(3, 3)
 
     if first_char == "+" or first_char == "-" or first_char == " " then
       -- Extract the actual code (after the diff marker)
@@ -650,7 +630,7 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
         buffer_line = start_line + i - 1, -- 0-indexed
         col_offset = content_start, -- Column where code starts (after indent + marker)
       })
-    elseif line:match("^%s%s%s%s@@") then
+    elseif line:match("^%s%s@@") then
       -- Skip hunk headers - they're not code
       table.insert(code_lines, "")
       table.insert(line_mapping, nil)
@@ -758,8 +738,8 @@ function M.apply_diff_treesitter_highlights(bufnr, lines, line_map, diff_cache)
     local info = line_map[i]
     local line = lines[i]
 
-    -- Check if this is a diff content line (starts with 4 spaces then +/-/space/@@)
-    local is_diff_content = line:match("^%s%s%s%s[%+%-%s@]")
+    -- Check if this is a diff content line (starts with 2 spaces then +/-/space/@@)
+    local is_diff_content = line:match("^%s%s[%+%-%s@]")
 
     if info and not is_diff_content then
       -- This is a file entry line (not diff content)

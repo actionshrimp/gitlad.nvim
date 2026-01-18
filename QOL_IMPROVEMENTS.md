@@ -25,6 +25,12 @@ This document tracks Quality of Life improvements being worked on.
 - Fallback to One Dark-style colors if base groups don't have foreground colors
 - Affects: Staged, Unstaged, Untracked, Conflicted, Unpulled, Unpushed, Recent sections
 
+### 4. Use sign column for expand indicators (neogit style)
+- Expand indicators (> and v) now shown in sign column, not in buffer text
+- Line numbers disabled for status buffer
+- Sign column enabled for cleaner gutter display
+- Matches neogit's visual style
+
 ---
 
 ## Notes
