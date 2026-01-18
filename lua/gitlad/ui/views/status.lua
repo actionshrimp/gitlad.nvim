@@ -133,6 +133,9 @@ function StatusBuffer:_setup_keymaps()
   keymap.set(bufnr, "n", "x", function()
     self:_discard_current()
   end, "Discard changes")
+  keymap.set(bufnr, "v", "x", function()
+    self:_discard_visual()
+  end, "Discard selection")
 
   -- Refresh (gr to free up g prefix for vim motions like gg)
   keymap.set(bufnr, "n", "gr", function()
@@ -463,23 +466,66 @@ function StatusBuffer:_build_partial_hunk_patch(
   return patch_lines
 end
 
+--- Collect file entries from a line range for staging/unstaging
+---@param start_line number
+---@param end_line number
+---@param allowed_sections table<string, boolean> Map of section names that are valid
+---@return table[] files Array of {path, section} for file entries in range
+---@return LineInfo|nil first_diff First diff line info if any diff lines selected
+local function collect_files_in_range(line_map, start_line, end_line, allowed_sections)
+  local files = {}
+  local seen_paths = {}
+  local first_diff = nil
+
+  for buf_line = start_line, end_line do
+    local info = line_map[buf_line]
+    if info and info.path then
+      if info.hunk_index then
+        -- This is a diff line
+        if not first_diff then
+          first_diff = info
+        end
+      elseif allowed_sections[info.section] then
+        -- This is a file entry line
+        local key = info.section .. ":" .. info.path
+        if not seen_paths[key] then
+          seen_paths[key] = true
+          table.insert(files, { path = info.path, section = info.section })
+        end
+      end
+    end
+  end
+
+  return files, first_diff
+end
+
 --- Stage visual selection
 function StatusBuffer:_stage_visual()
   local start_line, end_line = get_visual_selection_range()
 
-  -- Get file info from first selected line
-  local info = self.line_map[start_line]
-  if not info or not info.hunk_index then
-    vim.notify("[gitlad] Visual staging only works on diff lines", vim.log.levels.INFO)
+  -- Collect all file entries and diff lines in the selection
+  local allowed_sections = { unstaged = true, untracked = true }
+  local files, first_diff =
+    collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
+
+  -- If we have file entries selected, stage them all in a single git command
+  if #files > 0 then
+    self.repo_state:stage_files(files)
     return
   end
 
-  local path = info.path
-  local section = info.section
-  local hunk_index = info.hunk_index
+  -- No file entries - try partial hunk staging on diff lines
+  if not first_diff then
+    vim.notify("[gitlad] No stageable files or diff lines in selection", vim.log.levels.INFO)
+    return
+  end
+
+  local path = first_diff.path
+  local section = first_diff.section
+  local hunk_index = first_diff.hunk_index
 
   if section ~= "unstaged" then
-    vim.notify("[gitlad] Visual staging only works on unstaged changes", vim.log.levels.INFO)
+    vim.notify("[gitlad] Partial hunk staging only works on unstaged changes", vim.log.levels.INFO)
     return
   end
 
@@ -536,19 +582,33 @@ end
 function StatusBuffer:_unstage_visual()
   local start_line, end_line = get_visual_selection_range()
 
-  -- Get file info from first selected line
-  local info = self.line_map[start_line]
-  if not info or not info.hunk_index then
-    vim.notify("[gitlad] Visual unstaging only works on diff lines", vim.log.levels.INFO)
+  -- Collect all file entries and diff lines in the selection
+  local allowed_sections = { staged = true }
+  local files, first_diff =
+    collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
+
+  -- If we have file entries selected, unstage them all in a single git command
+  if #files > 0 then
+    local paths = {}
+    for _, file in ipairs(files) do
+      table.insert(paths, file.path)
+    end
+    self.repo_state:unstage_files(paths)
     return
   end
 
-  local path = info.path
-  local section = info.section
-  local hunk_index = info.hunk_index
+  -- No file entries - try partial hunk unstaging on diff lines
+  if not first_diff then
+    vim.notify("[gitlad] No unstageable files or diff lines in selection", vim.log.levels.INFO)
+    return
+  end
+
+  local path = first_diff.path
+  local section = first_diff.section
+  local hunk_index = first_diff.hunk_index
 
   if section ~= "staged" then
-    vim.notify("[gitlad] Visual unstaging only works on staged changes", vim.log.levels.INFO)
+    vim.notify("[gitlad] Partial hunk unstaging only works on staged changes", vim.log.levels.INFO)
     return
   end
 
@@ -912,6 +972,48 @@ function StatusBuffer:_discard_current()
       end
     end)
   end
+end
+
+--- Discard changes for visually selected files
+function StatusBuffer:_discard_visual()
+  local start_line, end_line = get_visual_selection_range()
+
+  -- Collect all file entries in the selection that can be discarded
+  local allowed_sections = { unstaged = true, untracked = true }
+  local files, _ = collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
+
+  if #files == 0 then
+    vim.notify("[gitlad] No discardable files in selection", vim.log.levels.INFO)
+    return
+  end
+
+  -- Build confirmation message
+  local untracked_count = 0
+  local unstaged_count = 0
+  for _, file in ipairs(files) do
+    if file.section == "untracked" then
+      untracked_count = untracked_count + 1
+    else
+      unstaged_count = unstaged_count + 1
+    end
+  end
+
+  local prompt_parts = {}
+  if unstaged_count > 0 then
+    table.insert(prompt_parts, string.format("discard changes to %d file(s)", unstaged_count))
+  end
+  if untracked_count > 0 then
+    table.insert(prompt_parts, string.format("delete %d untracked file(s)", untracked_count))
+  end
+  local prompt = table.concat(prompt_parts, " and ") .. "?"
+
+  vim.ui.select({ "Yes", "No" }, {
+    prompt = string.format("Really %s", prompt),
+  }, function(choice)
+    if choice == "Yes" then
+      self.repo_state:discard_files(files)
+    end
+  end)
 end
 
 --- Render the status buffer

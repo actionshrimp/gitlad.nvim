@@ -516,6 +516,7 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
 
       if line:match("^%s%s@@") then
         -- Hunk header line - use text highlight for the whole line
+        -- Priority 150 to override treesitter (125) since headers aren't code
         M.set(
           bufnr,
           ns_diff_markers,
@@ -523,12 +524,13 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
           content_start,
           #line,
           "GitladDiffHeader",
-          { priority = 100 }
+          { priority = 150 }
         )
       elseif first_char == "+" then
         -- Added line - use line background for diff color
-        M.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffAdd", { priority = 50 })
-        -- Highlight the + sign
+        -- Priority 100 for background, treesitter (125) overrides for syntax colors
+        M.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffAdd", { priority = 100 })
+        -- Highlight the + sign - priority 150 to stay visible over treesitter
         M.set(
           bufnr,
           ns_diff_markers,
@@ -536,12 +538,13 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
           content_start,
           content_start + 1,
           "GitladDiffAddSign",
-          { priority = 100 }
+          { priority = 150 }
         )
       elseif first_char == "-" then
         -- Deleted line - use line background for diff color
-        M.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffDelete", { priority = 50 })
-        -- Highlight the - sign
+        -- Priority 100 for background, treesitter (125) overrides for syntax colors
+        M.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffDelete", { priority = 100 })
+        -- Highlight the - sign - priority 150 to stay visible over treesitter
         M.set(
           bufnr,
           ns_diff_markers,
@@ -549,7 +552,7 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
           content_start,
           content_start + 1,
           "GitladDiffDeleteSign",
-          { priority = 100 }
+          { priority = 150 }
         )
       end
       -- Context lines (starting with space) don't need special highlighting
@@ -610,16 +613,18 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
   for i, line in ipairs(diff_lines) do
     -- Diff lines have 2-space indent, then +/-/space, then content
     -- Format: "  +content" or "  -content" or "   context"
-    local content_start = 3 -- After "  " and the diff marker
-    local first_char = line:sub(3, 3)
+    -- 1-indexed positions: 1-2 are spaces, 3 is marker, 4+ is content
+    -- 0-indexed columns: 0-1 are spaces, 2 is marker, 3+ is content
+    local marker_pos = 3 -- 1-indexed position of diff marker
+    local first_char = line:sub(marker_pos, marker_pos)
 
     if first_char == "+" or first_char == "-" or first_char == " " then
       -- Extract the actual code (after the diff marker)
-      local code = line:sub(content_start + 1) -- +1 to skip the diff marker
+      local code = line:sub(marker_pos + 1) -- Everything after the marker
       table.insert(code_lines, code)
       table.insert(line_mapping, {
         buffer_line = start_line + i - 1, -- 0-indexed
-        col_offset = content_start, -- Column where code starts (after indent + marker)
+        col_offset = marker_pos, -- 0-indexed column where code starts (3 = after "  " + marker)
       })
     elseif line:match("^%s%s@@") then
       -- Skip hunk headers - they're not code
@@ -652,6 +657,8 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
   local root = tree:root()
 
   -- Apply highlights from treesitter captures
+  -- Use higher priority (125) to ensure syntax colors override diff backgrounds
+  -- but still allow the +/- sign highlights (priority 150) to show through
   for id, node, _ in query:iter_captures(root, code, 0, -1) do
     local capture_name = query.captures[id]
     local hl_group = "@" .. capture_name .. "." .. lang
@@ -696,8 +703,9 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
           goto continue
         end
 
-        -- Apply highlight with lower priority than diff markers
-        M.set(bufnr, ns_diff_lang, buf_line, hl_start_col, hl_end_col, hl_group, { priority = 90 })
+        -- Apply highlight with priority higher than diff backgrounds (100)
+        -- but lower than diff sign markers (150)
+        M.set(bufnr, ns_diff_lang, buf_line, hl_start_col, hl_end_col, hl_group, { priority = 125 })
       end
       ::continue::
     end

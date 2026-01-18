@@ -1,7 +1,9 @@
 ---@mod gitlad.popups.pull Pull popup
 ---@brief [[
 --- Transient-style pull popup with switches, options, and actions.
---- Follows magit pull popup patterns.
+--- Follows magit's triangular workflow:
+--- - "upstream" = where you pull from (the mainline branch)
+--- - "pushremote" = where you push to (your fork/feature branch)
 ---@brief ]]
 
 local M = {}
@@ -13,45 +15,44 @@ local git = require("gitlad.git")
 ---@field repo_state RepoState
 ---@field popup PopupData
 
---- Extract remote name from upstream (e.g., "origin/main" -> "origin")
----@param upstream string|nil
+--- Extract remote name from ref (e.g., "origin/main" -> "origin")
+---@param ref string|nil
 ---@return string|nil
-local function get_remote_from_upstream(upstream)
-  if not upstream then
+local function get_remote_from_ref(ref)
+  if not ref then
     return nil
   end
-  return upstream:match("^([^/]+)/")
+  return ref:match("^([^/]+)/")
 end
 
---- Check if pull can proceed (has upstream or remote specified)
----@param repo_state RepoState
----@param remote string|nil Remote option value
----@return boolean can_pull
----@return string|nil error_message
-local function can_pull(repo_state, remote)
-  local status = repo_state.status
+--- Get the push remote for the current branch
+--- Returns the remote that would be used for pushing (may differ from upstream)
+---@param status GitStatusResult|nil
+---@return string|nil remote Remote name like "origin"
+local function get_push_remote(status)
   if not status then
-    return false, "Status not loaded"
+    return nil
   end
 
-  -- If remote is specified, we can pull
-  if remote and remote ~= "" then
-    return true, nil
+  -- Use explicitly calculated push_remote if available
+  if status.push_remote then
+    return get_remote_from_ref(status.push_remote)
   end
 
-  -- Otherwise we need an upstream
-  if not status.upstream then
-    return false, "No upstream configured. Set a remote with =r or use 'e' to pull elsewhere."
+  -- Fall back to deriving from upstream
+  if status.upstream then
+    return get_remote_from_ref(status.upstream)
   end
 
-  return true, nil
+  return nil
 end
 
 --- Build pull arguments from popup state
 ---@param popup_data PopupData
 ---@param remote string|nil Override remote
+---@param branch string|nil Override branch (for pull from pushremote)
 ---@return string[]
-local function build_pull_args(popup_data, remote)
+local function build_pull_args(popup_data, remote, branch)
   local args = popup_data:get_arguments()
 
   -- Filter out --remote= since remote is a positional argument, not an option
@@ -61,6 +62,9 @@ local function build_pull_args(popup_data, remote)
 
   if remote and remote ~= "" then
     table.insert(args, remote)
+    if branch and branch ~= "" then
+      table.insert(args, branch)
+    end
   end
 
   return args
@@ -87,9 +91,6 @@ end
 --- Create and show the pull popup
 ---@param repo_state RepoState
 function M.open(repo_state)
-  local status = repo_state.status
-  local default_remote = status and get_remote_from_upstream(status.upstream) or ""
-
   local pull_popup = popup
     .builder()
     :name("Pull")
@@ -98,11 +99,14 @@ function M.open(repo_state)
     :switch("f", "ff-only", "Fast-forward only")
     :switch("n", "no-ff", "Create merge commit")
     :switch("a", "autostash", "Autostash before pull")
-    -- Options
-    :option("o", "remote", default_remote, "Remote")
+    -- Options (for "pull elsewhere" primarily)
+    :option("o", "remote", "", "Remote")
     -- Actions
     :group_heading("Pull")
-    :action("p", "Pull from upstream", function(popup_data)
+    :action("p", "Pull from pushremote", function(popup_data)
+      M._pull_pushremote(repo_state, popup_data)
+    end)
+    :action("u", "Pull from upstream", function(popup_data)
       M._pull_upstream(repo_state, popup_data)
     end)
     :action("e", "Pull elsewhere", function(popup_data)
@@ -113,27 +117,55 @@ function M.open(repo_state)
   pull_popup:show()
 end
 
---- Pull from upstream
+--- Pull from pushremote (the remote used for pushing, may differ from upstream)
+--- In triangular workflow, this pulls from your fork/feature branch
+--- Runs: git pull <pushremote> <current_branch>
 ---@param repo_state RepoState
 ---@param popup_data PopupData
-function M._pull_upstream(repo_state, popup_data)
-  -- Get remote from option, or default from upstream
-  local remote = nil
-  for _, opt in ipairs(popup_data.options) do
-    if opt.cli == "remote" and opt.value ~= "" then
-      remote = opt.value
-      break
-    end
-  end
+function M._pull_pushremote(repo_state, popup_data)
+  local status = repo_state.status
+  local remote = get_push_remote(status)
 
-  -- Validate
-  local ok, err = can_pull(repo_state, remote)
-  if not ok then
-    vim.notify("[gitlad] " .. err, vim.log.levels.WARN)
+  if not remote or remote == "" then
+    vim.notify(
+      "[gitlad] No push remote configured. Use 'e' to pull elsewhere, or configure branch.<name>.pushRemote.",
+      vim.log.levels.WARN
+    )
     return
   end
 
-  local args = build_pull_args(popup_data, remote)
+  -- For pushremote, we need to specify both remote AND branch
+  -- because pushremote may not have tracking configured
+  local branch = status and status.branch or nil
+  if not branch then
+    vim.notify("[gitlad] Cannot determine current branch.", vim.log.levels.WARN)
+    return
+  end
+
+  local args = build_pull_args(popup_data, remote, branch)
+  do_pull(repo_state, args)
+end
+
+--- Pull from upstream (uses git's configured tracking branch)
+--- This runs `git pull` with no remote/branch arguments, letting git
+--- use the standard tracking branch configuration (branch.<name>.remote + branch.<name>.merge)
+---@param repo_state RepoState
+---@param popup_data PopupData
+function M._pull_upstream(repo_state, popup_data)
+  local status = repo_state.status
+
+  -- Check if we have an upstream configured
+  if not status or not status.upstream then
+    vim.notify(
+      "[gitlad] No upstream configured. Use 'e' to pull elsewhere, or set upstream with `git branch --set-upstream-to`.",
+      vim.log.levels.WARN
+    )
+    return
+  end
+
+  -- Build args WITHOUT any remote - let git use the tracking configuration
+  -- This ensures `git pull` works exactly as it would from the command line
+  local args = build_pull_args(popup_data, nil, nil)
   do_pull(repo_state, args)
 end
 
@@ -141,7 +173,7 @@ end
 ---@param repo_state RepoState
 ---@param popup_data PopupData
 function M._pull_elsewhere(repo_state, popup_data)
-  -- Check if remote is already set
+  -- Check if remote is already set via the option
   local remote = nil
   for _, opt in ipairs(popup_data.options) do
     if opt.cli == "remote" and opt.value ~= "" then
@@ -152,7 +184,7 @@ function M._pull_elsewhere(repo_state, popup_data)
 
   if remote and remote ~= "" then
     -- Remote already set, pull directly
-    local args = build_pull_args(popup_data, remote)
+    local args = build_pull_args(popup_data, remote, nil)
     do_pull(repo_state, args)
     return
   end
@@ -183,7 +215,7 @@ function M._pull_elsewhere(repo_state, popup_data)
           return
         end
 
-        local args = build_pull_args(popup_data, choice)
+        local args = build_pull_args(popup_data, choice, nil)
         do_pull(repo_state, args)
       end)
     end)

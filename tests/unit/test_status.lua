@@ -562,4 +562,131 @@ T["status header rendering"]["hides Push line when no push remote"] = function()
   eq(#lines, 2) -- Head and Merge only
 end
 
+-- Tests for multi-file visual selection helper
+T["visual multi-file selection"] = MiniTest.new_set()
+
+-- Helper that mirrors collect_files_in_range logic
+local function collect_files_in_range(line_map, start_line, end_line, allowed_sections)
+  local files = {}
+  local seen_paths = {}
+  local first_diff = nil
+
+  for buf_line = start_line, end_line do
+    local info = line_map[buf_line]
+    if info and info.path then
+      if info.hunk_index then
+        -- This is a diff line
+        if not first_diff then
+          first_diff = info
+        end
+      elseif allowed_sections[info.section] then
+        -- This is a file entry line
+        local key = info.section .. ":" .. info.path
+        if not seen_paths[key] then
+          seen_paths[key] = true
+          table.insert(files, { path = info.path, section = info.section })
+        end
+      end
+    end
+  end
+
+  return files, first_diff
+end
+
+T["visual multi-file selection"]["collects multiple files from selection"] = function()
+  local line_map = {
+    [3] = { path = "file1.lua", section = "unstaged" },
+    [4] = { path = "file2.lua", section = "unstaged" },
+    [5] = { path = "file3.lua", section = "unstaged" },
+  }
+
+  local allowed = { unstaged = true, untracked = true }
+  local files, first_diff = collect_files_in_range(line_map, 3, 5, allowed)
+
+  eq(#files, 3)
+  eq(files[1].path, "file1.lua")
+  eq(files[2].path, "file2.lua")
+  eq(files[3].path, "file3.lua")
+  eq(first_diff, nil)
+end
+
+T["visual multi-file selection"]["only collects files from allowed sections"] = function()
+  local line_map = {
+    [3] = { path = "file1.lua", section = "unstaged" },
+    [4] = { path = "file2.lua", section = "staged" }, -- Not in allowed sections
+    [5] = { path = "file3.lua", section = "untracked" },
+  }
+
+  local allowed = { unstaged = true, untracked = true }
+  local files, first_diff = collect_files_in_range(line_map, 3, 5, allowed)
+
+  eq(#files, 2)
+  eq(files[1].path, "file1.lua")
+  eq(files[2].path, "file3.lua")
+  eq(first_diff, nil)
+end
+
+T["visual multi-file selection"]["returns first diff line when only diff lines selected"] = function()
+  local line_map = {
+    [3] = { path = "file1.lua", section = "unstaged", hunk_index = 1 },
+    [4] = { path = "file1.lua", section = "unstaged", hunk_index = 1 },
+    [5] = { path = "file1.lua", section = "unstaged", hunk_index = 1 },
+  }
+
+  local allowed = { unstaged = true }
+  local files, first_diff = collect_files_in_range(line_map, 3, 5, allowed)
+
+  eq(#files, 0) -- No file entries (all have hunk_index)
+  expect.no_equality(first_diff, nil)
+  eq(first_diff.path, "file1.lua")
+  eq(first_diff.hunk_index, 1)
+end
+
+T["visual multi-file selection"]["deduplicates files appearing multiple times"] = function()
+  -- Simulate expanded diff where file entry and diff lines both reference same file
+  local line_map = {
+    [3] = { path = "file1.lua", section = "unstaged" }, -- File entry
+    [4] = { path = "file1.lua", section = "unstaged", hunk_index = 1 }, -- Diff line
+    [5] = { path = "file1.lua", section = "unstaged", hunk_index = 1 }, -- Diff line
+    [6] = { path = "file2.lua", section = "unstaged" }, -- File entry
+  }
+
+  local allowed = { unstaged = true }
+  local files, first_diff = collect_files_in_range(line_map, 3, 6, allowed)
+
+  eq(#files, 2) -- Two unique file entries
+  eq(files[1].path, "file1.lua")
+  eq(files[2].path, "file2.lua")
+  expect.no_equality(first_diff, nil) -- Also captured the diff line
+end
+
+T["visual multi-file selection"]["handles staged files for unstaging"] = function()
+  local line_map = {
+    [3] = { path = "file1.lua", section = "staged" },
+    [4] = { path = "file2.lua", section = "staged" },
+  }
+
+  local allowed = { staged = true }
+  local files, first_diff = collect_files_in_range(line_map, 3, 4, allowed)
+
+  eq(#files, 2)
+  eq(files[1].path, "file1.lua")
+  eq(files[2].path, "file2.lua")
+  eq(first_diff, nil)
+end
+
+T["visual multi-file selection"]["returns empty when no valid lines in range"] = function()
+  local line_map = {
+    [3] = { path = "file1.lua", section = "staged" }, -- Not in allowed
+    [4] = nil, -- Empty line
+    [5] = nil, -- Empty line
+  }
+
+  local allowed = { unstaged = true }
+  local files, first_diff = collect_files_in_range(line_map, 3, 5, allowed)
+
+  eq(#files, 0)
+  eq(first_diff, nil)
+end
+
 return T

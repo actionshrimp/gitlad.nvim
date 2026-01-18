@@ -57,6 +57,7 @@ T["branch popup"]["has correct action groups"] = function()
   local create_checkout_called = false
   local create_called = false
   local rename_called = false
+  local spinoff_called = false
   local delete_called = false
 
   local data = popup
@@ -77,13 +78,16 @@ T["branch popup"]["has correct action groups"] = function()
     :action("m", "Rename", function()
       rename_called = true
     end)
+    :action("x", "Spin-off", function()
+      spinoff_called = true
+    end)
     :action("D", "Delete", function()
       delete_called = true
     end)
     :build()
 
-  -- 3 headings + 5 actions = 8 items
-  eq(#data.actions, 8)
+  -- 3 headings + 6 actions = 9 items
+  eq(#data.actions, 9)
 
   -- Check headings
   eq(data.actions[1].type, "heading")
@@ -111,8 +115,12 @@ T["branch popup"]["has correct action groups"] = function()
   eq(data.actions[7].description, "Rename")
 
   eq(data.actions[8].type, "action")
-  eq(data.actions[8].key, "D")
-  eq(data.actions[8].description, "Delete")
+  eq(data.actions[8].key, "x")
+  eq(data.actions[8].description, "Spin-off")
+
+  eq(data.actions[9].type, "action")
+  eq(data.actions[9].key, "D")
+  eq(data.actions[9].description, "Delete")
 
   -- Test callbacks
   data.actions[2].callback(data)
@@ -128,6 +136,9 @@ T["branch popup"]["has correct action groups"] = function()
   eq(rename_called, true)
 
   data.actions[8].callback(data)
+  eq(spinoff_called, true)
+
+  data.actions[9].callback(data)
   eq(delete_called, true)
 end
 
@@ -213,7 +224,7 @@ T["branch popup configure"]["has Configure group with set upstream action"] = fu
     :name("Branch")
     :group_heading("Configure")
     :action("u", "Set upstream", function() end)
-    :action("r", "Configure push remote", function() end)
+    :action("p", "Configure pushremote", function() end)
     :build()
 
   -- Check that Configure heading exists
@@ -230,8 +241,8 @@ T["branch popup configure"]["has Configure group with set upstream action"] = fu
     end
     if
       action.type == "action"
-      and action.key == "r"
-      and action.description == "Configure push remote"
+      and action.key == "p"
+      and action.description == "Configure pushremote"
     then
       found_push_remote = true
     end

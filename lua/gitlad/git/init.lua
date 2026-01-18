@@ -48,12 +48,44 @@ function M.stage(path, opts, callback)
   end)
 end
 
+--- Stage multiple files in a single git command
+---@param paths string[] File paths to stage
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.stage_files(paths, opts, callback)
+  if #paths == 0 then
+    callback(true, nil)
+    return
+  end
+  local args = { "add", "--" }
+  vim.list_extend(args, paths)
+  cli.run_async(args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
 --- Unstage a file
 ---@param path string File path to unstage
 ---@param opts? GitCommandOptions
 ---@param callback fun(success: boolean, err: string|nil)
 function M.unstage(path, opts, callback)
   cli.run_async({ "reset", "HEAD", "--", path }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Unstage multiple files in a single git command
+---@param paths string[] File paths to unstage
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.unstage_files(paths, opts, callback)
+  if #paths == 0 then
+    callback(true, nil)
+    return
+  end
+  local args = { "reset", "HEAD", "--" }
+  vim.list_extend(args, paths)
+  cli.run_async(args, opts, function(result)
     callback(errors.result_to_callback(result))
   end)
 end
@@ -152,6 +184,50 @@ function M.delete_untracked(path, opts, callback)
     callback(true, nil)
   else
     callback(false, err or "Failed to delete file")
+  end
+end
+
+--- Discard changes to multiple files in a single git command (checkout from HEAD)
+---@param paths string[] File paths to discard
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.discard_files(paths, opts, callback)
+  if #paths == 0 then
+    callback(true, nil)
+    return
+  end
+  local args = { "checkout", "HEAD", "--" }
+  vim.list_extend(args, paths)
+  cli.run_async(args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Delete multiple untracked files
+---@param paths string[] File paths to delete
+---@param opts? GitCommandOptions Options (cwd is the repository root)
+---@param callback fun(success: boolean, err: string|nil)
+function M.delete_untracked_files(paths, opts, callback)
+  if #paths == 0 then
+    callback(true, nil)
+    return
+  end
+
+  local repo_root = opts and opts.cwd or vim.fn.getcwd()
+  local failed = {}
+
+  for _, path in ipairs(paths) do
+    local full_path = repo_root .. "/" .. path
+    local ok, err = os.remove(full_path)
+    if not ok then
+      table.insert(failed, path .. ": " .. (err or "unknown error"))
+    end
+  end
+
+  if #failed > 0 then
+    callback(false, "Failed to delete: " .. table.concat(failed, ", "))
+  else
+    callback(true, nil)
   end
 end
 
@@ -586,6 +662,34 @@ function M.stash_list(opts, callback)
       return
     end
     callback(parse.parse_stash_list(result.stdout), nil)
+  end)
+end
+
+--- Reset current branch to a ref
+---@param ref string The ref to reset to (e.g., "origin/main", "HEAD~1")
+---@param mode string Reset mode: "soft", "mixed", or "hard"
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.reset(ref, mode, opts, callback)
+  local reset_args = { "reset", "--" .. mode, ref }
+
+  cli.run_async(reset_args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Get the upstream ref for a branch
+---@param branch string Branch name
+---@param opts? GitCommandOptions
+---@param callback fun(upstream: string|nil, err: string|nil)
+function M.get_upstream(branch, opts, callback)
+  cli.run_async({ "rev-parse", "--abbrev-ref", branch .. "@{upstream}" }, opts, function(result)
+    if result.code ~= 0 then
+      -- No upstream configured
+      callback(nil, nil)
+      return
+    end
+    callback(result.stdout[1], nil)
   end)
 end
 

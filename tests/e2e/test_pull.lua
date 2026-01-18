@@ -86,17 +86,21 @@ T["pull popup"]["opens from status buffer with F key"] = function()
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count, 2)
 
-  -- Verify popup contains pull-related content
+  -- Verify popup contains pull-related content (triangular workflow: p=pushremote, u=upstream)
   child.lua([[
     popup_buf = vim.api.nvim_get_current_buf()
     popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
   ]])
   local lines = child.lua_get([[popup_lines]])
 
+  local found_pull_pushremote = false
   local found_pull_upstream = false
   local found_pull_elsewhere = false
   for _, line in ipairs(lines) do
-    if line:match("p%s+Pull from upstream") then
+    if line:match("p%s+Pull from pushremote") then
+      found_pull_pushremote = true
+    end
+    if line:match("u%s+Pull from upstream") then
       found_pull_upstream = true
     end
     if line:match("e%s+Pull elsewhere") then
@@ -104,6 +108,7 @@ T["pull popup"]["opens from status buffer with F key"] = function()
     end
   end
 
+  eq(found_pull_pushremote, true)
   eq(found_pull_upstream, true)
   eq(found_pull_elsewhere, true)
 
@@ -215,7 +220,7 @@ T["pull popup"]["switch toggling with -r"] = function()
   cleanup_repo(child, repo)
 end
 
-T["pull popup"]["shows warning when no upstream configured"] = function()
+T["pull popup"]["shows warning when no upstream configured for u"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -235,8 +240,8 @@ T["pull popup"]["shows warning when no upstream configured"] = function()
   child.type_keys("F")
   child.lua([[vim.wait(100, function() return false end)]])
 
-  -- Try to pull from upstream (should fail - no upstream)
-  child.type_keys("p")
+  -- Try to pull from upstream with 'u' (should fail - no upstream)
+  child.type_keys("u")
   child.lua([[vim.wait(200, function() return false end)]])
 
   -- Should have shown warning message
