@@ -195,15 +195,19 @@ function M._push_upstream(repo_state, popup_data)
     return
   end
 
-  -- If no explicit remote/refspec, derive from push target
+  -- For "push to upstream", always derive the push target unless user explicitly set refspec
   -- This ensures we push to <remote>/<branch> even when upstream differs
+  -- The remote option may be pre-filled but we still need to derive the refspec
   local push_ref = nil
-  if (not remote or remote == "") and (not refspec or refspec == "") and status then
+  if (not refspec or refspec == "") and status then
     local push_remote
     push_ref, push_remote = get_push_target(status)
     if push_ref and push_remote then
-      remote = push_remote
-      -- Push current branch to same-name branch on remote
+      -- Use derived remote if not explicitly set, otherwise use user's choice
+      if not remote or remote == "" then
+        remote = push_remote
+      end
+      -- Always set refspec to current branch for "push to upstream"
       refspec = status.branch
     end
   end

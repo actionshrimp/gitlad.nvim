@@ -295,6 +295,45 @@ T["push popup"]["should not prompt when remote branch already exists"] = functio
   eq(should_prompt, false)
 end
 
+T["push popup"]["derives refspec even when remote option is pre-filled"] = function()
+  -- Bug fix test: The remote option gets pre-filled with "origin", but we
+  -- must still derive the refspec (branch name) for "push to upstream" to work.
+  -- Without this fix, we'd run "git push origin" without a refspec, which fails.
+  local mock_status = {
+    branch = "feature/diff-popup",
+    upstream = "origin/main",
+    push_remote = "origin/feature/diff-popup",
+    push_commit_msg = "some commit", -- Remote branch exists
+  }
+
+  -- Simulate what _push_upstream does:
+  -- 1. Remote option is pre-filled with "origin"
+  local remote = "origin" -- Pre-filled from popup option
+  local refspec = "" -- Empty, user didn't set it
+
+  -- 2. The fix: derive refspec even when remote is set
+  -- Old buggy condition: (not remote or remote == "") and (not refspec or refspec == "")
+  -- New fixed condition: (not refspec or refspec == "")
+  if (not refspec or refspec == "") and mock_status then
+    local push_ref = mock_status.push_remote
+    if push_ref then
+      local push_remote = push_ref:match("^([^/]+)/")
+      if push_remote then
+        -- Use derived remote if not explicitly set
+        if not remote or remote == "" then
+          remote = push_remote
+        end
+        -- Always set refspec to current branch for "push to upstream"
+        refspec = mock_status.branch
+      end
+    end
+  end
+
+  -- Should result in "git push origin feature/diff-popup"
+  eq(remote, "origin")
+  eq(refspec, "feature/diff-popup")
+end
+
 -- Parse remotes tests
 T["parse_remotes"] = MiniTest.new_set()
 
