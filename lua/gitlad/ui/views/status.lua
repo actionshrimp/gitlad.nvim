@@ -995,15 +995,63 @@ function StatusBuffer:render()
 
   table.insert(lines, "")
 
-  -- Unmerged/Unpulled sections for upstream (merge branch)
-  -- Following magit's approach: show unpushed if any, otherwise show recent commits
+  -- === File sections (staged/unstaged/untracked/conflicted) - shown first, magit style ===
+
+  -- Untracked files
+  if #status.untracked > 0 then
+    add_section_header("Untracked", "untracked", #status.untracked)
+    for _, entry in ipairs(status.untracked) do
+      add_file_line(entry, "untracked", cfg.signs.untracked, nil, false)
+    end
+    table.insert(lines, "")
+  end
+
+  -- Unstaged changes
+  if #status.unstaged > 0 then
+    add_section_header("Unstaged", "unstaged", #status.unstaged)
+    for _, entry in ipairs(status.unstaged) do
+      add_file_line(entry, "unstaged", cfg.signs.unstaged, entry.worktree_status, false)
+    end
+    table.insert(lines, "")
+  end
+
+  -- Staged changes
+  if #status.staged > 0 then
+    add_section_header("Staged", "staged", #status.staged)
+    for _, entry in ipairs(status.staged) do
+      add_file_line(entry, "staged", cfg.signs.staged, entry.index_status, true)
+    end
+    table.insert(lines, "")
+  end
+
+  -- Conflicted files
+  if #status.conflicted > 0 then
+    add_section_header("Conflicted", "conflicted", #status.conflicted)
+    for _, entry in ipairs(status.conflicted) do
+      add_file_line(entry, "conflicted", cfg.signs.conflict, nil, false)
+    end
+    table.insert(lines, "")
+  end
+
+  -- Clean working tree message
+  if
+    #status.staged == 0
+    and #status.unstaged == 0
+    and #status.untracked == 0
+    and #status.conflicted == 0
+  then
+    table.insert(lines, "Nothing to commit, working tree clean")
+    table.insert(lines, "")
+  end
+
+  -- === Commit sections (unpulled/unpushed/recent) - shown after file changes, magit style ===
+
+  -- Track whether we have any unpushed commits (used to decide whether to show recent commits)
   local has_unpushed_upstream = status.upstream
     and status.unpushed_upstream
     and #status.unpushed_upstream > 0
-  local has_unpulled_upstream = status.upstream
-    and status.unpulled_upstream
-    and #status.unpulled_upstream > 0
 
+  -- Unpulled/Unpushed sections for upstream (merge branch)
   if status.upstream then
     add_commit_section(
       "Unpulled from " .. status.upstream,
@@ -1041,52 +1089,6 @@ function StatusBuffer:render()
 
   if not has_any_unpushed and status.recent_commits and #status.recent_commits > 0 then
     add_commit_section("Recent commits", status.recent_commits, "recent")
-  end
-
-  -- Staged changes
-  if #status.staged > 0 then
-    add_section_header("Staged", "staged", #status.staged)
-    for _, entry in ipairs(status.staged) do
-      add_file_line(entry, "staged", cfg.signs.staged, entry.index_status, true)
-    end
-    table.insert(lines, "")
-  end
-
-  -- Unstaged changes
-  if #status.unstaged > 0 then
-    add_section_header("Unstaged", "unstaged", #status.unstaged)
-    for _, entry in ipairs(status.unstaged) do
-      add_file_line(entry, "unstaged", cfg.signs.unstaged, entry.worktree_status, false)
-    end
-    table.insert(lines, "")
-  end
-
-  -- Untracked files
-  if #status.untracked > 0 then
-    add_section_header("Untracked", "untracked", #status.untracked)
-    for _, entry in ipairs(status.untracked) do
-      add_file_line(entry, "untracked", cfg.signs.untracked, nil, false)
-    end
-    table.insert(lines, "")
-  end
-
-  -- Conflicted files
-  if #status.conflicted > 0 then
-    add_section_header("Conflicted", "conflicted", #status.conflicted)
-    for _, entry in ipairs(status.conflicted) do
-      add_file_line(entry, "conflicted", cfg.signs.conflict, nil, false)
-    end
-    table.insert(lines, "")
-  end
-
-  -- Clean working tree message
-  if
-    #status.staged == 0
-    and #status.unstaged == 0
-    and #status.untracked == 0
-    and #status.conflicted == 0
-  then
-    table.insert(lines, "Nothing to commit, working tree clean")
   end
 
   -- Help line
