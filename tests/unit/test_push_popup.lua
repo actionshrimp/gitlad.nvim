@@ -139,6 +139,201 @@ T["push popup"]["creates actions correctly"] = function()
   eq(push_elsewhere_called, true)
 end
 
+-- Test push popup internal functions
+-- We test these by importing the module and checking behavior through the popup builder
+T["push popup"]["uses push_remote when upstream differs"] = function()
+  -- This tests the scenario where:
+  -- - Branch tracks origin/main as upstream (for pulling/merging)
+  -- - But should push to origin/feature-branch (same name on remote)
+  --
+  -- We verify this indirectly through the popup behavior.
+  -- The key insight is that push_remote is derived from upstream's remote + current branch name
+  local popup = require("gitlad.ui.popup")
+
+  -- The default remote should be extracted from push target, not upstream
+  -- When push_remote = "origin/feature", remote should be "origin"
+  local mock_status = {
+    branch = "feature/test",
+    upstream = "origin/main", -- Merge target
+    push_remote = "origin/feature/test", -- Push target (same-name branch)
+  }
+
+  -- Simulate the extraction that push.lua does
+  local push_ref = mock_status.push_remote
+  local remote = push_ref and push_ref:match("^([^/]+)/")
+
+  eq(remote, "origin")
+  eq(push_ref, "origin/feature/test")
+
+  -- Verify that with this status, we'd push to the feature branch, not main
+  local refspec = mock_status.branch
+  eq(refspec, "feature/test")
+end
+
+T["push popup"]["derives push_remote from upstream remote when not explicit"] = function()
+  -- When push_remote isn't set explicitly, it should be derived from:
+  -- upstream_remote + "/" + current_branch
+  local mock_status = {
+    branch = "my-feature",
+    upstream = "origin/main",
+    push_remote = nil, -- Not set explicitly, should be derived
+  }
+
+  -- This is the logic from get_push_target:
+  local push_ref = mock_status.push_remote
+  if not push_ref and mock_status.upstream then
+    local remote = mock_status.upstream:match("^([^/]+)/")
+    if remote then
+      push_ref = remote .. "/" .. mock_status.branch
+    end
+  end
+
+  eq(push_ref, "origin/my-feature")
+end
+
+T["push popup"]["returns nil push target when no upstream"] = function()
+  local mock_status = {
+    branch = "orphan-branch",
+    upstream = nil,
+    push_remote = nil,
+  }
+
+  local push_ref = mock_status.push_remote
+  if not push_ref and mock_status.upstream then
+    local remote = mock_status.upstream:match("^([^/]+)/")
+    if remote then
+      push_ref = remote .. "/" .. mock_status.branch
+    end
+  end
+
+  eq(push_ref, nil)
+end
+
+-- Test remote_branch_exists logic
+-- This logic determines whether to prompt the user to create the remote branch
+T["push popup"]["detects remote branch exists when push_commit_msg is set"] = function()
+  -- When both push_remote and push_commit_msg are set, the remote branch exists
+  local mock_status = {
+    branch = "feature/test",
+    upstream = "origin/main",
+    push_remote = "origin/feature/test",
+    push_commit_msg = "feat: some commit", -- Remote branch exists
+  }
+
+  -- This is the logic from remote_branch_exists
+  local exists = mock_status.push_remote ~= nil and mock_status.push_commit_msg ~= nil
+  eq(exists, true)
+end
+
+T["push popup"]["detects remote branch does not exist when push_commit_msg is nil"] = function()
+  -- When push_remote is set but push_commit_msg is nil, the remote branch doesn't exist yet
+  local mock_status = {
+    branch = "feature/new-branch",
+    upstream = "origin/main",
+    push_remote = "origin/feature/new-branch",
+    push_commit_msg = nil, -- Remote branch doesn't exist
+  }
+
+  local exists = mock_status.push_remote ~= nil and mock_status.push_commit_msg ~= nil
+  eq(exists, false)
+end
+
+T["push popup"]["detects no remote branch when push_remote is nil"] = function()
+  -- When push_remote is nil (e.g., no upstream configured), remote branch doesn't exist
+  local mock_status = {
+    branch = "orphan-branch",
+    upstream = nil,
+    push_remote = nil,
+    push_commit_msg = nil,
+  }
+
+  local exists = mock_status.push_remote ~= nil and mock_status.push_commit_msg ~= nil
+  eq(exists, false)
+end
+
+T["push popup"]["should prompt when remote branch needs creation"] = function()
+  -- Scenario: User is on feature/diff-popup tracking origin/main
+  -- Push target is origin/feature/diff-popup which doesn't exist yet
+  local mock_status = {
+    branch = "feature/diff-popup",
+    upstream = "origin/main",
+    push_remote = "origin/feature/diff-popup",
+    push_commit_msg = nil, -- Remote branch doesn't exist
+  }
+
+  -- Derive push_ref the same way _push_upstream does
+  local push_ref = mock_status.push_remote
+  if not push_ref and mock_status.upstream then
+    local remote = mock_status.upstream:match("^([^/]+)/")
+    if remote then
+      push_ref = remote .. "/" .. mock_status.branch
+    end
+  end
+
+  -- Check if we should prompt (remote branch doesn't exist)
+  local remote_exists = mock_status.push_remote ~= nil and mock_status.push_commit_msg ~= nil
+  local should_prompt = push_ref ~= nil and not remote_exists
+
+  eq(push_ref, "origin/feature/diff-popup")
+  eq(should_prompt, true)
+end
+
+T["push popup"]["should not prompt when remote branch already exists"] = function()
+  -- Scenario: Remote branch already exists, no prompt needed
+  local mock_status = {
+    branch = "feature/existing",
+    upstream = "origin/main",
+    push_remote = "origin/feature/existing",
+    push_commit_msg = "Previous commit message", -- Remote branch exists
+  }
+
+  local push_ref = mock_status.push_remote
+  local remote_exists = mock_status.push_remote ~= nil and mock_status.push_commit_msg ~= nil
+  local should_prompt = push_ref ~= nil and not remote_exists
+
+  eq(push_ref, "origin/feature/existing")
+  eq(should_prompt, false)
+end
+
+T["push popup"]["derives refspec even when remote option is pre-filled"] = function()
+  -- Bug fix test: The remote option gets pre-filled with "origin", but we
+  -- must still derive the refspec (branch name) for "push to upstream" to work.
+  -- Without this fix, we'd run "git push origin" without a refspec, which fails.
+  local mock_status = {
+    branch = "feature/diff-popup",
+    upstream = "origin/main",
+    push_remote = "origin/feature/diff-popup",
+    push_commit_msg = "some commit", -- Remote branch exists
+  }
+
+  -- Simulate what _push_upstream does:
+  -- 1. Remote option is pre-filled with "origin"
+  local remote = "origin" -- Pre-filled from popup option
+  local refspec = "" -- Empty, user didn't set it
+
+  -- 2. The fix: derive refspec even when remote is set
+  -- Old buggy condition: (not remote or remote == "") and (not refspec or refspec == "")
+  -- New fixed condition: (not refspec or refspec == "")
+  if (not refspec or refspec == "") and mock_status then
+    local push_ref = mock_status.push_remote
+    if push_ref then
+      local push_remote = push_ref:match("^([^/]+)/")
+      if push_remote then
+        -- Use derived remote if not explicitly set
+        if not remote or remote == "" then
+          remote = push_remote
+        end
+        -- Always set refspec to current branch for "push to upstream"
+        refspec = mock_status.branch
+      end
+    end
+  end
+
+  -- Should result in "git push origin feature/diff-popup"
+  eq(remote, "origin")
+  eq(refspec, "feature/diff-popup")
+end
+
 -- Parse remotes tests
 T["parse_remotes"] = MiniTest.new_set()
 

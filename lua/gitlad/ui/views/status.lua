@@ -215,10 +215,12 @@ function StatusBuffer:_setup_keymaps()
     log_popup.open(self.repo_state)
   end, "Log popup")
 
-  -- Commit operations (works on commits in unpulled/unpushed/recent sections)
+  -- Diff popup
   keymap.set(bufnr, "n", "d", function()
-    self:_diff_commit()
-  end, "Show commit diff")
+    local diff_popup = require("gitlad.popups.diff")
+    local context = self:_get_diff_context()
+    diff_popup.open(self.repo_state, context)
+  end, "Diff popup")
   keymap.set(bufnr, "n", "y", function()
     self:_yank_commit_hash()
   end, "Yank commit hash")
@@ -276,23 +278,12 @@ function StatusBuffer:_get_selected_commits()
   return {}
 end
 
---- Show commit diff via diffview.nvim (or fallback)
-function StatusBuffer:_diff_commit()
+--- Get diff context for current cursor position
+---@return DiffContext
+function StatusBuffer:_get_diff_context()
+  local file_path, section = self:_get_current_file()
   local commit = self:_get_current_commit()
-  if not commit then
-    return
-  end
-
-  -- Check if diffview is available
-  local has_diffview, diffview = pcall(require, "diffview")
-  if has_diffview then
-    diffview.open({ commit.hash .. "^!" })
-  else
-    -- Fallback to git show in a split
-    vim.cmd("botright split")
-    vim.cmd("terminal git show " .. commit.hash)
-    vim.cmd("startinsert")
-  end
+  return { file_path = file_path, section = section, commit = commit }
 end
 
 --- Yank commit hash to clipboard

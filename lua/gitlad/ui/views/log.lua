@@ -81,10 +81,12 @@ function LogBuffer:_setup_keymaps()
     self:_toggle_expand()
   end, "Toggle commit details")
 
-  -- Diff via diffview.nvim
+  -- Diff popup
   keymap.set(bufnr, "n", "d", function()
-    self:_diff_commit()
-  end, "Show commit diff")
+    local diff_popup = require("gitlad.popups.diff")
+    local commit = self:_get_current_commit()
+    diff_popup.open(self.repo_state, { commit = commit })
+  end, "Diff popup")
 
   -- Yank commit hash
   keymap.set(bufnr, "n", "y", function()
@@ -214,25 +216,6 @@ function LogBuffer:_toggle_expand()
         end)
       end)
     end
-  end
-end
-
---- Show commit diff via diffview.nvim
-function LogBuffer:_diff_commit()
-  local commit = self:_get_current_commit()
-  if not commit then
-    return
-  end
-
-  -- Check if diffview is available
-  local has_diffview, diffview = pcall(require, "diffview")
-  if has_diffview then
-    diffview.open({ commit.hash .. "^!" })
-  else
-    -- Fallback to git show in a split
-    vim.cmd("botright split")
-    vim.cmd("terminal git show " .. commit.hash)
-    vim.cmd("startinsert")
   end
 end
 

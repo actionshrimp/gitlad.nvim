@@ -1,6 +1,6 @@
 # QoL Improvements Tracker
 
-This document tracks Quality of Life improvements being worked on.
+Howdy pardner! This document tracks Quality of Life improvements being worked on.
 
 ## In Progress
 

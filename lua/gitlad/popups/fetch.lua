@@ -13,14 +13,36 @@ local git = require("gitlad.git")
 ---@field repo_state RepoState
 ---@field popup PopupData
 
---- Extract remote name from upstream (e.g., "origin/main" -> "origin")
----@param upstream string|nil
+--- Extract remote name from ref (e.g., "origin/main" -> "origin")
+---@param ref string|nil
 ---@return string|nil
-local function get_remote_from_upstream(upstream)
-  if not upstream then
+local function get_remote_from_ref(ref)
+  if not ref then
     return nil
   end
-  return upstream:match("^([^/]+)/")
+  return ref:match("^([^/]+)/")
+end
+
+--- Get the push remote for the current branch
+--- Returns the remote that would be used for pushing (may differ from upstream)
+---@param status GitStatusResult|nil
+---@return string|nil remote Remote name like "origin"
+local function get_push_remote(status)
+  if not status then
+    return nil
+  end
+
+  -- Use explicitly calculated push_remote if available
+  if status.push_remote then
+    return get_remote_from_ref(status.push_remote)
+  end
+
+  -- Fall back to deriving from upstream
+  if status.upstream then
+    return get_remote_from_ref(status.upstream)
+  end
+
+  return nil
 end
 
 --- Build fetch arguments from popup state
@@ -64,20 +86,22 @@ end
 ---@param repo_state RepoState
 function M.open(repo_state)
   local status = repo_state.status
-  local default_remote = status and get_remote_from_upstream(status.upstream) or ""
+  local default_remote = status and get_remote_from_ref(status.upstream) or ""
 
   local fetch_popup = popup
     .builder()
     :name("Fetch")
     -- Switches
-    :switch("p", "prune", "Prune deleted branches")
+    :switch("P", "prune", "Prune deleted branches")
     :switch("t", "tags", "Fetch all tags")
-    :switch("a", "all", "Fetch from all remotes")
     -- Options
     :option("r", "remote", default_remote, "Remote")
     -- Actions
     :group_heading("Fetch")
-    :action("f", "Fetch from upstream", function(popup_data)
+    :action("p", "Fetch from pushremote", function(popup_data)
+      M._fetch_pushremote(repo_state, popup_data)
+    end)
+    :action("u", "Fetch from upstream", function(popup_data)
       M._fetch_upstream(repo_state, popup_data)
     end)
     :action("e", "Fetch elsewhere", function(popup_data)
@@ -91,26 +115,31 @@ function M.open(repo_state)
   fetch_popup:show()
 end
 
---- Fetch from upstream
+--- Fetch from pushremote (the remote used for pushing, may differ from upstream)
+---@param repo_state RepoState
+---@param popup_data PopupData
+function M._fetch_pushremote(repo_state, popup_data)
+  local status = repo_state.status
+  local remote = get_push_remote(status)
+
+  if not remote or remote == "" then
+    vim.notify(
+      "[gitlad] No push remote configured. Set a remote with =r or use 'e' to fetch elsewhere.",
+      vim.log.levels.WARN
+    )
+    return
+  end
+
+  local args = build_fetch_args(popup_data, remote)
+  do_fetch(repo_state, args)
+end
+
+--- Fetch from upstream (the remote used for pulling/merging)
 ---@param repo_state RepoState
 ---@param popup_data PopupData
 function M._fetch_upstream(repo_state, popup_data)
-  -- Get remote from option, or default from upstream
-  local remote = nil
-  for _, opt in ipairs(popup_data.options) do
-    if opt.cli == "remote" and opt.value ~= "" then
-      remote = opt.value
-      break
-    end
-  end
-
-  -- If no remote specified, try to get from upstream
-  if not remote or remote == "" then
-    local status = repo_state.status
-    if status and status.upstream then
-      remote = get_remote_from_upstream(status.upstream)
-    end
-  end
+  local status = repo_state.status
+  local remote = status and get_remote_from_ref(status.upstream) or nil
 
   -- Validate
   if not remote or remote == "" then

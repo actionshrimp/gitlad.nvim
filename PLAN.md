@@ -257,17 +257,29 @@ Transient-style popup system inspired by neogit/magit:
 - `lua/gitlad/ui/views/status.lua` - Added `l` keymap, integrated log_list component
 - `lua/gitlad/ui/hl.lua` - Added commit-related highlight groups
 
-### 3.6 Diff View (via diffview.nvim)
+### 3.6 Diff View (via diffview.nvim) ✓
 
 **Note:** Full-buffer diff views delegate to `diffview.nvim` - see "Leverage diffview.nvim" section above.
 
-- [ ] `d` opens diff popup
-- [ ] Actions invoke `diffview.nvim` commands:
-  - Compare working tree vs index → `:DiffviewOpen`
-  - Compare index vs HEAD → `:DiffviewOpen --cached`
-  - Compare arbitrary refs → `:DiffviewOpen ref1..ref2`
-- [ ] Graceful fallback if diffview.nvim not installed (error message with install hint)
-- [ ] Optional: config to use built-in `vimdiff` instead
+- [x] `d` opens diff popup (from both status and log views)
+- [x] Actions invoke `diffview.nvim` commands:
+  - Diff dwim (context-aware) → smart selection based on cursor position
+  - Diff staged → `diffview.open({"--cached"})`
+  - Diff unstaged → `diffview.open({})`
+  - Diff worktree → `diffview.open({"HEAD"})`
+  - Diff range → prompt for refs, `diffview.open({ref1..ref2})`
+  - Show commit → `diffview.open({hash .. "^!"})`
+- [x] Graceful fallback if diffview.nvim not installed (terminal with git diff)
+- [ ] Optional: config to use built-in `vimdiff` instead (future enhancement)
+
+**Files created:**
+- `lua/gitlad/popups/diff.lua` - Diff popup definition and actions
+- `tests/unit/test_diff_popup.lua` - Unit tests (12 tests)
+- `tests/e2e/test_diff.lua` - E2E tests (7 tests)
+
+**Files modified:**
+- `lua/gitlad/ui/views/status.lua` - Changed `d` keymap to open diff popup, added `_get_diff_context()`
+- `lua/gitlad/ui/views/log.lua` - Changed `d` keymap to open diff popup
 
 ### 3.7 Stash Popup
 - [ ] `z` opens stash popup

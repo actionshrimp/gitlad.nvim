@@ -93,11 +93,15 @@ T["fetch popup"]["opens from status buffer with f key"] = function()
   ]])
   local lines = child.lua_get([[popup_lines]])
 
+  local found_fetch_pushremote = false
   local found_fetch_upstream = false
   local found_fetch_elsewhere = false
   local found_fetch_all = false
   for _, line in ipairs(lines) do
-    if line:match("f%s+Fetch from upstream") then
+    if line:match("p%s+Fetch from pushremote") then
+      found_fetch_pushremote = true
+    end
+    if line:match("u%s+Fetch from upstream") then
       found_fetch_upstream = true
     end
     if line:match("e%s+Fetch elsewhere") then
@@ -108,6 +112,7 @@ T["fetch popup"]["opens from status buffer with f key"] = function()
     end
   end
 
+  eq(found_fetch_pushremote, true)
   eq(found_fetch_upstream, true)
   eq(found_fetch_elsewhere, true)
   eq(found_fetch_all, true)
@@ -141,29 +146,24 @@ T["fetch popup"]["has all expected switches"] = function()
 
   local found_prune = false
   local found_tags = false
-  local found_all = false
 
   for _, line in ipairs(lines) do
-    if line:match("%-p.*prune") then
+    if line:match("%-P.*[Pp]rune") then
       found_prune = true
     end
     if line:match("%-t.*tags") then
       found_tags = true
     end
-    if line:match("%-a.*all") then
-      found_all = true
-    end
   end
 
   eq(found_prune, true)
   eq(found_tags, true)
-  eq(found_all, true)
 
   child.type_keys("q")
   cleanup_repo(child, repo)
 end
 
-T["fetch popup"]["switch toggling with -p"] = function()
+T["fetch popup"]["switch toggling with -P"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -187,14 +187,14 @@ T["fetch popup"]["switch toggling with -p"] = function()
 
   local prune_enabled_before = false
   for _, line in ipairs(lines_before) do
-    if line:match("%*%-p.*prune") then
+    if line:match("%*%-P.*[Pp]rune") then
       prune_enabled_before = true
     end
   end
   eq(prune_enabled_before, false)
 
   -- Toggle prune switch
-  child.type_keys("-p")
+  child.type_keys("-P")
   child.lua([[vim.wait(50, function() return false end)]])
 
   -- Check that switch is now enabled (has * marker)
@@ -205,7 +205,7 @@ T["fetch popup"]["switch toggling with -p"] = function()
 
   local prune_enabled_after = false
   for _, line in ipairs(lines_after) do
-    if line:match("%*%-p.*prune") then
+    if line:match("%*%-P.*[Pp]rune") then
       prune_enabled_after = true
     end
   end
@@ -236,7 +236,7 @@ T["fetch popup"]["shows warning when no upstream configured"] = function()
   child.lua([[vim.wait(100, function() return false end)]])
 
   -- Try to fetch from upstream (should fail - no upstream)
-  child.type_keys("f")
+  child.type_keys("u")
   child.lua([[vim.wait(200, function() return false end)]])
 
   -- Should have shown warning message
