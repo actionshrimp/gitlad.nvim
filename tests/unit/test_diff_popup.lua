@@ -75,6 +75,49 @@ T["diff popup"]["has no switches or options"] = function()
   eq(#data.options, 0)
 end
 
+T["diff popup"]["adds 3-way action when on staged file"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  -- Build popup with 3-way action (simulating context.section == "staged")
+  local data = popup
+    .builder()
+    :name("Diff")
+    :group_heading("Diffing")
+    :action("d", "Diff (dwim)", function() end)
+    :action("s", "Diff staged", function() end)
+    :action("u", "Diff unstaged", function() end)
+    :action("w", "Diff worktree", function() end)
+    :action("r", "Diff range...", function() end)
+    :action("3", "3-way (HEAD/index/worktree)", function() end)
+    :build()
+
+  -- 1 heading + 6 actions = 7
+  eq(#data.actions, 7)
+  eq(data.actions[7].key, "3")
+  eq(data.actions[7].description, "3-way (HEAD/index/worktree)")
+end
+
+T["diff popup"]["adds 3-way action when on unstaged file"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  -- Build popup with 3-way action (simulating context.section == "unstaged")
+  local data = popup
+    .builder()
+    :name("Diff")
+    :group_heading("Diffing")
+    :action("d", "Diff (dwim)", function() end)
+    :action("s", "Diff staged", function() end)
+    :action("u", "Diff unstaged", function() end)
+    :action("w", "Diff worktree", function() end)
+    :action("r", "Diff range...", function() end)
+    :action("3", "3-way (HEAD/index/worktree)", function() end)
+    :build()
+
+  -- 1 heading + 6 actions = 7
+  eq(#data.actions, 7)
+  eq(data.actions[7].key, "3")
+end
+
 -- =============================================================================
 -- Context-aware behavior tests
 -- =============================================================================

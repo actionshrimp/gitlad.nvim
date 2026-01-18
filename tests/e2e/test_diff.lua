@@ -182,6 +182,69 @@ T["diff popup from status"]["closes with Esc"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["diff popup from status"]["shows 3-way action when on unstaged file"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  create_file(child, repo, "init.txt", "init")
+  git(child, repo, "add init.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create unstaged change
+  create_file(child, repo, "init.txt", "modified content")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Navigate to unstaged file (gj to move to first file)
+  child.type_keys("gj")
+  child.lua("vim.wait(100, function() end)")
+
+  -- Open diff popup
+  child.type_keys("d")
+  child.lua("vim.wait(200, function() end)")
+
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Should have 3-way action since we're on an unstaged file
+  expect.equality(content:match("3%-way") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["diff popup from status"]["shows 3-way action when on staged file"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  create_file(child, repo, "init.txt", "init")
+  git(child, repo, "add init.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create and stage a change
+  create_file(child, repo, "init.txt", "modified content")
+  git(child, repo, "add init.txt")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Navigate to staged file (gj to move to first file)
+  child.type_keys("gj")
+  child.lua("vim.wait(100, function() end)")
+
+  -- Open diff popup
+  child.type_keys("d")
+  child.lua("vim.wait(200, function() end)")
+
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Should have 3-way action since we're on a staged file
+  expect.equality(content:match("3%-way") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 -- =============================================================================
 -- Diff popup tests (from log buffer)
 -- =============================================================================

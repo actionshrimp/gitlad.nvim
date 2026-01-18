@@ -85,6 +85,26 @@ function M._diff_range(repo_state)
   end)
 end
 
+--- 3-way staging view (HEAD/index/working tree)
+--- Opens diffview with both "Changes" (unstaged) and "Staged changes" sections.
+--- Index buffers are editable - writing to them updates the git index.
+--- Working tree buffers are also editable.
+---@param repo_state RepoState
+function M._diff_3way(repo_state)
+  local has_diffview, diffview = check_diffview()
+
+  if has_diffview then
+    -- Open with no args to get the staging view showing both
+    -- "Changes" (index vs working tree) and "Staged changes" (HEAD vs index)
+    diffview.open({})
+  else
+    vim.notify(
+      "[gitlad] 3-way staging view requires diffview.nvim. Install with: { 'sindrets/diffview.nvim' }",
+      vim.log.levels.WARN
+    )
+  end
+end
+
 --- Context-aware diff (do what I mean)
 ---@param repo_state RepoState
 ---@param context DiffContext
@@ -140,6 +160,13 @@ function M.open(repo_state, context)
   if context.commit then
     builder:action("c", "Show commit", function()
       M._diff_commit(repo_state, context.commit)
+    end)
+  end
+
+  -- Add 3-way staging view for index-related sections (staged/unstaged)
+  if context.section == "staged" or context.section == "unstaged" then
+    builder:action("3", "3-way (HEAD/index/worktree)", function()
+      M._diff_3way(repo_state)
     end)
   end
 
