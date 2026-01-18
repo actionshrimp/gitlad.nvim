@@ -190,6 +190,12 @@ end
 ---@field date? string Relative date (optional)
 ---@field body? string Commit body/message (optional, for expansion)
 
+---@class StashEntry
+---@field index number Stash index (0, 1, 2, ...)
+---@field ref string Full stash ref (e.g., "stash@{0}")
+---@field branch string Branch the stash was created on
+---@field message string Stash message (either custom or default "WIP on <branch>")
+
 ---@class GitRemote
 ---@field name string Remote name (e.g., "origin")
 ---@field fetch_url string Fetch URL
@@ -300,6 +306,45 @@ function M.parse_remote_branches(lines)
     end
   end
   return branches
+end
+
+--- Parse git stash list output
+--- Format: "stash@{0}: WIP on main: abc1234 commit subject"
+---      or "stash@{0}: On main: custom message"
+---@param lines string[] Output lines from git stash list
+---@return StashEntry[]
+function M.parse_stash_list(lines)
+  local stashes = {}
+
+  for _, line in ipairs(lines) do
+    -- Try WIP format first: "stash@{N}: WIP on <branch>: <message>"
+    local index_str, branch, message = line:match("^stash@{(%d+)}: WIP on ([^:]+): (.*)$")
+
+    if index_str and branch then
+      local index = tonumber(index_str)
+      table.insert(stashes, {
+        index = index,
+        ref = "stash@{" .. index_str .. "}",
+        branch = branch,
+        message = "WIP on " .. branch .. ": " .. (message or ""),
+      })
+    else
+      -- Try custom message format: "stash@{N}: On <branch>: <message>"
+      index_str, branch, message = line:match("^stash@{(%d+)}: On ([^:]+): (.*)$")
+
+      if index_str and branch then
+        local index = tonumber(index_str)
+        table.insert(stashes, {
+          index = index,
+          ref = "stash@{" .. index_str .. "}",
+          branch = branch,
+          message = message or "",
+        })
+      end
+    end
+  end
+
+  return stashes
 end
 
 return M

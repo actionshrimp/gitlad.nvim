@@ -291,7 +291,7 @@ This makes the plugin more comfortable for vim/evil users.
 
 See **PLAN.md** for the detailed development roadmap with specific tasks, files to create/modify, and implementation notes.
 
-### Current Status: Phase 3 In Progress
+### Current Status: Phase 3 Complete
 
 **What's built:**
 - Async git CLI wrapper with porcelain v2 parsing
@@ -301,14 +301,13 @@ See **PLAN.md** for the detailed development roadmap with specific tasks, files 
 - Inline diff expansion with syntax highlighting
 - Git command history view (`$` keybinding)
 - Transient-style popup system (PopupBuilder)
-- Commit popup with switches, options, and actions
-- Push popup with switches, options, and actions
-- 179 tests passing, CI configured
+- All Phase 3 popups: Commit, Push, Pull, Fetch, Branch, Log, Diff, Stash
+- 267+ tests passing, CI configured
 
-**Next up (Phase 3 continued):**
-- Pull/Fetch popups
-- Branch popup
-- Log view
+**Next up (Phase 4):**
+- Interactive Rebase
+- Merge & Conflict Resolution (via diffview.nvim)
+- Cherry-pick, Revert, Tag popups
 
 See PLAN.md for the detailed roadmap.
 
@@ -316,6 +315,7 @@ See PLAN.md for the detailed roadmap.
 
 Cloned in parent directory for reference:
 
+- `../magit/` - Popup system architecture, comprehensive features
 - `../neogit/` - Popup system architecture, comprehensive features
 - `../vim-fugitive/` - Performance patterns, vim-way design
 - `../lazygit/` - AsyncHandler pattern, loader architecture

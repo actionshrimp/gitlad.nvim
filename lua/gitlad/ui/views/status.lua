@@ -224,6 +224,12 @@ function StatusBuffer:_setup_keymaps()
   keymap.set(bufnr, "n", "y", function()
     self:_yank_commit_hash()
   end, "Yank commit hash")
+
+  -- Stash popup
+  keymap.set(bufnr, "n", "z", function()
+    local stash_popup = require("gitlad.popups.stash")
+    stash_popup.open(self.repo_state)
+  end, "Stash popup")
 end
 
 --- Get the file path at the current cursor position

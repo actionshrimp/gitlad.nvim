@@ -281,11 +281,22 @@ Transient-style popup system inspired by neogit/magit:
 - `lua/gitlad/ui/views/status.lua` - Changed `d` keymap to open diff popup, added `_get_diff_context()`
 - `lua/gitlad/ui/views/log.lua` - Changed `d` keymap to open diff popup
 
-### 3.7 Stash Popup
-- [ ] `z` opens stash popup
-- [ ] Actions: stash, pop, apply, drop, list
-- [ ] Switches: `--include-untracked`, `--keep-index`
-- [ ] Show stash list, preview stash contents
+### 3.7 Stash Popup ✅
+- [x] `z` opens stash popup
+- [x] Actions: stash (`z`), stash index (`i`), pop (`p`), apply (`a`), drop (`d`)
+- [x] Switches: `-u` (include-untracked), `-a` (all), `-k` (keep-index)
+- [x] Stash selection via `vim.ui.select` for pop/apply/drop
+
+**Files created:**
+- `lua/gitlad/popups/stash.lua` - Stash popup with switches and actions
+- `tests/unit/test_stash_popup.lua` - Unit tests for popup structure
+- `tests/e2e/test_stash.lua` - E2E tests for stash operations
+
+**Files modified:**
+- `lua/gitlad/git/init.lua` - Added stash_push, stash_pop, stash_apply, stash_drop, stash_list
+- `lua/gitlad/git/parse.lua` - Added StashEntry type and parse_stash_list
+- `lua/gitlad/ui/views/status.lua` - Added `z` keybinding for stash popup
+- `lua/gitlad/popups/help.lua` - Added `z` (Stash) and `d` (Diff) entries
 
 ---
 

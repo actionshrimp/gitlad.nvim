@@ -340,4 +340,80 @@ T["parse_log_format"]["get_log_format_string returns expected format"] = functio
   expect.equality(format:match("%%s"), "%s")
 end
 
+-- =============================================================================
+-- parse_stash_list tests
+-- =============================================================================
+
+T["parse_stash_list"] = MiniTest.new_set()
+
+T["parse_stash_list"]["parses WIP stash entries"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_stash_list({
+    "stash@{0}: WIP on main: abc1234 Add feature X",
+    "stash@{1}: WIP on develop: def5678 Fix bug Y",
+  })
+
+  eq(#result, 2)
+  eq(result[1].index, 0)
+  eq(result[1].ref, "stash@{0}")
+  eq(result[1].branch, "main")
+  eq(result[1].message, "WIP on main: abc1234 Add feature X")
+  eq(result[2].index, 1)
+  eq(result[2].ref, "stash@{1}")
+  eq(result[2].branch, "develop")
+  eq(result[2].message, "WIP on develop: def5678 Fix bug Y")
+end
+
+T["parse_stash_list"]["parses custom message stash entries"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_stash_list({
+    "stash@{0}: On main: my custom stash message",
+    "stash@{1}: On feature/login: save work in progress",
+  })
+
+  eq(#result, 2)
+  eq(result[1].index, 0)
+  eq(result[1].ref, "stash@{0}")
+  eq(result[1].branch, "main")
+  eq(result[1].message, "my custom stash message")
+  eq(result[2].index, 1)
+  eq(result[2].ref, "stash@{1}")
+  eq(result[2].branch, "feature/login")
+  eq(result[2].message, "save work in progress")
+end
+
+T["parse_stash_list"]["handles empty input"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_stash_list({})
+
+  eq(#result, 0)
+end
+
+T["parse_stash_list"]["handles mixed stash types"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_stash_list({
+    "stash@{0}: On main: custom message",
+    "stash@{1}: WIP on main: abc1234 Auto stash",
+  })
+
+  eq(#result, 2)
+  eq(result[1].message, "custom message")
+  eq(result[2].message, "WIP on main: abc1234 Auto stash")
+end
+
+T["parse_stash_list"]["handles branches with slashes"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_stash_list({
+    "stash@{0}: WIP on feature/add-login: abc1234 Work on login",
+  })
+
+  eq(#result, 1)
+  eq(result[1].branch, "feature/add-login")
+end
+
 return T
