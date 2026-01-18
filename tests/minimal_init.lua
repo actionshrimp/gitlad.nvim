@@ -17,10 +17,11 @@ if vim.fn.isdirectory(mini_test_path) == 1 then
   vim.opt.runtimepath:prepend(mini_test_path)
 end
 
--- Disable swap files and other noise
+-- Disable swap files, shada, and other noise for parallel test execution
 vim.opt.swapfile = false
 vim.opt.backup = false
 vim.opt.writebackup = false
+vim.opt.shadafile = "NONE"
 
 -- Set up leader key (common requirement)
 vim.g.mapleader = " "

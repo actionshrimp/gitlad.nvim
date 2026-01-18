@@ -432,7 +432,8 @@ T["commit editor"]["creates commit with C-c C-c"] = function()
   -- Commit with C-c C-c
   child.type_keys("<C-c><C-c>")
 
-  child.lua([[vim.wait(500, function() return false end)]])
+  -- Wait for async commit operation to complete
+  child.lua([[vim.wait(1500, function() return false end)]])
 
   -- Verify we returned to status buffer
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
