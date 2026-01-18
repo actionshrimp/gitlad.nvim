@@ -13,17 +13,45 @@ local git = require("gitlad.git")
 ---@field repo_state RepoState
 ---@field popup PopupData
 
---- Extract remote name from upstream (e.g., "origin/main" -> "origin")
----@param upstream string|nil
+--- Extract remote name from ref (e.g., "origin/main" -> "origin")
+---@param ref string|nil
 ---@return string|nil
-local function get_remote_from_upstream(upstream)
-  if not upstream then
+local function get_remote_from_ref(ref)
+  if not ref then
     return nil
   end
-  return upstream:match("^([^/]+)/")
+  return ref:match("^([^/]+)/")
 end
 
---- Check if push can proceed (has upstream or remote specified)
+--- Get the effective push target for the current branch
+--- This returns the same push_remote that the status view displays
+---@param status GitStatusResult|nil
+---@return string|nil push_ref Full ref like "origin/feature-branch"
+---@return string|nil remote Remote name like "origin"
+local function get_push_target(status)
+  if not status then
+    return nil, nil
+  end
+
+  -- Use explicitly calculated push_remote if available
+  if status.push_remote then
+    local remote = get_remote_from_ref(status.push_remote)
+    return status.push_remote, remote
+  end
+
+  -- Fall back to computing it the same way state/init.lua does
+  -- Push goes to <remote>/<branch> where remote is derived from upstream
+  if status.upstream then
+    local remote = get_remote_from_ref(status.upstream)
+    if remote then
+      return remote .. "/" .. status.branch, remote
+    end
+  end
+
+  return nil, nil
+end
+
+--- Check if push can proceed (has push target or remote specified)
 ---@param repo_state RepoState
 ---@param remote string|nil Remote option value
 ---@return boolean can_push
@@ -39,9 +67,10 @@ local function can_push(repo_state, remote)
     return true, nil
   end
 
-  -- Otherwise we need an upstream
-  if not status.upstream then
-    return false, "No upstream configured. Set a remote with =r or use 'e' to push elsewhere."
+  -- Check if we have a push target (either explicit or derived from upstream)
+  local push_ref, _ = get_push_target(status)
+  if not push_ref then
+    return false, "No push target. Set a remote with =r or use 'e' to push elsewhere."
   end
 
   return true, nil
@@ -92,7 +121,8 @@ end
 ---@param repo_state RepoState
 function M.open(repo_state)
   local status = repo_state.status
-  local default_remote = status and get_remote_from_upstream(status.upstream) or ""
+  local _, default_remote = get_push_target(status)
+  default_remote = default_remote or ""
 
   local push_popup = popup
     .builder()
@@ -119,15 +149,28 @@ function M.open(repo_state)
   push_popup:show()
 end
 
---- Push to upstream
+--- Push to push target (same-name branch on remote)
+--- Unlike git's default behavior which can be confused by mismatched upstream,
+--- we explicitly push to <remote>/<branch> like magit does
 ---@param repo_state RepoState
 ---@param popup_data PopupData
 function M._push_upstream(repo_state, popup_data)
-  -- Get remote from option, or default from upstream
+  local status = repo_state.status
+
+  -- Get remote from option, or from push target
   local remote = nil
   for _, opt in ipairs(popup_data.options) do
     if opt.cli == "remote" and opt.value ~= "" then
       remote = opt.value
+      break
+    end
+  end
+
+  -- Get refspec if explicitly set
+  local refspec = nil
+  for _, opt in ipairs(popup_data.options) do
+    if opt.cli == "refspec" and opt.value ~= "" then
+      refspec = opt.value
       break
     end
   end
@@ -139,12 +182,15 @@ function M._push_upstream(repo_state, popup_data)
     return
   end
 
-  -- Get refspec if set
-  local refspec = nil
-  for _, opt in ipairs(popup_data.options) do
-    if opt.cli == "refspec" and opt.value ~= "" then
-      refspec = opt.value
-      break
+  -- If no explicit remote/refspec, derive from push target
+  -- This ensures we push to <remote>/<branch> even when upstream differs
+  if (not remote or remote == "") and (not refspec or refspec == "") and status then
+    local push_ref, push_remote = get_push_target(status)
+    if push_ref and push_remote then
+      remote = push_remote
+      -- Push current branch to same-name branch on remote
+      -- e.g., "git push origin feature/foo:feature/foo" or just "git push origin feature/foo"
+      refspec = status.branch
     end
   end
 

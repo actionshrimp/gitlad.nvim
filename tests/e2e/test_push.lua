@@ -220,11 +220,11 @@ T["push popup"]["switch toggling with -f"] = function()
   cleanup_repo(child, repo)
 end
 
-T["push popup"]["shows warning when no upstream configured"] = function()
+T["push popup"]["shows warning when no push target configured"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
-  -- Create initial commit (no remote, no upstream)
+  -- Create initial commit (no remote, no upstream, no push target)
   create_file(child, repo, "test.txt", "hello")
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
@@ -240,13 +240,13 @@ T["push popup"]["shows warning when no upstream configured"] = function()
   child.type_keys("p")
   child.lua([[vim.wait(100, function() return false end)]])
 
-  -- Try to push to upstream (should fail - no upstream)
+  -- Try to push (should fail - no push target derivable)
   child.type_keys("p")
   child.lua([[vim.wait(200, function() return false end)]])
 
   -- Should have shown warning message
   local messages = child.lua_get([[vim.fn.execute("messages")]])
-  eq(messages:match("No upstream configured") ~= nil, true)
+  eq(messages:match("No push target") ~= nil, true)
 
   cleanup_repo(child, repo)
 end
