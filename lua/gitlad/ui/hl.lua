@@ -25,6 +25,9 @@ local highlight_groups = {
   GitladAheadBehind = { link = "Number" },
   GitladCommitHash = { link = "Constant" },
   GitladCommitMsg = { link = "Comment" },
+  GitladCommitAuthor = { link = "String" },
+  GitladCommitDate = { link = "Comment" },
+  GitladCommitBody = { link = "Normal" },
 
   -- Section headers
   GitladSectionStaged = { link = "DiffAdd" },
