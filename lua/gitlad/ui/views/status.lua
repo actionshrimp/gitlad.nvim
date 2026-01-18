@@ -32,7 +32,12 @@ local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 
 ---@class SectionInfo
 ---@field name string Section name
----@field section "staged"|"unstaged"|"untracked"|"conflicted" Section type
+---@field section "staged"|"unstaged"|"untracked"|"conflicted"|"stashes" Section type
+
+---@class StashLineInfo
+---@field type "stash" Discriminator for union type
+---@field stash StashEntry Full stash entry
+---@field section "stashes" Section identifier
 
 ---@class SignInfo
 ---@field expanded boolean Whether the item is expanded
@@ -41,7 +46,7 @@ local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 ---@field bufnr number Buffer number
 ---@field winnr number|nil Window number if open
 ---@field repo_state RepoState Repository state
----@field line_map table<number, LineInfo|CommitLineInfo> Map of line numbers to file or commit info
+---@field line_map table<number, LineInfo|CommitLineInfo|StashLineInfo> Map of line numbers to file, commit, or stash info
 ---@field section_lines table<number, SectionInfo> Map of line numbers to section headers
 ---@field expanded_files table<string, boolean> Map of "section:path" to expanded state
 ---@field expanded_commits table<string, boolean> Map of commit hash to expanded state
@@ -129,10 +134,15 @@ function StatusBuffer:_setup_keymaps()
     self:_unstage_all()
   end, "Unstage all")
 
-  -- Discard
+  -- Discard (context-aware: drops stash when on stash entry)
   keymap.set(bufnr, "n", "x", function()
-    self:_discard_current()
-  end, "Discard changes")
+    local stash = self:_get_current_stash()
+    if stash then
+      self:_stash_drop(stash)
+    else
+      self:_discard_current()
+    end
+  end, "Discard changes / Drop stash")
   keymap.set(bufnr, "v", "x", function()
     self:_discard_visual()
   end, "Discard selection")
@@ -189,10 +199,24 @@ function StatusBuffer:_setup_keymaps()
   end, "Commit popup")
 
   -- Push popup (evil-collection-magit style: p instead of P)
+  -- Context-aware: pops stash when on stash entry
   keymap.set(bufnr, "n", "p", function()
-    local push_popup = require("gitlad.popups.push")
-    push_popup.open(self.repo_state)
-  end, "Push popup")
+    local stash = self:_get_current_stash()
+    if stash then
+      self:_stash_pop(stash)
+    else
+      local push_popup = require("gitlad.popups.push")
+      push_popup.open(self.repo_state)
+    end
+  end, "Push popup / Pop stash")
+
+  -- Apply stash at point
+  keymap.set(bufnr, "n", "a", function()
+    local stash = self:_get_current_stash()
+    if stash then
+      self:_stash_apply(stash)
+    end
+  end, "Apply stash")
 
   -- Fetch popup
   keymap.set(bufnr, "n", "f", function()
@@ -228,10 +252,12 @@ function StatusBuffer:_setup_keymaps()
     self:_yank_commit_hash()
   end, "Yank commit hash")
 
-  -- Stash popup
+  -- Stash popup (passes stash at point for context-aware operations)
   keymap.set(bufnr, "n", "z", function()
     local stash_popup = require("gitlad.popups.stash")
-    stash_popup.open(self.repo_state)
+    local stash = self:_get_current_stash()
+    local context = stash and { stash = stash } or nil
+    stash_popup.open(self.repo_state, context)
   end, "Stash popup")
 
   -- Cherry-pick popup
@@ -280,6 +306,20 @@ function StatusBuffer:_get_current_commit()
   end
 
   return nil, nil
+end
+
+--- Get the stash at the current cursor position
+---@return StashEntry|nil stash
+function StatusBuffer:_get_current_stash()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+
+  local info = self.line_map[line]
+  if info and info.type == "stash" then
+    return info.stash
+  end
+
+  return nil
 end
 
 --- Get selected commits (normal mode: single, visual mode: range)
@@ -871,13 +911,14 @@ function StatusBuffer:_toggle_diff()
   local section_info = self.section_lines[line]
 
   if section_info then
-    -- Check if this is a collapsible commit section
+    -- Check if this is a collapsible section (commit sections and stashes)
     local collapsible_sections = {
       unpulled_upstream = true,
       unpushed_upstream = true,
       unpulled_push = true,
       unpushed_push = true,
       recent = true,
+      stashes = true,
     }
     if collapsible_sections[section_info.section] then
       -- Toggle the section collapsed state
@@ -1135,6 +1176,66 @@ function StatusBuffer:_discard_visual()
   end)
 end
 
+--- Pop stash at point (apply and remove)
+---@param stash StashEntry
+function StatusBuffer:_stash_pop(stash)
+  vim.ui.select({ "Yes", "No" }, {
+    prompt = string.format("Pop %s?", stash.ref),
+  }, function(choice)
+    if choice == "Yes" then
+      vim.notify("[gitlad] Popping stash...", vim.log.levels.INFO)
+      git.stash_pop(stash.ref, { cwd = self.repo_state.repo_root }, function(success, err)
+        vim.schedule(function()
+          if success then
+            vim.notify("[gitlad] Popped " .. stash.ref, vim.log.levels.INFO)
+            self.repo_state:refresh_status(true)
+          else
+            vim.notify("[gitlad] Pop failed: " .. (err or "unknown"), vim.log.levels.ERROR)
+          end
+        end)
+      end)
+    end
+  end)
+end
+
+--- Apply stash at point (without removing it)
+---@param stash StashEntry
+function StatusBuffer:_stash_apply(stash)
+  vim.notify("[gitlad] Applying stash...", vim.log.levels.INFO)
+  git.stash_apply(stash.ref, { cwd = self.repo_state.repo_root }, function(success, err)
+    vim.schedule(function()
+      if success then
+        vim.notify("[gitlad] Applied " .. stash.ref, vim.log.levels.INFO)
+        self.repo_state:refresh_status(true)
+      else
+        vim.notify("[gitlad] Apply failed: " .. (err or "unknown"), vim.log.levels.ERROR)
+      end
+    end)
+  end)
+end
+
+--- Drop stash at point (remove without applying)
+---@param stash StashEntry
+function StatusBuffer:_stash_drop(stash)
+  vim.ui.select({ "Yes", "No" }, {
+    prompt = string.format("Drop %s? This cannot be undone.", stash.ref),
+  }, function(choice)
+    if choice == "Yes" then
+      vim.notify("[gitlad] Dropping stash...", vim.log.levels.INFO)
+      git.stash_drop(stash.ref, { cwd = self.repo_state.repo_root }, function(success, err)
+        vim.schedule(function()
+          if success then
+            vim.notify("[gitlad] Dropped " .. stash.ref, vim.log.levels.INFO)
+            self.repo_state:refresh_status(true)
+          else
+            vim.notify("[gitlad] Drop failed: " .. (err or "unknown"), vim.log.levels.ERROR)
+          end
+        end)
+      end)
+    end
+  end)
+end
+
 --- Render the status buffer
 function StatusBuffer:render()
   if not vim.api.nvim_buf_is_valid(self.bufnr) then
@@ -1329,6 +1430,26 @@ function StatusBuffer:render()
     and #status.conflicted == 0
   then
     table.insert(lines, "Nothing to commit, working tree clean")
+    table.insert(lines, "")
+  end
+
+  -- === Stashes section (after file changes, before commit sections) ===
+  if status.stashes and #status.stashes > 0 then
+    local is_collapsed = self.collapsed_sections["stashes"]
+    table.insert(lines, string.format("Stashes (%d)", #status.stashes))
+    self.section_lines[#lines] = { name = "Stashes", section = "stashes" }
+    self.sign_lines[#lines] = { expanded = not is_collapsed }
+
+    if not is_collapsed then
+      for _, stash in ipairs(status.stashes) do
+        table.insert(lines, string.format("%s %s", stash.ref, stash.message))
+        self.line_map[#lines] = {
+          type = "stash",
+          stash = stash,
+          section = "stashes",
+        }
+      end
+    end
     table.insert(lines, "")
   end
 

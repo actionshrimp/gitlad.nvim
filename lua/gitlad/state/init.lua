@@ -199,7 +199,15 @@ function RepoState:_fetch_extended_status(result, callback)
     complete_one()
   end)
 
-  -- 5. Determine push destination
+  -- 5. Fetch recent stashes
+  start_op()
+  git.stash_list(opts, function(stashes, _err)
+    -- Limit to 10 stashes to avoid cluttering the status view
+    result.stashes = stashes and vim.list_slice(stashes, 1, 10) or {}
+    complete_one()
+  end)
+
+  -- 6. Determine push destination
   -- Push goes to <push-remote>/<branch-name> where push-remote is:
   --   1. branch.<name>.pushRemote (explicit config)
   --   2. remote.pushDefault (global default)

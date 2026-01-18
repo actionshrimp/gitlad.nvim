@@ -59,6 +59,11 @@ local highlight_groups = {
   GitladSectionUnpulled = { link = "GitladSectionHeader" },
   GitladSectionUnpushed = { link = "GitladSectionHeader" },
   GitladSectionRecent = { link = "GitladSectionHeader" },
+  GitladSectionStashes = { link = "GitladSectionHeader" },
+
+  -- Stash entries
+  GitladStashRef = { link = "Constant" },
+  GitladStashMessage = { link = "Comment" },
 
   -- File entries
   GitladFileAdded = { link = "DiffAdd" },
@@ -319,6 +324,8 @@ local section_hl = {
   unstaged = "GitladSectionUnstaged",
   untracked = "GitladSectionUntracked",
   conflicted = "GitladSectionConflicted",
+  -- Stash section
+  stashes = "GitladSectionStashes",
   -- Commit sections
   unpulled_upstream = "GitladSectionUnpulled",
   unpushed_upstream = "GitladSectionUnpushed",
@@ -563,6 +570,18 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
       M.set(bufnr, ns_status, line_idx, 0, 7, "GitladCommitHash")
       if #line > 8 then
         M.set(bufnr, ns_status, line_idx, 8, #line, "GitladCommitMsg")
+      end
+
+      -- Stash entries: "  stash@{N} message"
+    elseif line_map[i] and line_map[i].type == "stash" then
+      -- Highlight stash ref (e.g., "stash@{0}")
+      local ref_start, ref_end = line:find("stash@{%d+}")
+      if ref_start then
+        M.set(bufnr, ns_status, line_idx, ref_start - 1, ref_end, "GitladStashRef")
+        -- Message is everything after the ref
+        if ref_end < #line then
+          M.set(bufnr, ns_status, line_idx, ref_end + 1, #line, "GitladStashMessage")
+        end
       end
 
       -- Help line

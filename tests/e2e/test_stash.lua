@@ -466,4 +466,315 @@ T["stash operations"]["stash list returns parsed entries"] = function()
   cleanup_repo(child, repo)
 end
 
+-- Stash section in status view tests
+T["stash section"] = MiniTest.new_set()
+
+T["stash section"]["shows Stashes section when stashes exist"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create a stash
+  create_file(child, repo, "test.txt", "modified")
+  git(child, repo, "stash push -m 'test stash'")
+
+  -- Open status view
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Get buffer lines
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    _G.status_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[_G.status_lines]])
+
+  -- Find Stashes section
+  local found_stashes_section = false
+  local found_stash_entry = false
+  for _, line in ipairs(lines) do
+    if line:match("^Stashes %(%d+%)") then
+      found_stashes_section = true
+    end
+    if line:match("stash@{0}") and line:match("test stash") then
+      found_stash_entry = true
+    end
+  end
+
+  eq(found_stashes_section, true)
+  eq(found_stash_entry, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["stash section"]["hides Stashes section when no stashes"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit only (no stashes)
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Open status view
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Get buffer lines
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    _G.status_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[_G.status_lines]])
+
+  -- Should NOT have Stashes section
+  local found_stashes_section = false
+  for _, line in ipairs(lines) do
+    if line:match("^Stashes") then
+      found_stashes_section = true
+    end
+  end
+
+  eq(found_stashes_section, false)
+
+  cleanup_repo(child, repo)
+end
+
+T["stash section"]["navigation includes stash entries with gj/gk"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create two stashes
+  create_file(child, repo, "test.txt", "modified 1")
+  git(child, repo, "stash push -m 'first stash'")
+  create_file(child, repo, "test.txt", "modified 2")
+  git(child, repo, "stash push -m 'second stash'")
+
+  -- Open status view
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Get buffer content and find stash line
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.stash_line = nil
+    for i, line in ipairs(lines) do
+      if line:match("stash@{0}") then
+        _G.stash_line = i
+        break
+      end
+    end
+  ]])
+  local stash_line = child.lua_get([[_G.stash_line]])
+
+  -- Stash line should exist
+  eq(stash_line ~= nil, true)
+
+  -- Navigate with gj until we reach the stash line
+  child.type_keys("gg") -- Go to top first
+  for _ = 1, 20 do -- Navigate down several times
+    child.type_keys("gj")
+    local current_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+    if current_line == stash_line then
+      break
+    end
+  end
+
+  -- Verify we can reach the stash line
+  local final_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  eq(final_line, stash_line)
+
+  cleanup_repo(child, repo)
+end
+
+T["stash section"]["TAB collapses and expands stash section"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit and stash
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+  create_file(child, repo, "test.txt", "modified")
+  git(child, repo, "stash push -m 'test stash'")
+
+  -- Open status view
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Find and navigate to Stashes section header
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.stashes_header_line = nil
+    for i, line in ipairs(lines) do
+      if line:match("^Stashes %(%d+%)") then
+        _G.stashes_header_line = i
+        break
+      end
+    end
+  ]])
+  local header_line = child.lua_get([[_G.stashes_header_line]])
+  eq(header_line ~= nil, true)
+
+  -- Move cursor to stashes header
+  child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], header_line))
+
+  -- Check stash entry is visible
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.has_stash_entry = false
+    for _, line in ipairs(lines) do
+      if line:match("stash@{0}") then
+        _G.has_stash_entry = true
+        break
+      end
+    end
+  ]])
+  eq(child.lua_get([[_G.has_stash_entry]]), true)
+
+  -- Press TAB to collapse
+  child.type_keys("<Tab>")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Check stash entry is now hidden
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.has_stash_entry_after_collapse = false
+    for _, line in ipairs(lines) do
+      if line:match("stash@{0}") then
+        _G.has_stash_entry_after_collapse = true
+        break
+      end
+    end
+  ]])
+  eq(child.lua_get([[_G.has_stash_entry_after_collapse]]), false)
+
+  -- Press TAB again to expand
+  child.type_keys("<Tab>")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Check stash entry is visible again
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.has_stash_entry_after_expand = false
+    for _, line in ipairs(lines) do
+      if line:match("stash@{0}") then
+        _G.has_stash_entry_after_expand = true
+        break
+      end
+    end
+  ]])
+  eq(child.lua_get([[_G.has_stash_entry_after_expand]]), true)
+
+  cleanup_repo(child, repo)
+end
+
+T["stash section"]["p on stash entry opens pop confirmation"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit and stash
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+  create_file(child, repo, "test.txt", "modified")
+  git(child, repo, "stash push -m 'test stash'")
+
+  -- Open status view
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Find and navigate to stash entry
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("stash@{0}") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Mock vim.ui.select to capture the call
+  child.lua([[
+    _G.ui_select_called = false
+    _G.ui_select_prompt = nil
+    vim.ui.select = function(items, opts, on_choice)
+      _G.ui_select_called = true
+      _G.ui_select_prompt = opts.prompt
+      -- Don't actually call on_choice to avoid the operation
+    end
+  ]])
+
+  -- Press p to pop (should trigger confirmation)
+  child.type_keys("p")
+  child.lua([[vim.wait(200, function() return _G.ui_select_called end)]])
+
+  eq(child.lua_get([[_G.ui_select_called]]), true)
+  local prompt = child.lua_get([[_G.ui_select_prompt]])
+  eq(prompt:match("Pop stash@{0}") ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["stash section"]["p not on stash opens push popup"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit (no stashes)
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Open status view
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Press p (not on stash entry, should open push popup)
+  child.type_keys("p")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should have a popup window
+  local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(win_count, 2)
+
+  -- Verify it's the push popup by checking content
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.is_push_popup = false
+    for _, line in ipairs(lines) do
+      if line:match("Push") then
+        _G.is_push_popup = true
+        break
+      end
+    end
+  ]])
+  eq(child.lua_get([[_G.is_push_popup]]), true)
+
+  child.type_keys("q")
+  cleanup_repo(child, repo)
+end
+
 return T

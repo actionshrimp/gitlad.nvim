@@ -29,7 +29,15 @@ end
 
 --- Create and show the stash popup
 ---@param repo_state RepoState
-function M.open(repo_state)
+---@param context? { stash: StashEntry } Optional stash at point for context-aware operations
+function M.open(repo_state, context)
+  local stash_at_point = context and context.stash or nil
+
+  -- Build action labels with context info
+  local pop_label = stash_at_point and ("Pop " .. stash_at_point.ref) or "Pop"
+  local apply_label = stash_at_point and ("Apply " .. stash_at_point.ref) or "Apply"
+  local drop_label = stash_at_point and ("Drop " .. stash_at_point.ref) or "Drop"
+
   local stash_popup = popup
     .builder()
     :name("Stash")
@@ -47,14 +55,26 @@ function M.open(repo_state)
     end)
     -- Actions - Use group
     :group_heading("Use")
-    :action("p", "Pop", function(_popup_data)
-      M._stash_pop(repo_state)
+    :action("p", pop_label, function(_popup_data)
+      if stash_at_point then
+        M._stash_pop_direct(repo_state, stash_at_point.ref)
+      else
+        M._stash_pop(repo_state)
+      end
     end)
-    :action("a", "Apply", function(_popup_data)
-      M._stash_apply(repo_state)
+    :action("a", apply_label, function(_popup_data)
+      if stash_at_point then
+        M._stash_apply_direct(repo_state, stash_at_point.ref)
+      else
+        M._stash_apply(repo_state)
+      end
     end)
-    :action("d", "Drop", function(_popup_data)
-      M._stash_drop(repo_state)
+    :action("d", drop_label, function(_popup_data)
+      if stash_at_point then
+        M._stash_drop_direct(repo_state, stash_at_point.ref)
+      else
+        M._stash_drop(repo_state)
+      end
     end)
     :build()
 
@@ -271,7 +291,7 @@ function M._stash_drop(repo_state)
             vim.schedule(function()
               if success then
                 vim.notify("[gitlad] Dropped " .. stash_ref, vim.log.levels.INFO)
-                -- No status refresh needed - stash list isn't shown in status
+                repo_state:refresh_status(true)
               else
                 vim.notify(
                   "[gitlad] Drop failed: " .. (drop_err or "unknown error"),
@@ -281,6 +301,65 @@ function M._stash_drop(repo_state)
             end)
           end)
         end)
+      end)
+    end)
+  end)
+end
+
+--- Pop a specific stash directly (without selection prompt)
+---@param repo_state RepoState
+---@param stash_ref string Stash ref (e.g., "stash@{0}")
+function M._stash_pop_direct(repo_state, stash_ref)
+  vim.notify("[gitlad] Popping stash...", vim.log.levels.INFO)
+  git.stash_pop(stash_ref, { cwd = repo_state.repo_root }, function(success, err)
+    vim.schedule(function()
+      if success then
+        vim.notify("[gitlad] Popped " .. stash_ref, vim.log.levels.INFO)
+        repo_state:refresh_status(true)
+      else
+        vim.notify("[gitlad] Pop failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+      end
+    end)
+  end)
+end
+
+--- Apply a specific stash directly (without selection prompt)
+---@param repo_state RepoState
+---@param stash_ref string Stash ref (e.g., "stash@{0}")
+function M._stash_apply_direct(repo_state, stash_ref)
+  vim.notify("[gitlad] Applying stash...", vim.log.levels.INFO)
+  git.stash_apply(stash_ref, { cwd = repo_state.repo_root }, function(success, err)
+    vim.schedule(function()
+      if success then
+        vim.notify("[gitlad] Applied " .. stash_ref, vim.log.levels.INFO)
+        repo_state:refresh_status(true)
+      else
+        vim.notify("[gitlad] Apply failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+      end
+    end)
+  end)
+end
+
+--- Drop a specific stash directly (with confirmation but without selection prompt)
+---@param repo_state RepoState
+---@param stash_ref string Stash ref (e.g., "stash@{0}")
+function M._stash_drop_direct(repo_state, stash_ref)
+  vim.ui.select({ "Yes", "No" }, {
+    prompt = "Drop " .. stash_ref .. "? This cannot be undone.",
+  }, function(choice)
+    if choice ~= "Yes" then
+      return
+    end
+
+    vim.notify("[gitlad] Dropping stash...", vim.log.levels.INFO)
+    git.stash_drop(stash_ref, { cwd = repo_state.repo_root }, function(success, err)
+      vim.schedule(function()
+        if success then
+          vim.notify("[gitlad] Dropped " .. stash_ref, vim.log.levels.INFO)
+          repo_state:refresh_status(true)
+        else
+          vim.notify("[gitlad] Drop failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        end
       end)
     end)
   end)
