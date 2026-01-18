@@ -607,6 +607,9 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
 
   -- Strip diff markers and build parseable code
   -- Track line mapping: parsed_line_idx -> { buffer_line, col_offset }
+  -- Note: We use explicit indexing instead of table.insert because
+  -- table.insert(t, nil) is a no-op in Lua - it doesn't actually insert anything.
+  -- This would cause line_mapping to be out of sync with code_lines.
   local code_lines = {}
   local line_mapping = {}
 
@@ -621,19 +624,19 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
     if first_char == "+" or first_char == "-" or first_char == " " then
       -- Extract the actual code (after the diff marker)
       local code = line:sub(marker_pos + 1) -- Everything after the marker
-      table.insert(code_lines, code)
-      table.insert(line_mapping, {
+      code_lines[i] = code
+      line_mapping[i] = {
         buffer_line = start_line + i - 1, -- 0-indexed
         col_offset = marker_pos, -- 0-indexed column where code starts (3 = after "  " + marker)
-      })
+      }
     elseif line:match("^%s%s@@") then
       -- Skip hunk headers - they're not code
-      table.insert(code_lines, "")
-      table.insert(line_mapping, nil)
+      code_lines[i] = ""
+      line_mapping[i] = nil -- Explicit nil to maintain index alignment
     else
       -- Unknown line format, skip
-      table.insert(code_lines, "")
-      table.insert(line_mapping, nil)
+      code_lines[i] = ""
+      line_mapping[i] = nil -- Explicit nil to maintain index alignment
     end
   end
 

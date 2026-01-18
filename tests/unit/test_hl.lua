@@ -266,4 +266,102 @@ T["hl"]["get_highlight_query returns nil when parser unavailable"] = function()
   eq(query, nil)
 end
 
+-- =============================================================================
+-- Treesitter diff highlighting tests
+-- =============================================================================
+
+T["hl"]["highlight_diff_content applies highlights to correct lines"] = function()
+  local hl = require("gitlad.ui.hl")
+  hl.setup()
+
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  local lines = {
+    "  @@ -0,0 +1,3 @@",
+    "  +local x = 1",
+    "  +local y = 2",
+  }
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+  -- Apply treesitter highlighting
+  local success = hl.highlight_diff_content(bufnr, lines, 0, "test.lua")
+  eq(success, true)
+
+  -- Get extmarks
+  local ns = hl.get_namespaces().diff_lang
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })
+
+  -- Should have some highlights
+  expect.equality(#marks > 0, true)
+
+  -- Find the highlight for "local" keyword on line 1 (0-indexed)
+  -- Line 1 is "  +local x = 1" - "local" should be at columns 3-8
+  local found_local_line1 = false
+  for _, m in ipairs(marks) do
+    if m[2] == 1 and m[3] == 3 and m[4].end_col == 8 then
+      found_local_line1 = true
+      break
+    end
+  end
+  expect.equality(found_local_line1, true)
+
+  -- Find the highlight for "local" keyword on line 2 (0-indexed)
+  -- Line 2 is "  +local y = 2" - "local" should be at columns 3-8
+  local found_local_line2 = false
+  for _, m in ipairs(marks) do
+    if m[2] == 2 and m[3] == 3 and m[4].end_col == 8 then
+      found_local_line2 = true
+      break
+    end
+  end
+  expect.equality(found_local_line2, true)
+
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
+T["hl"]["highlight_diff_content handles hunk headers correctly"] = function()
+  local hl = require("gitlad.ui.hl")
+  hl.setup()
+
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  -- Multiple hunks
+  local lines = {
+    "  @@ -1,1 +1,2 @@",
+    "  +local a = 1",
+    "  @@ -10,1 +11,2 @@",
+    "  +local b = 2",
+  }
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+  local success = hl.highlight_diff_content(bufnr, lines, 0, "test.lua")
+  eq(success, true)
+
+  local ns = hl.get_namespaces().diff_lang
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })
+
+  -- Should have highlights
+  expect.equality(#marks > 0, true)
+
+  -- "local" on line 1 (after first hunk header)
+  local found_line1 = false
+  for _, m in ipairs(marks) do
+    if m[2] == 1 and m[3] == 3 and m[4].end_col == 8 then
+      found_line1 = true
+      break
+    end
+  end
+  expect.equality(found_line1, true)
+
+  -- "local" on line 3 (after second hunk header)
+  local found_line3 = false
+  for _, m in ipairs(marks) do
+    if m[2] == 3 and m[3] == 3 and m[4].end_col == 8 then
+      found_line3 = true
+      break
+    end
+  end
+  expect.equality(found_line3, true)
+
+  vim.api.nvim_buf_delete(bufnr, { force = true })
+end
+
 return T
