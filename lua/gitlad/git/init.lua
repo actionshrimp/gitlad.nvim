@@ -1237,23 +1237,27 @@ end
 ---@param callback fun(paths: string[]|nil, err: string|nil)
 function M.submodule_list(opts, callback)
   -- Use config to list all submodule paths
-  cli.run_async({ "config", "--file", ".gitmodules", "--get-regexp", "^submodule\\..+\\.path$" }, opts, function(result)
-    if result.code ~= 0 then
-      -- No .gitmodules or no submodules configured
-      callback({}, nil)
-      return
-    end
-
-    local paths = {}
-    for _, line in ipairs(result.stdout) do
-      -- Format: "submodule.foo/bar.path foo/bar"
-      local path = line:match("^submodule%..+%.path%s+(.+)$")
-      if path then
-        table.insert(paths, path)
+  cli.run_async(
+    { "config", "--file", ".gitmodules", "--get-regexp", "^submodule\\..+\\.path$" },
+    opts,
+    function(result)
+      if result.code ~= 0 then
+        -- No .gitmodules or no submodules configured
+        callback({}, nil)
+        return
       end
+
+      local paths = {}
+      for _, line in ipairs(result.stdout) do
+        -- Format: "submodule.foo/bar.path foo/bar"
+        local path = line:match("^submodule%..+%.path%s+(.+)$")
+        if path then
+          table.insert(paths, path)
+        end
+      end
+      callback(paths, nil)
     end
-    callback(paths, nil)
-  end)
+  )
 end
 
 return M

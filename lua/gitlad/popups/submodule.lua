@@ -172,16 +172,25 @@ function M._add(repo_state)
 
       vim.notify("[gitlad] Adding submodule...", vim.log.levels.INFO)
 
-      git.submodule_add(url, dest_path, {}, { cwd = repo_state.repo_root }, function(success, output, err)
-        vim.schedule(function()
-          if success then
-            vim.notify("[gitlad] Submodule added", vim.log.levels.INFO)
-            repo_state:refresh_status(true)
-          else
-            vim.notify("[gitlad] Add failed: " .. (err or output or "unknown error"), vim.log.levels.ERROR)
-          end
-        end)
-      end)
+      git.submodule_add(
+        url,
+        dest_path,
+        {},
+        { cwd = repo_state.repo_root },
+        function(success, output, err)
+          vim.schedule(function()
+            if success then
+              vim.notify("[gitlad] Submodule added", vim.log.levels.INFO)
+              repo_state:refresh_status(true)
+            else
+              vim.notify(
+                "[gitlad] Add failed: " .. (err or output or "unknown error"),
+                vim.log.levels.ERROR
+              )
+            end
+          end)
+        end
+      )
     end)
   end)
 end
@@ -203,7 +212,10 @@ function M._init(repo_state, submodule_at_point, selected_paths, popup_data)
           vim.notify("[gitlad] Submodule(s) initialized", vim.log.levels.INFO)
           repo_state:refresh_status(true)
         else
-          vim.notify("[gitlad] Init failed: " .. (err or output or "unknown error"), vim.log.levels.ERROR)
+          vim.notify(
+            "[gitlad] Init failed: " .. (err or output or "unknown error"),
+            vim.log.levels.ERROR
+          )
         end
       end)
     end)
@@ -231,16 +243,24 @@ function M._populate(repo_state, submodule_at_point, selected_paths, popup_data)
 
     vim.notify("[gitlad] Populating submodule(s)...", vim.log.levels.INFO)
 
-    git.submodule_update(target_paths, args, { cwd = repo_state.repo_root }, function(success, output, err)
-      vim.schedule(function()
-        if success then
-          vim.notify("[gitlad] Submodule(s) populated", vim.log.levels.INFO)
-          repo_state:refresh_status(true)
-        else
-          vim.notify("[gitlad] Populate failed: " .. (err or output or "unknown error"), vim.log.levels.ERROR)
-        end
-      end)
-    end)
+    git.submodule_update(
+      target_paths,
+      args,
+      { cwd = repo_state.repo_root },
+      function(success, output, err)
+        vim.schedule(function()
+          if success then
+            vim.notify("[gitlad] Submodule(s) populated", vim.log.levels.INFO)
+            repo_state:refresh_status(true)
+          else
+            vim.notify(
+              "[gitlad] Populate failed: " .. (err or output or "unknown error"),
+              vim.log.levels.ERROR
+            )
+          end
+        end)
+      end
+    )
   end
 
   if needs_prompt then
@@ -263,16 +283,24 @@ function M._update(repo_state, submodule_at_point, selected_paths, popup_data)
 
     vim.notify("[gitlad] Updating submodule(s)...", vim.log.levels.INFO)
 
-    git.submodule_update(target_paths, args, { cwd = repo_state.repo_root }, function(success, output, err)
-      vim.schedule(function()
-        if success then
-          vim.notify("[gitlad] Submodule(s) updated", vim.log.levels.INFO)
-          repo_state:refresh_status(true)
-        else
-          vim.notify("[gitlad] Update failed: " .. (err or output or "unknown error"), vim.log.levels.ERROR)
-        end
-      end)
-    end)
+    git.submodule_update(
+      target_paths,
+      args,
+      { cwd = repo_state.repo_root },
+      function(success, output, err)
+        vim.schedule(function()
+          if success then
+            vim.notify("[gitlad] Submodule(s) updated", vim.log.levels.INFO)
+            repo_state:refresh_status(true)
+          else
+            vim.notify(
+              "[gitlad] Update failed: " .. (err or output or "unknown error"),
+              vim.log.levels.ERROR
+            )
+          end
+        end)
+      end
+    )
   end
 
   if needs_prompt then
@@ -295,16 +323,24 @@ function M._sync(repo_state, submodule_at_point, selected_paths, popup_data)
 
     vim.notify("[gitlad] Synchronizing submodule(s)...", vim.log.levels.INFO)
 
-    git.submodule_sync(target_paths, args, { cwd = repo_state.repo_root }, function(success, output, err)
-      vim.schedule(function()
-        if success then
-          vim.notify("[gitlad] Submodule(s) synchronized", vim.log.levels.INFO)
-          repo_state:refresh_status(true)
-        else
-          vim.notify("[gitlad] Sync failed: " .. (err or output or "unknown error"), vim.log.levels.ERROR)
-        end
-      end)
-    end)
+    git.submodule_sync(
+      target_paths,
+      args,
+      { cwd = repo_state.repo_root },
+      function(success, output, err)
+        vim.schedule(function()
+          if success then
+            vim.notify("[gitlad] Submodule(s) synchronized", vim.log.levels.INFO)
+            repo_state:refresh_status(true)
+          else
+            vim.notify(
+              "[gitlad] Sync failed: " .. (err or output or "unknown error"),
+              vim.log.levels.ERROR
+            )
+          end
+        end)
+      end
+    )
   end
 
   if needs_prompt then
@@ -335,16 +371,24 @@ function M._deinit(repo_state, submodule_at_point, selected_paths, popup_data)
 
       vim.notify("[gitlad] Deinitializing submodule(s)...", vim.log.levels.INFO)
 
-      git.submodule_deinit(target_paths, args, { cwd = repo_state.repo_root }, function(success, output, err)
-        vim.schedule(function()
-          if success then
-            vim.notify("[gitlad] Submodule(s) deinitialized", vim.log.levels.INFO)
-            repo_state:refresh_status(true)
-          else
-            vim.notify("[gitlad] Deinit failed: " .. (err or output or "unknown error"), vim.log.levels.ERROR)
-          end
-        end)
-      end)
+      git.submodule_deinit(
+        target_paths,
+        args,
+        { cwd = repo_state.repo_root },
+        function(success, output, err)
+          vim.schedule(function()
+            if success then
+              vim.notify("[gitlad] Submodule(s) deinitialized", vim.log.levels.INFO)
+              repo_state:refresh_status(true)
+            else
+              vim.notify(
+                "[gitlad] Deinit failed: " .. (err or output or "unknown error"),
+                vim.log.levels.ERROR
+              )
+            end
+          end)
+        end
+      )
     end)
   end
 
@@ -372,7 +416,9 @@ function M._remove(repo_state, submodule_at_point, selected_paths)
 
     -- Confirm removal
     vim.ui.select({ "Yes", "No" }, {
-      prompt = "Remove submodule '" .. path .. "'? This will:\n- Deinit the submodule\n- Remove from .gitmodules\n- Remove from staging",
+      prompt = "Remove submodule '"
+        .. path
+        .. "'? This will:\n- Deinit the submodule\n- Remove from .gitmodules\n- Remove from staging",
     }, function(choice)
       if choice ~= "Yes" then
         return
@@ -381,28 +427,40 @@ function M._remove(repo_state, submodule_at_point, selected_paths)
       vim.notify("[gitlad] Removing submodule...", vim.log.levels.INFO)
 
       -- Step 1: Deinit
-      git.submodule_deinit({ path }, { "--force" }, { cwd = repo_state.repo_root }, function(deinit_success, _, deinit_err)
-        if not deinit_success then
-          vim.schedule(function()
-            vim.notify("[gitlad] Deinit failed: " .. (deinit_err or "unknown error"), vim.log.levels.ERROR)
-          end)
-          return
-        end
+      git.submodule_deinit(
+        { path },
+        { "--force" },
+        { cwd = repo_state.repo_root },
+        function(deinit_success, _, deinit_err)
+          if not deinit_success then
+            vim.schedule(function()
+              vim.notify(
+                "[gitlad] Deinit failed: " .. (deinit_err or "unknown error"),
+                vim.log.levels.ERROR
+              )
+            end)
+            return
+          end
 
-        -- Step 2: Remove from index and working tree
-        local rm_args = { "rm", "-f", path }
-        require("gitlad.git.cli").run_async(rm_args, { cwd = repo_state.repo_root }, function(result)
-          vim.schedule(function()
-            if result.code == 0 then
-              vim.notify("[gitlad] Submodule removed", vim.log.levels.INFO)
-              repo_state:refresh_status(true)
-            else
-              local err_msg = table.concat(result.stderr, "\n")
-              vim.notify("[gitlad] Remove failed: " .. err_msg, vim.log.levels.ERROR)
+          -- Step 2: Remove from index and working tree
+          local rm_args = { "rm", "-f", path }
+          require("gitlad.git.cli").run_async(
+            rm_args,
+            { cwd = repo_state.repo_root },
+            function(result)
+              vim.schedule(function()
+                if result.code == 0 then
+                  vim.notify("[gitlad] Submodule removed", vim.log.levels.INFO)
+                  repo_state:refresh_status(true)
+                else
+                  local err_msg = table.concat(result.stderr, "\n")
+                  vim.notify("[gitlad] Remove failed: " .. err_msg, vim.log.levels.ERROR)
+                end
+              end)
             end
-          end)
-        end)
-      end)
+          )
+        end
+      )
     end)
   end
 
@@ -453,7 +511,10 @@ function M._fetch_all(repo_state, popup_data)
         vim.notify("[gitlad] Fetch complete in all submodules", vim.log.levels.INFO)
         repo_state:refresh_status(true)
       else
-        vim.notify("[gitlad] Fetch failed: " .. (err or output or "unknown error"), vim.log.levels.ERROR)
+        vim.notify(
+          "[gitlad] Fetch failed: " .. (err or output or "unknown error"),
+          vim.log.levels.ERROR
+        )
       end
     end)
   end)

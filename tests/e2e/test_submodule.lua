@@ -71,11 +71,13 @@ local function create_repo_with_submodule(child)
 
   -- Add submodule to parent
   -- Use -c protocol.file.allow=always to allow file:// protocol (Git security feature)
-  child.lua(string.format(
-    [[vim.fn.system("git -c protocol.file.allow=always -C %s submodule add %s mysub")]],
-    parent_repo,
-    submodule_repo
-  ))
+  child.lua(
+    string.format(
+      [[vim.fn.system("git -c protocol.file.allow=always -C %s submodule add %s mysub")]],
+      parent_repo,
+      submodule_repo
+    )
+  )
   git(child, parent_repo, 'commit -m "Add submodule"')
 
   return parent_repo, submodule_repo
@@ -521,7 +523,9 @@ T["submodule RET"]["RET on submodule opens its directory"] = function()
   child.lua([[vim.wait(100, function() return false end)]])
 
   -- Press RET to visit the submodule (use feedkeys for better keymap handling)
-  child.lua([[vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, true, true), "x", true)]])
+  child.lua(
+    [[vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, true, true), "x", true)]]
+  )
   child.lua([[vim.wait(300, function() return false end)]])
 
   -- Verify the buffer name contains the submodule path
