@@ -472,4 +472,66 @@ T["recent commits"]["shows Recent commits section when no upstream"] = function(
   assert_truthy(recent_line, "Should show Recent commits section when no upstream")
 end
 
+-- =============================================================================
+-- Status Indicator Line Tests
+-- =============================================================================
+
+T["status indicator"] = MiniTest.new_set()
+
+T["status indicator"]["shows placeholder dot when idle"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial commit"')
+
+  open_gitlad(child, repo)
+
+  local lines = get_buffer_lines(child)
+
+  -- The status indicator should be on its own line after the branch lines
+  -- It should show the placeholder dot "·" when not refreshing
+  local found_placeholder = false
+  for _, line in ipairs(lines) do
+    if line == "·" then
+      found_placeholder = true
+      break
+    end
+  end
+
+  assert_truthy(found_placeholder, "Should show placeholder dot (·) when idle")
+end
+
+T["status indicator"]["appears after Head line"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial commit"')
+
+  open_gitlad(child, repo)
+
+  local lines = get_buffer_lines(child)
+
+  -- Find Head line and status indicator
+  local head_line_num = nil
+  local status_line_num = nil
+
+  for i, line in ipairs(lines) do
+    if line:match("^Head:") then
+      head_line_num = i
+    elseif line == "·" then
+      status_line_num = i
+    end
+  end
+
+  assert_truthy(head_line_num, "Should have Head line")
+  assert_truthy(status_line_num, "Should have status indicator line")
+  assert_truthy(status_line_num > head_line_num, "Status indicator should be after Head line")
+end
+
 return T
