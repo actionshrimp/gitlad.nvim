@@ -19,8 +19,10 @@ local signs_util = require("gitlad.ui.utils.signs")
 local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 
 ---@class LineInfo
+---@field type "file" Discriminator for union type
 ---@field path string File path
 ---@field section "staged"|"unstaged"|"untracked"|"conflicted" Section type
+---@field entry GitStatusEntry The full status entry (contains submodule field)
 ---@field hunk_index number|nil Index of hunk if this is a diff line
 
 ---@class DiffHunk
@@ -1454,7 +1456,7 @@ function StatusBuffer:render()
     local line_text = status_char and string.format("%s %s %s", sign, status_char, display)
       or string.format("%s   %s", sign, display)
     table.insert(lines, line_text)
-    self.line_map[#lines] = { path = entry.path, section = section }
+    self.line_map[#lines] = { type = "file", path = entry.path, section = section, entry = entry }
     self.sign_lines[#lines] = { expanded = is_expanded }
 
     -- Add diff lines if expanded
@@ -1471,8 +1473,10 @@ function StatusBuffer:render()
         table.insert(lines, "  " .. diff_line)
         -- Diff lines map to the file and include hunk index
         self.line_map[#lines] = {
+          type = "file",
           path = entry.path,
           section = section,
+          entry = entry,
           hunk_index = current_hunk_index > 0 and current_hunk_index or nil,
         }
       end

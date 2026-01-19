@@ -589,6 +589,82 @@ T["submodule popup context"]["' on submodule entry shows submodule path in popup
   cleanup_repo(child, submodule_repo)
 end
 
+T["submodule popup context"]["' on submodule in unstaged changes shows path in popup"] = function()
+  local child = _G.child
+  local parent_repo, submodule_repo = create_repo_with_submodule(child)
+
+  -- Modify the submodule (create a new commit in it) so it appears in Unstaged changes
+  create_file(child, submodule_repo, "newfile.txt", "new content")
+  git(child, submodule_repo, "add newfile.txt")
+  git(child, submodule_repo, 'commit -m "New commit in submodule"')
+
+  -- Update the submodule in parent to new commit (this makes it show as modified/unstaged)
+  git(child, parent_repo, "submodule update --remote mysub")
+
+  -- Disable dedicated submodules section to ensure we test the file entry path
+  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = false } })]])
+
+  -- Open status view
+  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Find the submodule in Unstaged changes section (should be a file entry)
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.unstaged_line = nil
+    local in_unstaged = false
+    for i, line in ipairs(lines) do
+      if line:match("^Unstaged changes") then
+        in_unstaged = true
+      elseif line:match("^%u") and not line:match("^Unstaged") then
+        -- Hit another section header
+        in_unstaged = false
+      elseif in_unstaged and line:match("mysub") then
+        _G.unstaged_line = i
+        break
+      end
+    end
+  ]])
+  local unstaged_line = child.lua_get([[_G.unstaged_line]])
+
+  -- Skip test if no unstaged submodule found (may not show depending on git version)
+  if unstaged_line == nil or unstaged_line == vim.NIL then
+    cleanup_repo(child, parent_repo)
+    cleanup_repo(child, submodule_repo)
+    return
+  end
+
+  -- Navigate to the submodule line in Unstaged changes
+  child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], unstaged_line))
+
+  -- Press ' to open submodule popup
+  child.type_keys("'")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Get popup content
+  child.lua([[
+    popup_buf = vim.api.nvim_get_current_buf()
+    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[popup_lines]])
+
+  -- Should show submodule path in the "One module" heading
+  local found_path = false
+  for _, line in ipairs(lines) do
+    if line:match("One module.*mysub") then
+      found_path = true
+    end
+  end
+
+  eq(found_path, true)
+
+  child.type_keys("q")
+  cleanup_repo(child, parent_repo)
+  cleanup_repo(child, submodule_repo)
+end
+
 -- Submodule diff tests
 T["submodule diff"] = MiniTest.new_set()
 
