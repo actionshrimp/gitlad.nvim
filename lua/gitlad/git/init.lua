@@ -939,4 +939,94 @@ function M.rebase_in_progress(opts)
   return vim.fn.isdirectory(rebase_merge) == 1 or vim.fn.isdirectory(rebase_apply) == 1
 end
 
+--- Get all refs (branches and tags) using git for-each-ref
+---@param opts? GitCommandOptions
+---@param callback fun(refs: RefInfo[]|nil, err: string|nil)
+function M.refs(opts, callback)
+  local format = parse.get_refs_format_string()
+  cli.run_async(
+    { "for-each-ref", "--format=" .. format, "refs/heads", "refs/remotes", "refs/tags" },
+    opts,
+    function(result)
+      if result.code ~= 0 then
+        callback(nil, table.concat(result.stderr, "\n"))
+        return
+      end
+      callback(parse.parse_for_each_ref(result.stdout), nil)
+    end
+  )
+end
+
+--- Get cherry commits between ref and upstream (commits unique to ref)
+--- Shows commits in ref that are not in upstream, with equivalence markers
+---@param ref string The ref to check (e.g., "feature-branch")
+---@param upstream string The upstream to compare against (e.g., "main")
+---@param opts? GitCommandOptions
+---@param callback fun(commits: CherryCommit[]|nil, err: string|nil)
+function M.cherry(ref, upstream, opts, callback)
+  -- git cherry -v <upstream> <ref> shows commits in ref not in upstream
+  -- + means unique to ref, - means equivalent (cherry-picked) commit exists in upstream
+  cli.run_async({ "cherry", "-v", upstream, ref }, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(parse.parse_cherry(result.stdout), nil)
+  end)
+end
+
+--- Get ahead/behind count between ref and another ref
+---@param ref string The ref to check
+---@param compare_to string The ref to compare against
+---@param opts? GitCommandOptions
+---@param callback fun(ahead: number, behind: number, err: string|nil)
+function M.rev_list_count(ref, compare_to, opts, callback)
+  -- git rev-list --left-right --count ref...compare_to
+  -- Output: "ahead\tbehind"
+  cli.run_async(
+    { "rev-list", "--left-right", "--count", ref .. "..." .. compare_to },
+    opts,
+    function(result)
+      if result.code ~= 0 then
+        callback(0, 0, table.concat(result.stderr, "\n"))
+        return
+      end
+      local ahead, behind = parse.parse_rev_list_count(result.stdout)
+      callback(ahead, behind, nil)
+    end
+  )
+end
+
+--- Delete a remote branch
+---@param remote string Remote name (e.g., "origin")
+---@param branch string Branch name (without remote/ prefix)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.delete_remote_branch(remote, branch, opts, callback)
+  cli.run_async({ "push", remote, "--delete", branch }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Delete a tag (local)
+---@param tag string Tag name
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.delete_tag(tag, opts, callback)
+  cli.run_async({ "tag", "-d", tag }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Delete a remote tag
+---@param remote string Remote name (e.g., "origin")
+---@param tag string Tag name
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.delete_remote_tag(remote, tag, opts, callback)
+  cli.run_async({ "push", remote, "--delete", "refs/tags/" .. tag }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
 return M

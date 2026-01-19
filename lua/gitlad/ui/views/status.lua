@@ -254,6 +254,12 @@ function StatusBuffer:_setup_keymaps()
     self:_yank_commit_hash()
   end, "Yank commit hash")
 
+  -- Refs popup (evil-collection style: yr)
+  keymap.set(bufnr, "n", "yr", function()
+    local refs_popup = require("gitlad.popups.refs")
+    refs_popup.open(self.repo_state)
+  end, "Show references")
+
   -- Stash popup (passes stash at point for context-aware operations)
   keymap.set(bufnr, "n", "z", function()
     local stash_popup = require("gitlad.popups.stash")

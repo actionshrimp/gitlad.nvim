@@ -202,6 +202,22 @@ end
 ---@field branch string Branch the stash was created on
 ---@field message string Stash message (either custom or default "WIP on <branch>")
 
+---@class RefInfo
+---@field name string Short ref name (e.g., "main", "origin/main", "v1.0.0")
+---@field full_name string Full ref name (e.g., "refs/heads/main")
+---@field hash string Short commit hash
+---@field subject string Commit subject line
+---@field type "local"|"remote"|"tag" Ref type
+---@field remote? string Remote name for remote branches
+---@field is_head boolean Whether this is the current HEAD
+---@field ahead? number Commits ahead of base ref (for local branches)
+---@field behind? number Commits behind base ref (for local branches)
+
+---@class CherryCommit
+---@field hash string Commit hash
+---@field subject string Commit subject
+---@field equivalent boolean True if commit is in upstream (- prefix), false if unique (+ prefix)
+
 ---@class GitRemote
 ---@field name string Remote name (e.g., "origin")
 ---@field fetch_url string Fetch URL
@@ -351,6 +367,103 @@ function M.parse_stash_list(lines)
   end
 
   return stashes
+end
+
+-- Separator used in git for-each-ref format for parsing refs
+local REFS_FORMAT_SEP = "|||"
+
+--- Get the git for-each-ref format string for parse_for_each_ref
+---@return string
+function M.get_refs_format_string()
+  -- Format: refname:short|||objectname:short|||refname|||subject|||HEAD
+  return "%(refname:short)"
+    .. REFS_FORMAT_SEP
+    .. "%(objectname:short)"
+    .. REFS_FORMAT_SEP
+    .. "%(refname)"
+    .. REFS_FORMAT_SEP
+    .. "%(subject)"
+    .. REFS_FORMAT_SEP
+    .. "%(HEAD)"
+end
+
+--- Parse git for-each-ref output
+--- Format: refname:short|||objectname:short|||refname|||subject|||HEAD
+---@param lines string[] Output lines from git for-each-ref
+---@return RefInfo[]
+function M.parse_for_each_ref(lines)
+  local refs = {}
+
+  for _, line in ipairs(lines) do
+    -- Format: "name|||hash|||full_name|||subject|||head_marker"
+    local name, hash, full_name, subject, head_marker =
+      line:match("^([^|]*)|||([^|]*)|||([^|]*)|||(.*)|||([^|]*)$")
+
+    if name and full_name then
+      ---@type RefInfo
+      local ref = {
+        name = name,
+        full_name = full_name,
+        hash = hash or "",
+        subject = subject or "",
+        type = "local",
+        is_head = head_marker == "*",
+      }
+
+      -- Determine ref type from full_name
+      if full_name:match("^refs/heads/") then
+        ref.type = "local"
+      elseif full_name:match("^refs/remotes/") then
+        ref.type = "remote"
+        -- Extract remote name (e.g., "origin" from "refs/remotes/origin/main")
+        local remote = full_name:match("^refs/remotes/([^/]+)/")
+        ref.remote = remote
+      elseif full_name:match("^refs/tags/") then
+        ref.type = "tag"
+      end
+
+      table.insert(refs, ref)
+    end
+  end
+
+  return refs
+end
+
+--- Parse git cherry -v output
+--- Format: "+ abc1234 commit subject" or "- abc1234 commit subject"
+---@param lines string[] Output lines from git cherry -v
+---@return CherryCommit[]
+function M.parse_cherry(lines)
+  local commits = {}
+
+  for _, line in ipairs(lines) do
+    -- Format: "[+-] <hash> <subject>"
+    local prefix, hash, subject = line:match("^([%+%-])%s+(%S+)%s+(.*)$")
+    if prefix and hash then
+      table.insert(commits, {
+        hash = hash,
+        subject = subject or "",
+        equivalent = prefix == "-",
+      })
+    end
+  end
+
+  return commits
+end
+
+--- Parse git rev-list --left-right --count output
+--- Format: "ahead\tbehind" (tab-separated)
+---@param lines string[] Output lines from git rev-list --left-right --count
+---@return number ahead, number behind
+function M.parse_rev_list_count(lines)
+  if not lines or #lines == 0 then
+    return 0, 0
+  end
+
+  local line = lines[1]
+  -- Format: "ahead\tbehind"
+  local ahead, behind = line:match("^(%d+)\t(%d+)$")
+  return tonumber(ahead) or 0, tonumber(behind) or 0
 end
 
 return M
