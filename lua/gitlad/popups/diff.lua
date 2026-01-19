@@ -12,6 +12,8 @@ local popup = require("gitlad.ui.popup")
 ---@field file_path? string File under cursor (if any)
 ---@field section? string Section type (staged/unstaged/untracked/commit)
 ---@field commit? GitCommitInfo Commit under cursor (if any)
+---@field ref? string Ref name under cursor (from refs buffer)
+---@field base_ref? string Base ref being compared against (from refs buffer)
 
 --- Check if diffview.nvim is available
 ---@return boolean has_diffview
@@ -76,12 +78,37 @@ end
 
 --- Diff range (prompt for refs)
 ---@param repo_state RepoState
-function M._diff_range(repo_state)
-  vim.ui.input({ prompt = "Diff range (e.g., main..HEAD): " }, function(input)
-    if not input or input == "" then
+---@param default_range? string Default range to show in prompt
+function M._diff_range(repo_state, default_range)
+  vim.ui.input(
+    { prompt = "Diff range (e.g., main..HEAD): ", default = default_range or "" },
+    function(input)
+      if not input or input == "" then
+        return
+      end
+      open_diffview({ input }, "git diff " .. input)
+    end
+  )
+end
+
+--- Diff a ref against another ref
+---@param repo_state RepoState
+---@param ref string The ref to diff
+---@param base string The base ref to compare against
+function M._diff_ref_against(repo_state, ref, base)
+  local range = base .. ".." .. ref
+  open_diffview({ range }, "git diff " .. range)
+end
+
+--- Diff a ref against another ref (prompt for base)
+---@param repo_state RepoState
+---@param ref string The ref to diff
+function M._diff_ref_against_prompt(repo_state, ref)
+  vim.ui.input({ prompt = "Diff " .. ref .. " against: ", default = "HEAD" }, function(base)
+    if not base or base == "" then
       return
     end
-    open_diffview({ input }, "git diff " .. input)
+    M._diff_ref_against(repo_state, ref, base)
   end)
 end
 
@@ -109,6 +136,13 @@ end
 ---@param repo_state RepoState
 ---@param context DiffContext
 function M._diff_dwim(repo_state, context)
+  -- If on a ref, diff against base_ref (or HEAD)
+  if context.ref then
+    local base = context.base_ref or "HEAD"
+    M._diff_ref_against(repo_state, context.ref, base)
+    return
+  end
+
   -- If on a commit, show commit diff
   if context.commit then
     M._diff_commit(repo_state, context.commit)
@@ -160,6 +194,18 @@ function M.open(repo_state, context)
   if context.commit then
     builder:action("c", "Show commit", function()
       M._diff_commit(repo_state, context.commit)
+    end)
+  end
+
+  -- Add ref-specific actions
+  if context.ref then
+    local base = context.base_ref or "HEAD"
+    local ref = context.ref
+    builder:action("b", "Diff " .. ref .. ".." .. base, function()
+      M._diff_ref_against(repo_state, ref, base)
+    end)
+    builder:action("o", "Diff " .. ref .. " against...", function()
+      M._diff_ref_against_prompt(repo_state, ref)
     end)
   end
 
