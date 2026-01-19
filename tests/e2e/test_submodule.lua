@@ -101,9 +101,12 @@ local T = MiniTest.new_set({
 -- Submodule section rendering tests
 T["submodule section"] = MiniTest.new_set()
 
-T["submodule section"]["shows Submodules section when submodules exist"] = function()
+T["submodule section"]["shows Submodules section when enabled"] = function()
   local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
+
+  -- Enable submodules section via config
+  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -350,6 +353,9 @@ T["submodule navigation"]["gj/gk navigates to submodule entries"] = function()
   local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
+  -- Enable submodules section for this test
+  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
+
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -393,6 +399,9 @@ end
 T["submodule navigation"]["TAB collapses and expands submodule section"] = function()
   local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
+
+  -- Enable submodules section for this test
+  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -478,6 +487,9 @@ T["submodule RET"]["RET on submodule opens its directory"] = function()
   local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
+  -- Enable submodules section for this test
+  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
+
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -526,6 +538,9 @@ T["submodule popup context"] = MiniTest.new_set()
 T["submodule popup context"]["' on submodule entry shows submodule path in popup"] = function()
   local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
+
+  -- Enable submodules section for this test
+  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -584,6 +599,9 @@ T["submodule diff"]["TAB on modified submodule shows SHA diff"] = function()
 
   -- Also update the submodule in the parent to the new commit
   git(child, parent_repo, "submodule update --remote mysub")
+
+  -- Enable submodules section for this test
+  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))

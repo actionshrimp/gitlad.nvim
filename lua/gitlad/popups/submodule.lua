@@ -132,6 +132,15 @@ function M.open(repo_state, context)
     :action("F", "Fetch all", function(popup_data)
       M._fetch_all(repo_state, popup_data)
     end)
+    -- Status section toggle
+    :group_heading("Status")
+    :action("O", "Toggle Submodules section", function(_popup_data)
+      local status_view = require("gitlad.ui.views.status")
+      local buf = status_view.get_buffer(repo_state)
+      if buf then
+        buf:toggle_submodules_section()
+      end
+    end)
     :build()
 
   submodule_popup:show()

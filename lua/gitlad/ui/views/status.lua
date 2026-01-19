@@ -83,6 +83,9 @@ local function get_or_create_buffer(repo_state)
   self.expanded_commits = {} -- Tracks which commits have details expanded
   self.collapsed_sections = {} -- Tracks which commit sections are collapsed
   self.diff_cache = {} -- Caches fetched diff lines
+  -- Initialize submodules section visibility from config
+  local cfg = require("gitlad.config").get()
+  self.show_submodules_section = cfg.status and cfg.status.show_submodules_section or false
 
   -- Create buffer
   self.bufnr = vim.api.nvim_create_buf(false, true)
@@ -352,14 +355,31 @@ function StatusBuffer:_get_current_commit()
 end
 
 --- Get the submodule at the current cursor position
+--- Works for both the dedicated Submodules section and submodule files in unstaged/staged
 ---@return SubmoduleEntry|nil submodule
 function StatusBuffer:_get_current_submodule()
   local cursor = vim.api.nvim_win_get_cursor(0)
   local line = cursor[1]
 
   local info = self.line_map[line]
-  if info and info.type == "submodule" then
+  if not info then
+    return nil
+  end
+
+  -- Check if in dedicated Submodules section
+  if info.type == "submodule" then
     return info.submodule
+  end
+
+  -- Check if it's a file entry that is a submodule (from unstaged/staged sections)
+  if info.type == "file" and info.entry and info.entry.submodule then
+    -- Create a SubmoduleEntry-like object from the file entry
+    return {
+      path = info.entry.path,
+      sha = "", -- Not available from status entry
+      status = "modified",
+      describe = nil,
+    }
   end
 
   return nil
@@ -417,8 +437,14 @@ function StatusBuffer:_get_selected_submodule_paths()
   local paths = {}
   for line = start_line, end_line do
     local info = self.line_map[line]
-    if info and info.type == "submodule" then
-      table.insert(paths, info.submodule.path)
+    if info then
+      -- Check dedicated Submodules section
+      if info.type == "submodule" then
+        table.insert(paths, info.submodule.path)
+      -- Check file entries that are submodules (from unstaged/staged sections)
+      elseif info.type == "file" and info.entry and info.entry.submodule then
+        table.insert(paths, info.entry.path)
+      end
     end
   end
 
@@ -1609,7 +1635,8 @@ function StatusBuffer:render()
   end
 
   -- === Submodules section (after stashes, before commit sections) ===
-  if status.submodules and #status.submodules > 0 then
+  -- Only show if enabled via config or runtime toggle (off by default, like magit)
+  if self.show_submodules_section and status.submodules and #status.submodules > 0 then
     local is_collapsed = self.collapsed_sections["submodules"]
     table.insert(lines, string.format("Submodules (%d)", #status.submodules))
     self.section_lines[#lines] = { name = "Submodules", section = "submodules" }
@@ -1756,6 +1783,14 @@ function StatusBuffer:open()
   self.repo_state:refresh_status()
 end
 
+--- Toggle the dedicated Submodules section visibility
+function StatusBuffer:toggle_submodules_section()
+  self.show_submodules_section = not self.show_submodules_section
+  self:render()
+  local state = self.show_submodules_section and "shown" or "hidden"
+  vim.notify("[gitlad] Submodules section " .. state, vim.log.levels.INFO)
+end
+
 --- Close the status buffer
 function StatusBuffer:close()
   if not self.winnr or not vim.api.nvim_win_is_valid(self.winnr) then
@@ -1821,6 +1856,18 @@ function M.clear_all()
     end
   end
   status_buffers = {}
+end
+
+--- Get the status buffer for a repo (if it exists)
+---@param repo_state RepoState
+---@return StatusBuffer|nil
+function M.get_buffer(repo_state)
+  local key = repo_state.repo_root
+  local buf = status_buffers[key]
+  if buf and vim.api.nvim_buf_is_valid(buf.bufnr) then
+    return buf
+  end
+  return nil
 end
 
 return M
