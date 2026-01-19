@@ -93,18 +93,21 @@ function M.parse_status(lines)
       result.behind = tonumber(behind) or 0
     elseif line:match("^1 ") then
       -- Ordinary changed entry: 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
+      -- <sub> is "S<c><m><u>" for submodules (S=Submodule, c/m/u indicate state)
+      -- or "N..." for non-submodules (N=Not a submodule)
       local xy, sub, path = line:match("^1 (..) (....) %S+ %S+ %S+ %S+ %S+ (.+)$")
       if xy and path then
         local entry = {
           path = path,
           index_status = xy:sub(1, 1),
           worktree_status = xy:sub(2, 2),
-          submodule = sub ~= "...." and sub or nil,
+          submodule = sub:sub(1, 1) == "S" and sub or nil,
         }
         M._categorize_entry(entry, result)
       end
     elseif line:match("^2 ") then
       -- Renamed/copied entry: 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path><tab><origPath>
+      -- <sub> format same as above
       local xy, sub, rest = line:match("^2 (..) (....) %S+ %S+ %S+ %S+ %S+ %S+ (.+)$")
       if xy and rest then
         local path, orig_path = rest:match("^(.+)\t(.+)$")
@@ -114,7 +117,7 @@ function M.parse_status(lines)
             orig_path = orig_path,
             index_status = xy:sub(1, 1),
             worktree_status = xy:sub(2, 2),
-            submodule = sub ~= "...." and sub or nil,
+            submodule = sub:sub(1, 1) == "S" and sub or nil,
           }
           M._categorize_entry(entry, result)
         end
