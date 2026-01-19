@@ -375,12 +375,26 @@ function StatusBuffer:_get_current_submodule()
 
   -- Check if it's a file entry that is a submodule (from unstaged/staged sections)
   if info.type == "file" and info.entry and info.entry.submodule then
+    -- Try to find the full submodule entry from status.submodules for the SHA
+    local status = self.repo_state.status
+    local sha = ""
+    local describe = nil
+    if status and status.submodules then
+      for _, sub in ipairs(status.submodules) do
+        if sub.path == info.entry.path then
+          sha = sub.sha
+          describe = sub.describe
+          break
+        end
+      end
+    end
+
     -- Create a SubmoduleEntry-like object from the file entry
     return {
       path = info.entry.path,
-      sha = "", -- Not available from status entry
+      sha = sha,
       status = "modified",
-      describe = nil,
+      describe = describe,
     }
   end
 
@@ -1448,8 +1462,10 @@ function StatusBuffer:render()
         and string.format("%s -> %s", entry.orig_path, entry.path)
       or entry.path
 
-    -- Check if this file is expanded
-    local key = diff_cache_key(entry.path, section)
+    -- Check if this is a submodule entry (uses different cache key)
+    local is_submodule_entry = entry.submodule and entry.submodule:sub(1, 1) == "S"
+    local key = is_submodule_entry and ("submodule:" .. entry.path)
+      or diff_cache_key(entry.path, section)
     local is_expanded = self.expanded_files[key]
 
     -- Format without expand indicator (it goes in sign column)
@@ -1462,23 +1478,31 @@ function StatusBuffer:render()
     -- Add diff lines if expanded
     if is_expanded and self.diff_cache[key] then
       local diff_data = self.diff_cache[key]
-      local current_hunk_index = 0
 
-      for _, diff_line in ipairs(diff_data.display_lines) do
-        -- Track which hunk we're in
-        if diff_line:match("^@@") then
-          current_hunk_index = current_hunk_index + 1
+      -- Handle submodule diffs (SHA diff format)
+      if diff_data.is_submodule then
+        table.insert(lines, "  -" .. diff_data.old_sha)
+        table.insert(lines, "  +" .. diff_data.new_sha)
+      else
+        -- Normal file diff
+        local current_hunk_index = 0
+
+        for _, diff_line in ipairs(diff_data.display_lines) do
+          -- Track which hunk we're in
+          if diff_line:match("^@@") then
+            current_hunk_index = current_hunk_index + 1
+          end
+
+          table.insert(lines, "  " .. diff_line)
+          -- Diff lines map to the file and include hunk index
+          self.line_map[#lines] = {
+            type = "file",
+            path = entry.path,
+            section = section,
+            entry = entry,
+            hunk_index = current_hunk_index > 0 and current_hunk_index or nil,
+          }
         end
-
-        table.insert(lines, "  " .. diff_line)
-        -- Diff lines map to the file and include hunk index
-        self.line_map[#lines] = {
-          type = "file",
-          path = entry.path,
-          section = section,
-          entry = entry,
-          hunk_index = current_hunk_index > 0 and current_hunk_index or nil,
-        }
       end
     end
   end

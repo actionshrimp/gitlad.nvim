@@ -668,7 +668,7 @@ end
 -- Submodule diff tests
 T["submodule diff"] = MiniTest.new_set()
 
-T["submodule diff"]["TAB on modified submodule shows SHA diff"] = function()
+T["submodule diff"]["TAB on submodule in Submodules section shows SHA diff"] = function()
   local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
@@ -688,53 +688,141 @@ T["submodule diff"]["TAB on modified submodule shows SHA diff"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
   child.lua([[vim.wait(1000, function() return false end)]])
 
-  -- Find and navigate to the modified submodule entry
+  -- Find the submodule entry in the Submodules section (has "remotes" or similar describe info)
   child.lua([[
     local bufnr = vim.api.nvim_get_current_buf()
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-    _G.submodule_entry_line = nil
+    _G.submodule_section_line = nil
+    local in_submodules_section = false
     for i, line in ipairs(lines) do
-      if line:match("mysub") and not line:match("^Submodules") then
-        _G.submodule_entry_line = i
+      if line:match("^Submodules") then
+        in_submodules_section = true
+      elseif line:match("^%u") and in_submodules_section then
+        -- Hit another section header
+        in_submodules_section = false
+      elseif in_submodules_section and line:match("mysub") then
+        _G.submodule_section_line = i
         break
       end
     end
   ]])
-  local submodule_line = child.lua_get([[_G.submodule_entry_line]])
+  local submodule_line = child.lua_get([[_G.submodule_section_line]])
 
-  if submodule_line then
-    child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], submodule_line))
-
-    -- Press TAB to expand diff
-    child.type_keys("<Tab>")
-    child.lua([[vim.wait(500, function() return false end)]])
-
-    -- Get buffer content and look for SHA diff lines
-    child.lua([[
-      local bufnr = vim.api.nvim_get_current_buf()
-      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-      _G.found_minus_sha = false
-      _G.found_plus_sha = false
-      for _, line in ipairs(lines) do
-        if line:match("^%s*%-[0-9a-f]+$") then
-          _G.found_minus_sha = true
-        end
-        if line:match("^%s*%+[0-9a-f]+$") then
-          _G.found_plus_sha = true
-        end
-      end
-    ]])
-
-    -- The submodule was modified, so we should see SHA diff lines
-    -- Note: This depends on the submodule showing as modified
-    local found_minus = child.lua_get([[_G.found_minus_sha]])
-    local found_plus = child.lua_get([[_G.found_plus_sha]])
-
-    -- We expect to find the SHA diff lines if the submodule shows as modified
-    -- If the section is empty or no modification detected, the test will still pass
-    -- The key thing is that the test runs without error
-    eq(found_minus == true or found_minus == false, true) -- Just verify no errors
+  -- Skip test if no submodule entry found (shouldn't happen with proper setup)
+  if submodule_line == nil or submodule_line == vim.NIL then
+    cleanup_repo(child, parent_repo)
+    cleanup_repo(child, submodule_repo)
+    return
   end
+
+  child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], submodule_line))
+
+  -- Press TAB to expand diff
+  child.type_keys("<Tab>")
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Get buffer content and look for SHA diff lines
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.found_minus_sha = false
+    _G.found_plus_sha = false
+    for _, line in ipairs(lines) do
+      if line:match("^%s*%-[0-9a-f]+$") then
+        _G.found_minus_sha = true
+      end
+      if line:match("^%s*%+[0-9a-f]+$") then
+        _G.found_plus_sha = true
+      end
+    end
+  ]])
+
+  -- Must find both SHA diff lines
+  eq(child.lua_get([[_G.found_minus_sha]]), true)
+  eq(child.lua_get([[_G.found_plus_sha]]), true)
+
+  cleanup_repo(child, parent_repo)
+  cleanup_repo(child, submodule_repo)
+end
+
+T["submodule diff"]["TAB on submodule in Unstaged section shows SHA diff"] = function()
+  local child = _G.child
+  local parent_repo, submodule_repo = create_repo_with_submodule(child)
+
+  -- Modify the submodule (create a new commit in it)
+  create_file(child, submodule_repo, "newfile.txt", "new content")
+  git(child, submodule_repo, "add newfile.txt")
+  git(child, submodule_repo, 'commit -m "New commit in submodule"')
+
+  -- Update the submodule in the parent to the new commit (this makes it appear in unstaged)
+  git(child, parent_repo, "submodule update --remote mysub")
+
+  -- Disable dedicated submodules section - submodule will only appear in Unstaged
+  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = false } })]])
+
+  -- Open status view
+  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Find the submodule entry in the Unstaged section
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.unstaged_submodule_line = nil
+    local in_unstaged_section = false
+    for i, line in ipairs(lines) do
+      if line:match("^Unstaged") then
+        in_unstaged_section = true
+      elseif line:match("^%u") and in_unstaged_section then
+        -- Hit another section header
+        in_unstaged_section = false
+      elseif in_unstaged_section and line:match("mysub") then
+        _G.unstaged_submodule_line = i
+        break
+      end
+    end
+  ]])
+  local submodule_line = child.lua_get([[_G.unstaged_submodule_line]])
+
+  -- Skip test if no submodule entry found (depends on git version behavior)
+  if submodule_line == nil or submodule_line == vim.NIL then
+    cleanup_repo(child, parent_repo)
+    cleanup_repo(child, submodule_repo)
+    return
+  end
+
+  child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], submodule_line))
+
+  -- Press TAB to expand diff
+  child.type_keys("<Tab>")
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Get buffer content and look for SHA diff lines immediately after the submodule line
+  child.lua(string.format(
+    [[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.found_minus_sha = false
+    _G.found_plus_sha = false
+    -- Look for SHA diff lines right after the submodule entry
+    for i = %d + 1, math.min(%d + 3, #lines) do
+      local line = lines[i]
+      if line:match("^%s*%-[0-9a-f]+$") then
+        _G.found_minus_sha = true
+      end
+      if line:match("^%s*%+[0-9a-f]+$") then
+        _G.found_plus_sha = true
+      end
+    end
+  ]],
+    submodule_line,
+    submodule_line
+  ))
+
+  -- Must find both SHA diff lines
+  eq(child.lua_get([[_G.found_minus_sha]]), true)
+  eq(child.lua_get([[_G.found_plus_sha]]), true)
 
   cleanup_repo(child, parent_repo)
   cleanup_repo(child, submodule_repo)
