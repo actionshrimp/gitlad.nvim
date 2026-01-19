@@ -20,7 +20,7 @@ T["spinner"]["shows placeholder when not spinning"] = function()
   local s = spinner.new()
 
   eq(s:get_char(), "·")
-  eq(s:get_display(), "·")
+  eq(s:get_display(), "· Idle")
 end
 
 T["spinner"]["is_spinning returns false initially"] = function()
@@ -129,7 +129,7 @@ T["spinner"]["returns placeholder after stop"] = function()
   s:stop()
 
   eq(s:get_char(), "·")
-  eq(s:get_display(), "·")
+  eq(s:get_display(), "· Idle")
 end
 
 return T

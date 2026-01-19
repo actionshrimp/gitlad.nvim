@@ -492,16 +492,16 @@ T["status indicator"]["shows placeholder dot when idle"] = function()
   local lines = get_buffer_lines(child)
 
   -- The status indicator should be on its own line after the branch lines
-  -- It should show the placeholder dot "·" when not refreshing
+  -- It should show "· Idle" when not refreshing
   local found_placeholder = false
   for _, line in ipairs(lines) do
-    if line == "·" then
+    if line == "· Idle" then
       found_placeholder = true
       break
     end
   end
 
-  assert_truthy(found_placeholder, "Should show placeholder dot (·) when idle")
+  assert_truthy(found_placeholder, "Should show '· Idle' when idle")
 end
 
 T["status indicator"]["appears after Head line"] = function()
@@ -524,7 +524,7 @@ T["status indicator"]["appears after Head line"] = function()
   for i, line in ipairs(lines) do
     if line:match("^Head:") then
       head_line_num = i
-    elseif line == "·" then
+    elseif line == "· Idle" then
       status_line_num = i
     end
   end

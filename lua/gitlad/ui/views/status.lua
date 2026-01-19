@@ -1812,7 +1812,6 @@ function StatusBuffer:render()
   end
 
   -- Help line
-  table.insert(lines, "")
   table.insert(lines, "Press ? for help")
 
   -- Allow modification while updating buffer

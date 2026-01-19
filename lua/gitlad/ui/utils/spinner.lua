@@ -50,7 +50,7 @@ function Spinner:get_display()
   if self._spinning then
     return SPINNER_FRAMES[self._frame] .. " Refreshing..."
   else
-    return PLACEHOLDER
+    return PLACEHOLDER .. " Idle"
   end
 end
 
