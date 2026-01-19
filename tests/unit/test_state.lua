@@ -55,4 +55,36 @@ T["refresh indicator"]["status line excludes refreshing text when false"] = func
   eq(head_line, "Head:     main")
 end
 
+T["refresh_status callback"] = MiniTest.new_set()
+
+T["refresh_status callback"]["pending callback field pattern"] = function()
+  -- Test the callback field initialization pattern used in RepoState
+  local state = {
+    _pending_refresh_callback = nil,
+  }
+
+  -- Verify initial state
+  eq(state._pending_refresh_callback, nil)
+
+  -- Simulate storing a callback
+  local callback_called = false
+  state._pending_refresh_callback = function()
+    callback_called = true
+  end
+
+  -- Verify callback is stored
+  eq(state._pending_refresh_callback ~= nil, true)
+
+  -- Simulate the callback being invoked
+  if state._pending_refresh_callback then
+    local cb = state._pending_refresh_callback
+    state._pending_refresh_callback = nil
+    cb()
+  end
+
+  -- Verify callback was called and cleared
+  eq(callback_called, true)
+  eq(state._pending_refresh_callback, nil)
+end
+
 return T

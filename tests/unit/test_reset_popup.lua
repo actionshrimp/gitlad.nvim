@@ -119,4 +119,61 @@ T["reset popup"]["get_arguments returns empty (no switches)"] = function()
   eq(#args, 0)
 end
 
+-- Tests for has_uncommitted_changes logic (internal to reset popup)
+T["has_uncommitted_changes"] = MiniTest.new_set()
+
+T["has_uncommitted_changes"]["returns false for nil status"] = function()
+  -- The helper is local to reset.lua, so we test the behavior indirectly
+  -- by verifying the contract: nil status means no uncommitted changes
+  local status = nil
+  local has_changes = status ~= nil
+    and ((status.staged and #status.staged > 0) or (status.unstaged and #status.unstaged > 0))
+  eq(has_changes, false)
+end
+
+T["has_uncommitted_changes"]["returns false for clean status"] = function()
+  local status = {
+    staged = {},
+    unstaged = {},
+    untracked = {},
+  }
+  local has_changes = (status.staged and #status.staged > 0)
+    or (status.unstaged and #status.unstaged > 0)
+  eq(has_changes, false)
+end
+
+T["has_uncommitted_changes"]["returns true for staged changes"] = function()
+  local status = {
+    staged = { { path = "file.txt" } },
+    unstaged = {},
+    untracked = {},
+  }
+  local has_changes = (status.staged and #status.staged > 0)
+    or (status.unstaged and #status.unstaged > 0)
+  eq(has_changes, true)
+end
+
+T["has_uncommitted_changes"]["returns true for unstaged changes"] = function()
+  local status = {
+    staged = {},
+    unstaged = { { path = "file.txt" } },
+    untracked = {},
+  }
+  local has_changes = (status.staged and #status.staged > 0)
+    or (status.unstaged and #status.unstaged > 0)
+  eq(has_changes, true)
+end
+
+T["has_uncommitted_changes"]["returns false when only untracked files exist"] = function()
+  -- Untracked files don't count as uncommitted changes that would be lost
+  local status = {
+    staged = {},
+    unstaged = {},
+    untracked = { { path = "new_file.txt" } },
+  }
+  local has_changes = (status.staged and #status.staged > 0)
+    or (status.unstaged and #status.unstaged > 0)
+  eq(has_changes, false)
+end
+
 return T

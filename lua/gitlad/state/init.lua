@@ -52,11 +52,21 @@ function M.get(path)
   state.cache = cache.new()
   state.listeners = {}
 
+  -- Pending callback for refresh_status with callback
+  state._pending_refresh_callback = nil
+
   -- Create status handler that notifies listeners on update
   state.status_handler = async.new(function(result)
     state.status = result
     state.refreshing = false
     state:_notify("status")
+
+    -- Call and clear pending refresh callback
+    if state._pending_refresh_callback then
+      local cb = state._pending_refresh_callback
+      state._pending_refresh_callback = nil
+      cb()
+    end
   end)
 
   repo_states[git_dir] = state
@@ -278,15 +288,24 @@ end
 
 --- Refresh status (async with request ordering)
 ---@param force? boolean Force refresh even if cache valid
-function RepoState:refresh_status(force)
+---@param callback? fun() Optional callback called when refresh completes
+function RepoState:refresh_status(force, callback)
   -- Check cache first
   if not force then
     local cached, valid = self.cache:get("status", self.git_dir)
     if valid and cached then
       self.status = cached
       self:_notify("status")
+      if callback then
+        callback()
+      end
       return
     end
+  end
+
+  -- Store callback to call when status is ready
+  if callback then
+    self._pending_refresh_callback = callback
   end
 
   -- Set refreshing flag and notify UI
