@@ -181,12 +181,28 @@ lua/gitlad/
 │   ├── errors.lua        # Centralized error handling
 │   └── keymap.lua        # Buffer-local keymap helpers
 ├── popups/
-│   └── commit.lua        # Commit popup with switches/options/actions
+│   ├── branch.lua        # Branch popup (checkout, create, delete, rename)
+│   ├── cherrypick.lua    # Cherry-pick popup with conflict detection
+│   ├── commit.lua        # Commit popup with switches/options/actions
+│   ├── diff.lua          # Diff popup (integrates with diffview.nvim)
+│   ├── fetch.lua         # Fetch popup
+│   ├── help.lua          # Help popup showing all keybindings
+│   ├── log.lua           # Log popup and view
+│   ├── pull.lua          # Pull popup with rebase/ff options
+│   ├── push.lua          # Push popup with force/upstream options
+│   ├── rebase.lua        # Rebase popup (interactive, onto, continue, abort)
+│   ├── reset.lua         # Reset popup (mixed, soft, hard, keep)
+│   ├── revert.lua        # Revert popup with conflict detection
+│   └── stash.lua         # Stash popup (push, pop, apply, drop)
 └── ui/
     ├── popup/
     │   └── init.lua      # PopupBuilder - transient-style popup system
+    ├── components/
+    │   └── log_list.lua  # Reusable commit list component
+    ├── hl.lua            # Highlight groups and namespace management
     └── views/
         ├── status.lua        # Main status buffer view
+        ├── log.lua           # Log view buffer
         ├── commit_editor.lua # Commit message editor buffer
         └── history.lua       # Git command history view
 ```
@@ -227,9 +243,14 @@ lua/gitlad/
 7. **PopupBuilder** (`ui/popup/init.lua`)
    - Fluent API for building transient-style popups
    - Switches (boolean), options (key-value), actions (callbacks)
-   - Used for commit popup, will be used for all git operation popups
+   - Used by all git operation popups (commit, push, pull, etc.)
 
-8. **Utility Modules** (`utils/`)
+8. **Reusable Components** (`ui/components/`)
+   - `log_list.lua`: Renders commit lists with expandable details
+   - Used by both status view (unpushed/unpulled sections) and log view
+   - Configurable via options (indent, hash length, author/date display)
+
+9. **Utility Modules** (`utils/`)
    - `errors.lua`: Centralized error handling (`result_to_callback`, `notify`)
    - `keymap.lua`: Simplified buffer-local keymap setup
    - Reduces duplication and ensures consistent patterns across codebase
@@ -276,8 +297,9 @@ This makes the plugin more comfortable for vim/evil users.
 | `z` | Stash |
 | `A` | Cherry-pick |
 | `_` | Revert |
-| `t` | Tag |
-| `!` | Run git command |
+| `X` | Reset |
+| `t` | Tag (not yet implemented) |
+| `!` | Run git command (not yet implemented) |
 
 ### Other
 | Key | Action |
@@ -291,7 +313,7 @@ This makes the plugin more comfortable for vim/evil users.
 
 See **PLAN.md** for the detailed development roadmap with specific tasks, files to create/modify, and implementation notes.
 
-### Current Status: Phase 3 Complete
+### Current Status: Phase 3 Complete, Phase 4 Partial
 
 **What's built:**
 - Async git CLI wrapper with porcelain v2 parsing
@@ -301,13 +323,16 @@ See **PLAN.md** for the detailed development roadmap with specific tasks, files 
 - Inline diff expansion with syntax highlighting
 - Git command history view (`$` keybinding)
 - Transient-style popup system (PopupBuilder)
+- Log view with expandable commit details, reusable log_list component
 - All Phase 3 popups: Commit, Push, Pull, Fetch, Branch, Log, Diff, Stash
-- 267+ tests passing, CI configured
+- Phase 4 popups: Rebase, Cherry-pick, Revert, Reset
+- Sequencer state detection (shows cherry-pick/revert in progress)
+- 500+ tests across 47 test files, CI configured
 
-**Next up (Phase 4):**
-- Interactive Rebase
+**Next up:**
 - Merge & Conflict Resolution (via diffview.nvim)
-- Cherry-pick, Revert, Tag popups
+- Tag popup
+- Blame view
 
 See PLAN.md for the detailed roadmap.
 
