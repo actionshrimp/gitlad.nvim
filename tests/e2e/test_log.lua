@@ -489,4 +489,112 @@ T["log view"]["sign indicator changes when commit is expanded"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["log view"]["has popup keymaps (b, r, A, _, X)"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create a commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  -- Check that popup keymaps exist
+  child.lua([[
+    _G.popup_keymaps = {}
+    local keymaps = vim.api.nvim_buf_get_keymap(0, 'n')
+    for _, km in ipairs(keymaps) do
+      if km.lhs == "b" then _G.popup_keymaps.branch = true end
+      if km.lhs == "r" then _G.popup_keymaps.rebase = true end
+      if km.lhs == "A" then _G.popup_keymaps.cherrypick = true end
+      if km.lhs == "_" then _G.popup_keymaps.revert = true end
+      if km.lhs == "X" then _G.popup_keymaps.reset = true end
+    end
+  ]])
+
+  local has_branch = child.lua_get("_G.popup_keymaps.branch")
+  local has_rebase = child.lua_get("_G.popup_keymaps.rebase")
+  local has_cherrypick = child.lua_get("_G.popup_keymaps.cherrypick")
+  local has_revert = child.lua_get("_G.popup_keymaps.revert")
+  local has_reset = child.lua_get("_G.popup_keymaps.reset")
+
+  eq(has_branch, true)
+  eq(has_rebase, true)
+  eq(has_cherrypick, true)
+  eq(has_revert, true)
+  eq(has_reset, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["branch popup opens from log view"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create a commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  local win_count_before = child.lua_get("vim.fn.winnr('$')")
+
+  -- Open branch popup
+  child.type_keys("b")
+  child.lua("vim.wait(200, function() end)")
+
+  -- Should have opened a popup window
+  local win_count_after = child.lua_get("vim.fn.winnr('$')")
+  eq(win_count_after > win_count_before, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["reset popup opens with commit context"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create commits
+  create_file(child, repo, "file1.txt", "content 1")
+  git(child, repo, "add file1.txt")
+  git(child, repo, "commit -m 'First commit'")
+
+  create_file(child, repo, "file2.txt", "content 2")
+  git(child, repo, "add file2.txt")
+  git(child, repo, "commit -m 'Second commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  local win_count_before = child.lua_get("vim.fn.winnr('$')")
+
+  -- Navigate to first commit and open reset popup
+  child.type_keys("gj")
+  child.lua("vim.wait(100, function() end)")
+  child.type_keys("X")
+  child.lua("vim.wait(200, function() end)")
+
+  -- Should have opened a popup window
+  local win_count_after = child.lua_get("vim.fn.winnr('$')")
+  eq(win_count_after > win_count_before, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 return T

@@ -110,6 +110,42 @@ function LogBuffer:_setup_keymaps()
   keymap.set(bufnr, "n", "q", function()
     self:close()
   end, "Close log")
+
+  -- Branch popup
+  keymap.set(bufnr, "n", "b", function()
+    local branch_popup = require("gitlad.popups.branch")
+    branch_popup.open(self.repo_state)
+  end, "Branch popup")
+
+  -- Rebase popup
+  keymap.set(bufnr, "n", "r", function()
+    local rebase_popup = require("gitlad.popups.rebase")
+    rebase_popup.open(self.repo_state)
+  end, "Rebase popup")
+
+  -- Cherry-pick popup
+  keymap.set(bufnr, "n", "A", function()
+    local cherrypick_popup = require("gitlad.popups.cherrypick")
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    cherrypick_popup.open(self.repo_state, context)
+  end, "Cherry-pick popup")
+
+  -- Revert popup
+  keymap.set(bufnr, "n", "_", function()
+    local revert_popup = require("gitlad.popups.revert")
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    revert_popup.open(self.repo_state, context)
+  end, "Revert popup")
+
+  -- Reset popup
+  keymap.set(bufnr, "n", "X", function()
+    local reset_popup = require("gitlad.popups.reset")
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    reset_popup.open(self.repo_state, context)
+  end, "Reset popup")
 end
 
 --- Get current commit under cursor
