@@ -140,11 +140,21 @@ function RefsBuffer:_setup_keymaps()
     cherrypick_popup.open(self.repo_state, context)
   end, "Cherry-pick popup")
 
-  -- Branch popup
+  -- Branch popup (with ref context for checkout)
   keymap.set(bufnr, "n", "b", function()
     local branch_popup = require("gitlad.popups.branch")
-    branch_popup.open(self.repo_state)
+    local ref = self:_get_current_ref()
+    local context = ref and { ref = ref.name } or nil
+    branch_popup.open(self.repo_state, context)
   end, "Branch popup")
+
+  -- Diff popup (with ref context)
+  keymap.set(bufnr, "n", "d", function()
+    local diff_popup = require("gitlad.popups.diff")
+    local ref = self:_get_current_ref()
+    local context = ref and { ref = ref.name, base_ref = self.base_ref } or {}
+    diff_popup.open(self.repo_state, context)
+  end, "Diff popup")
 
   -- Reset popup
   keymap.set(bufnr, "n", "X", function()
@@ -343,89 +353,143 @@ function RefsBuffer:_delete_refs_visual()
   self:_delete_refs(refs)
 end
 
---- Delete refs with confirmation
+--- Smart delete a local branch (merged=no prompt, unmerged=prompt+force)
+---@param ref RefInfo The local branch ref
+---@param on_complete fun(success: boolean, err: string|nil) Callback when done
+function RefsBuffer:_smart_delete_local_branch(ref, on_complete)
+  local cwd = self.repo_state.repo_root
+
+  -- First try non-force delete (works for merged branches)
+  git.delete_branch(ref.name, false, { cwd = cwd }, function(success, err)
+    vim.schedule(function()
+      if success then
+        -- Branch was merged, deleted successfully without prompt
+        on_complete(true, nil)
+        return
+      end
+
+      -- Check if it's an "unmerged" error
+      if err and err:match("not fully merged") then
+        -- Prompt user to confirm force delete
+        vim.ui.select({ "Yes", "No" }, {
+          prompt = "Branch '" .. ref.name .. "' is not fully merged. Force delete?",
+        }, function(choice)
+          if choice ~= "Yes" then
+            on_complete(false, "cancelled")
+            return
+          end
+
+          -- Retry with force
+          git.delete_branch(ref.name, true, { cwd = cwd }, function(force_success, force_err)
+            vim.schedule(function()
+              on_complete(force_success, force_err)
+            end)
+          end)
+        end)
+      else
+        -- Some other error
+        on_complete(false, err)
+      end
+    end)
+  end)
+end
+
+--- Delete refs (smart: merged branches delete without prompt)
 ---@param refs RefInfo[]
 function RefsBuffer:_delete_refs(refs)
   if #refs == 0 then
     return
   end
 
-  -- Build confirmation message
-  local msg
-  if #refs == 1 then
-    msg = string.format("Delete %s '%s'?", refs[1].type, refs[1].name)
-  else
-    msg = string.format("Delete %d refs?", #refs)
+  -- For non-local refs (remotes, tags), we still prompt
+  local non_local_refs = {}
+  local local_refs = {}
+
+  for _, ref in ipairs(refs) do
+    if ref.type == "local" then
+      table.insert(local_refs, ref)
+    else
+      table.insert(non_local_refs, ref)
+    end
   end
 
-  vim.ui.select({ "Yes", "No" }, { prompt = msg }, function(choice)
-    if choice ~= "Yes" then
-      return
+  -- Track completion across all refs
+  local total = #refs
+  local completed = 0
+  local errors = {}
+
+  local function check_all_complete()
+    if completed == total then
+      self:_handle_delete_complete(total, errors)
+    end
+  end
+
+  -- Handle local branches with smart delete (no prompt for merged)
+  for _, ref in ipairs(local_refs) do
+    self:_smart_delete_local_branch(ref, function(success, err)
+      completed = completed + 1
+      if not success and err ~= "cancelled" then
+        table.insert(errors, ref.name .. ": " .. (err or "unknown error"))
+      end
+      check_all_complete()
+    end)
+  end
+
+  -- For non-local refs, prompt once if any exist
+  if #non_local_refs > 0 then
+    local msg
+    if #non_local_refs == 1 then
+      msg = string.format("Delete %s '%s'?", non_local_refs[1].type, non_local_refs[1].name)
+    else
+      msg = string.format("Delete %d remote/tag refs?", #non_local_refs)
     end
 
-    local completed = 0
-    local errors = {}
+    vim.ui.select({ "Yes", "No" }, { prompt = msg }, function(choice)
+      if choice ~= "Yes" then
+        -- Mark all as completed (cancelled)
+        completed = completed + #non_local_refs
+        check_all_complete()
+        return
+      end
 
-    for _, ref in ipairs(refs) do
-      if ref.type == "local" then
-        git.delete_branch(
-          ref.name,
-          false,
-          { cwd = self.repo_state.repo_root },
-          function(success, err)
+      for _, ref in ipairs(non_local_refs) do
+        if ref.type == "remote" then
+          -- Parse remote/branch from name (e.g., "origin/feature")
+          local remote, branch = ref.name:match("^([^/]+)/(.+)$")
+          if remote and branch then
+            git.delete_remote_branch(
+              remote,
+              branch,
+              { cwd = self.repo_state.repo_root },
+              function(success, err)
+                vim.schedule(function()
+                  completed = completed + 1
+                  if not success then
+                    table.insert(errors, ref.name .. ": " .. (err or "unknown error"))
+                  end
+                  check_all_complete()
+                end)
+              end
+            )
+          else
+            completed = completed + 1
+            table.insert(errors, ref.name .. ": invalid remote branch format")
+            check_all_complete()
+          end
+        elseif ref.type == "tag" then
+          git.delete_tag(ref.name, { cwd = self.repo_state.repo_root }, function(success, err)
             vim.schedule(function()
               completed = completed + 1
               if not success then
                 table.insert(errors, ref.name .. ": " .. (err or "unknown error"))
               end
-              if completed == #refs then
-                self:_handle_delete_complete(#refs, errors)
-              end
+              check_all_complete()
             end)
-          end
-        )
-      elseif ref.type == "remote" then
-        -- Parse remote/branch from name (e.g., "origin/feature")
-        local remote, branch = ref.name:match("^([^/]+)/(.+)$")
-        if remote and branch then
-          git.delete_remote_branch(
-            remote,
-            branch,
-            { cwd = self.repo_state.repo_root },
-            function(success, err)
-              vim.schedule(function()
-                completed = completed + 1
-                if not success then
-                  table.insert(errors, ref.name .. ": " .. (err or "unknown error"))
-                end
-                if completed == #refs then
-                  self:_handle_delete_complete(#refs, errors)
-                end
-              end)
-            end
-          )
-        else
-          completed = completed + 1
-          table.insert(errors, ref.name .. ": invalid remote branch format")
-          if completed == #refs then
-            self:_handle_delete_complete(#refs, errors)
-          end
-        end
-      elseif ref.type == "tag" then
-        git.delete_tag(ref.name, { cwd = self.repo_state.repo_root }, function(success, err)
-          vim.schedule(function()
-            completed = completed + 1
-            if not success then
-              table.insert(errors, ref.name .. ": " .. (err or "unknown error"))
-            end
-            if completed == #refs then
-              self:_handle_delete_complete(#refs, errors)
-            end
           end)
-        end)
+        end
       end
-    end
-  end)
+    end)
+  end
 end
 
 --- Handle completion of delete operations

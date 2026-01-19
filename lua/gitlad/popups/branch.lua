@@ -13,6 +13,9 @@ local git = require("gitlad.git")
 ---@field repo_state RepoState
 ---@field popup PopupData
 
+---@class BranchContext
+---@field ref? string Pre-selected ref name for checkout
+
 --- Get the current branch name from repo state
 ---@param repo_state RepoState
 ---@return string|nil
@@ -53,7 +56,10 @@ end
 
 --- Create and show the branch popup
 ---@param repo_state RepoState
-function M.open(repo_state)
+---@param context? BranchContext Optional context with pre-selected ref
+function M.open(repo_state, context)
+  context = context or {}
+
   local branch_popup = popup
     .builder()
     :name("Branch")
@@ -62,7 +68,7 @@ function M.open(repo_state)
     -- Actions - Checkout group
     :group_heading("Checkout")
     :action("b", "Checkout branch", function(popup_data)
-      M._checkout_branch(repo_state, popup_data)
+      M._checkout_branch(repo_state, popup_data, context.ref)
     end)
     :action("c", "Create and checkout", function(popup_data)
       M._create_and_checkout(repo_state, popup_data)
@@ -99,9 +105,39 @@ end
 --- Checkout an existing branch
 ---@param repo_state RepoState
 ---@param popup_data PopupData
-function M._checkout_branch(repo_state, popup_data)
+---@param preselected_ref? string Pre-selected ref to checkout directly
+function M._checkout_branch(repo_state, popup_data, preselected_ref)
   local current_branch = get_current_branch(repo_state)
 
+  -- Helper to perform the checkout
+  local function do_checkout(choice)
+    local args = popup_data:get_arguments()
+    git.checkout(choice, args, { cwd = repo_state.repo_root }, function(success, checkout_err)
+      vim.schedule(function()
+        if success then
+          vim.notify("[gitlad] Switched to branch '" .. choice .. "'", vim.log.levels.INFO)
+          repo_state:refresh_status(true)
+        else
+          vim.notify(
+            "[gitlad] Checkout failed: " .. (checkout_err or "unknown error"),
+            vim.log.levels.ERROR
+          )
+        end
+      end)
+    end)
+  end
+
+  -- If we have a preselected ref, checkout directly
+  if preselected_ref then
+    if preselected_ref == current_branch then
+      vim.notify("[gitlad] Already on '" .. preselected_ref .. "'", vim.log.levels.INFO)
+      return
+    end
+    do_checkout(preselected_ref)
+    return
+  end
+
+  -- Otherwise, show branch selection
   git.branches({ cwd = repo_state.repo_root }, function(branches, err)
     vim.schedule(function()
       if err then
@@ -128,21 +164,7 @@ function M._checkout_branch(repo_state, popup_data)
         if not choice then
           return
         end
-
-        local args = popup_data:get_arguments()
-        git.checkout(choice, args, { cwd = repo_state.repo_root }, function(success, checkout_err)
-          vim.schedule(function()
-            if success then
-              vim.notify("[gitlad] Switched to branch '" .. choice .. "'", vim.log.levels.INFO)
-              repo_state:refresh_status(true)
-            else
-              vim.notify(
-                "[gitlad] Checkout failed: " .. (checkout_err or "unknown error"),
-                vim.log.levels.ERROR
-              )
-            end
-          end)
-        end)
+        do_checkout(choice)
       end)
     end)
   end)
