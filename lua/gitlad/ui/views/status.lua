@@ -10,8 +10,10 @@ local config = require("gitlad.config")
 local history_view = require("gitlad.ui.views.history")
 local git = require("gitlad.git")
 local keymap = require("gitlad.utils.keymap")
+local utils = require("gitlad.utils")
 local hl = require("gitlad.ui.hl")
 local log_list = require("gitlad.ui.components.log_list")
+local signs_util = require("gitlad.ui.utils.signs")
 
 -- Namespace for sign column indicators
 local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
@@ -1535,20 +1537,7 @@ end
 
 --- Place expand/collapse signs in the sign column
 function StatusBuffer:_place_signs()
-  -- Clear existing signs
-  vim.api.nvim_buf_clear_namespace(self.bufnr, ns_signs, 0, -1)
-
-  -- Place signs for lines that have expand indicators
-  for line_num, sign_info in pairs(self.sign_lines) do
-    local sign_text = sign_info.expanded and "v" or ">"
-    local sign_hl = "GitladExpandIndicator"
-
-    vim.api.nvim_buf_set_extmark(self.bufnr, ns_signs, line_num - 1, 0, {
-      sign_text = sign_text,
-      sign_hl_group = sign_hl,
-      priority = 10,
-    })
-  end
+  signs_util.place_expand_signs(self.bufnr, self.sign_lines, ns_signs)
 end
 
 --- Open the status buffer in a window
@@ -1568,11 +1557,7 @@ function StatusBuffer:open()
   self.winnr = vim.api.nvim_get_current_win()
 
   -- Set window-local options for clean status display
-  vim.wo[self.winnr].number = false
-  vim.wo[self.winnr].relativenumber = false
-  vim.wo[self.winnr].signcolumn = "yes:1"
-  vim.wo[self.winnr].foldcolumn = "0"
-  vim.wo[self.winnr].wrap = false
+  utils.setup_view_window_options(self.winnr)
 
   -- Initial render
   self:render()

@@ -44,7 +44,7 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 
 ---
 
-## Current State (Phase 2.1-2.6 Complete)
+## Current State (Phase 3 Complete, Phase 4 Partial)
 
 ### What's Built
 - Project structure with proper module organization
@@ -67,7 +67,14 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Pull popup** - `F` keybinding for pull with switches/options/actions
 - **Branch popup** - `b` keybinding for branch operations (checkout, create, delete, rename, set upstream, configure push remote)
 - **Upstream/Push tracking** - Status shows Head/Merge/Push with commit messages, unpushed/unpulled commit sections
-- Test infrastructure with mini.test (329 tests passing)
+- **Log popup and view** - `l` keybinding for log with expandable commit details
+- **Diff popup** - `d` keybinding, integrates with diffview.nvim
+- **Stash popup** - `z` keybinding for stash operations
+- **Rebase popup** - `r` keybinding for interactive rebase, continue, abort, skip
+- **Cherry-pick popup** - `A` keybinding with conflict detection
+- **Revert popup** - `_` keybinding with conflict detection
+- **Reset popup** - `X` keybinding with mixed, soft, hard, keep modes
+- Test infrastructure with mini.test (500+ tests across 47 test files)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -302,12 +309,18 @@ Transient-style popup system inspired by neogit/magit:
 
 ## Phase 4: Advanced Features
 
-### 4.1 Interactive Rebase
-- [ ] `r` opens rebase popup
-- [ ] Actions: interactive, onto, continue, abort, skip
-- [ ] Rebase editor buffer for reordering commits
-- [ ] pick/reword/edit/squash/fixup/drop commands
-- [ ] Handle rebase conflicts
+### 4.1 Rebase Popup - COMPLETE
+- [x] `r` opens rebase popup
+- [x] Actions: interactive (`i`), autosquash (`a`), onto (`o`), continue (`r`), abort (`A`), skip (`s`)
+- [x] Switches: `--autostash`, `--preserve-merges`/`--rebase-merges`, `--interactive`, `--autosquash`
+- [x] Context-aware: if cursor on commit, uses that as target for interactive/onto
+- [x] Rebase editor uses native git behavior (EDITOR opens in terminal)
+- [ ] pick/reword/edit/squash/fixup/drop commands in custom editor (future enhancement)
+
+**Files created:**
+- `lua/gitlad/popups/rebase.lua` - Rebase popup with switches and actions
+- `tests/unit/test_rebase_popup.lua` - Unit tests for popup structure
+- `tests/e2e/test_rebase.lua` - E2E tests for rebase operations
 
 ### 4.2 Merge & Conflict Resolution (3-way merge via diffview.nvim)
 
@@ -390,6 +403,49 @@ For users who want auto-refresh and don't have large repo concerns.
 - [ ] Vimdoc (`:help gitlad`)
 - [ ] README with screenshots
 - [ ] Example configurations
+
+---
+
+## Phase 6: Code Architecture Improvements (Future)
+
+### 6.1 BufferBase Class Extraction
+
+**Status:** Not started - documented for future refactoring
+
+All three buffer views (status, log, history) share mechanical code that could be extracted to a base class.
+
+**Current Duplication (~100 lines per view):**
+1. **Singleton management** (~15 lines each): "If buffer exists and is valid, return it"
+2. **Buffer setup** (~20 lines each): Create buffer, set `buftype=nofile`, `modifiable=false`, cleanup autocommands
+3. **Window management** (~10 lines each): Open in window, set window-local options
+4. **Lifecycle methods**: `close()`, `render()`, `_apply_highlights()`, `_place_signs()`
+
+**Proposed structure:**
+```lua
+-- lua/gitlad/ui/buffer_base.lua
+local BufferBase = {}
+BufferBase.__index = BufferBase
+
+function BufferBase:new(opts)
+  -- Singleton check via opts.cache_key
+  -- Create buffer with standard options
+  -- Setup cleanup autocommands
+end
+
+function BufferBase:open()
+  -- Window management, standard options
+end
+
+function BufferBase:close() ... end
+
+-- Subclass hooks
+function BufferBase:render() error("subclass must implement") end
+function BufferBase:_setup_keymaps() error("subclass must implement") end
+```
+
+**Impact:** Would eliminate ~300 lines of boilerplate total
+
+**Why deferred:** Too invasive for a cleanup PR; the current code works and is well-tested. Better to do this as a dedicated refactoring effort.
 
 ---
 
