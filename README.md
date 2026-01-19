@@ -2,13 +2,23 @@
 
 A fast, well-tested git interface for Neovim. Inspired by magit, fugitive, and lazygit.
 
-> **Status:** Active development (Phase 2 complete). Status view with staging, inline diffs, hunk staging, and commit popup. See [PLAN.md](PLAN.md) for roadmap.
+> **Status:** Active development (Phase 3 complete, Phase 4 partial). Full staging workflow with inline diffs, hunk staging, and comprehensive popups for commit, push, pull, fetch, branch, log, diff, stash, rebase, cherry-pick, revert, and reset. See [PLAN.md](PLAN.md) for roadmap.
 
 ## Goals
 
 - **Fast** - Optimistic state updates with manual refresh, instant UI response even in large repos
 - **Well-tested** - Comprehensive automated tests, not "works on my machine"
 - **Magit UX** - Transient-style popup menus, familiar keybindings
+
+## Features
+
+- **Status view** with unstaged, staged, and untracked sections
+- **Inline diff expansion** - TAB on a file shows the diff inline
+- **Hunk-level staging** - Stage/unstage individual hunks or visual selections
+- **Git command history** - `$` shows all git commands run with their output
+- **Transient-style popups** for all git operations
+- **Upstream tracking** - Shows unpushed/unpulled commits, ahead/behind counts
+- **diffview.nvim integration** - Full-buffer diffs delegate to diffview
 
 ## Performance Philosophy
 
@@ -42,8 +52,18 @@ Using lazy.nvim:
 :Gitlad          " Open status view
 ```
 
-### Status View Keybindings
+### Keybindings
 
+**Navigation**
+| Key | Action |
+|-----|--------|
+| `j`/`k` | Standard line movement |
+| `gj`/`gk` | Next/previous file or commit |
+| `M-n`/`M-p` | Next/previous section |
+| `TAB` | Toggle inline diff / expand commit |
+| `RET` | Visit file at cursor |
+
+**Staging**
 | Key | Action |
 |-----|--------|
 | `s` | Stage file/hunk at cursor |
@@ -51,12 +71,27 @@ Using lazy.nvim:
 | `S` | Stage all |
 | `U` | Unstage all |
 | `x` | Discard changes at cursor |
-| `n`/`p` | Next/previous file |
-| `M-n`/`M-p` | Next/previous section |
-| `TAB` | Toggle inline diff |
-| `RET` | Visit file |
-| `c` | Commit popup |
-| `g` | Refresh |
+
+**Popup Triggers**
+| Key | Popup |
+|-----|-------|
+| `c` | Commit |
+| `b` | Branch |
+| `f` | Fetch |
+| `F` | Pull |
+| `p` | Push |
+| `l` | Log |
+| `d` | Diff |
+| `z` | Stash |
+| `r` | Rebase |
+| `A` | Cherry-pick |
+| `_` | Revert |
+| `X` | Reset |
+
+**Other**
+| Key | Action |
+|-----|--------|
+| `gr` | Refresh status |
 | `$` | Git command history |
 | `q` | Close |
 | `?` | Help |
