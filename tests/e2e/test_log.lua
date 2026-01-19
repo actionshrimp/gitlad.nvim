@@ -384,4 +384,109 @@ T["log view"]["buffer is not modifiable"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["log view"]["has sign column with expand indicators"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create commits
+  create_file(child, repo, "file1.txt", "content 1")
+  git(child, repo, "add file1.txt")
+  git(child, repo, "commit -m 'First commit'")
+
+  create_file(child, repo, "file2.txt", "content 2")
+  git(child, repo, "add file2.txt")
+  git(child, repo, "commit -m 'Second commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  -- Check sign column is enabled
+  local signcolumn = child.lua_get("vim.wo.signcolumn")
+  eq(signcolumn, "yes:1")
+
+  -- Check that extmarks exist in the sign namespace
+  child.lua([[
+    _G.test_has_signs = false
+    local log_view = require("gitlad.ui.views.log")
+    local buf = log_view.get_buffer()
+    if buf then
+      local ns = vim.api.nvim_get_namespaces()["gitlad_log_signs"]
+      if ns then
+        local marks = vim.api.nvim_buf_get_extmarks(buf.bufnr, ns, 0, -1, {})
+        _G.test_has_signs = #marks > 0
+      end
+    end
+  ]])
+  local has_signs = child.lua_get("_G.test_has_signs")
+  eq(has_signs, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["sign indicator changes when commit is expanded"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create a commit with a body
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, 'commit -m "Test commit" -m "This is the body of the commit"')
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  -- Get sign text before expansion
+  child.lua([[
+    _G.test_sign_text = nil
+    local log_view = require("gitlad.ui.views.log")
+    local buf = log_view.get_buffer()
+    if buf then
+      local ns = vim.api.nvim_get_namespaces()["gitlad_log_signs"]
+      if ns then
+        local marks = vim.api.nvim_buf_get_extmarks(buf.bufnr, ns, 0, -1, { details = true })
+        if #marks > 0 then
+          _G.test_sign_text = marks[1][4].sign_text
+        end
+      end
+    end
+  ]])
+  local sign_text_before = child.lua_get("_G.test_sign_text")
+  -- Sign text may include trailing space for alignment
+  expect.equality(sign_text_before:match("^>") ~= nil, true)
+
+  -- Navigate to commit line and expand it
+  child.type_keys("gj") -- Go to first commit
+  child.type_keys("<Tab>")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Get sign text after expansion
+  child.lua([[
+    _G.test_sign_text = nil
+    local log_view = require("gitlad.ui.views.log")
+    local buf = log_view.get_buffer()
+    if buf then
+      local ns = vim.api.nvim_get_namespaces()["gitlad_log_signs"]
+      if ns then
+        local marks = vim.api.nvim_buf_get_extmarks(buf.bufnr, ns, 0, -1, { details = true })
+        if #marks > 0 then
+          _G.test_sign_text = marks[1][4].sign_text
+        end
+      end
+    end
+  ]])
+  local sign_text_after = child.lua_get("_G.test_sign_text")
+  -- Sign text may include trailing space for alignment
+  expect.equality(sign_text_after:match("^v") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 return T
