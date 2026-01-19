@@ -363,7 +363,8 @@ T["rebase popup"]["shows in-progress actions when rebase is active"] = function(
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  -- Create a second commit
+  -- Create a second commit on a named branch (avoid main/master ambiguity)
+  git(child, repo, "checkout -b target")
   create_file(child, repo, "test.txt", "hello world")
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Second"')
@@ -375,8 +376,8 @@ T["rebase popup"]["shows in-progress actions when rebase is active"] = function(
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Feature"')
 
-  -- Try to rebase onto main (this will cause conflict)
-  git(child, repo, "rebase main 2>&1 || true")
+  -- Try to rebase onto target (this will cause conflict)
+  git(child, repo, "rebase target 2>&1 || true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -426,7 +427,8 @@ T["rebase popup"]["status shows rebase in progress"] = function()
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  -- Create a second commit
+  -- Create a second commit on a named branch (avoid main/master ambiguity)
+  git(child, repo, "checkout -b target")
   create_file(child, repo, "test.txt", "hello world")
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Second"')
@@ -438,7 +440,7 @@ T["rebase popup"]["status shows rebase in progress"] = function()
   git(child, repo, 'commit -m "Feature"')
 
   -- Start rebase that will conflict
-  git(child, repo, "rebase main 2>&1 || true")
+  git(child, repo, "rebase target 2>&1 || true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
