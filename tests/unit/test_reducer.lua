@@ -474,4 +474,69 @@ T["sort order"]["unstage_all maintains alphabetical order"] = function()
   eq(new_status.untracked[2].path, "d.txt")
 end
 
+-- Test that extended fields are preserved during optimistic updates
+T["extended fields"] = MiniTest.new_set()
+
+T["extended fields"]["preserves recent_commits during stage_file"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    untracked = { { path = "new.txt", index_status = "?", worktree_status = "?" } },
+    recent_commits = {
+      { hash = "abc123", subject = "First commit" },
+      { hash = "def456", subject = "Second commit" },
+    },
+  })
+
+  local cmd = commands.stage_file("new.txt", "untracked")
+  local new_status = reducer.apply(status, cmd)
+
+  -- recent_commits should be preserved
+  eq(#new_status.recent_commits, 2)
+  eq(new_status.recent_commits[1].hash, "abc123")
+  eq(new_status.recent_commits[2].hash, "def456")
+end
+
+T["extended fields"]["preserves stashes during unstage_file"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = { { path = "mod.txt", index_status = "M", worktree_status = "." } },
+    stashes = {
+      { index = 0, message = "WIP: feature" },
+      { index = 1, message = "Backup" },
+    },
+  })
+
+  local cmd = commands.unstage_file("mod.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  -- stashes should be preserved
+  eq(#new_status.stashes, 2)
+  eq(new_status.stashes[1].message, "WIP: feature")
+  eq(new_status.stashes[2].message, "Backup")
+end
+
+T["extended fields"]["preserves rebase_in_progress during stage_all"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    unstaged = { { path = "mod.txt", index_status = ".", worktree_status = "M" } },
+    rebase_in_progress = true,
+    sequencer_head_oid = "abc123",
+    sequencer_head_subject = "Rebasing commit",
+  })
+
+  local cmd = commands.stage_all()
+  local new_status = reducer.apply(status, cmd)
+
+  -- Sequencer state should be preserved
+  eq(new_status.rebase_in_progress, true)
+  eq(new_status.sequencer_head_oid, "abc123")
+  eq(new_status.sequencer_head_subject, "Rebasing commit")
+end
+
 return T
