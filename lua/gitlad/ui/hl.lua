@@ -522,54 +522,39 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
       -- Match lines with hunk_index OR untracked file content (no hunk headers)
     elseif
       line_map[i]
-      and (line_map[i].hunk_index or (line_map[i].section == "untracked" and line:match("^%s%s%+")))
+      and (line_map[i].hunk_index or (line_map[i].section == "untracked" and line:match("^%+")))
     then
-      -- This is a diff line - format: "  @@ ..." or "  +..." or "  -..." or "   context"
-      local content_start = 2 -- Skip the 2-space indent
-      local first_char = line:sub(content_start + 1, content_start + 1)
+      -- This is a diff line - format: "@@ ..." or "+..." or "-..." or " context"
+      local first_char = line:sub(1, 1)
 
-      if line:match("^%s%s@@") then
+      if line:match("^@@") then
         -- Hunk header line - use text highlight for the whole line
         -- Priority 150 to override treesitter (125) since headers aren't code
-        M.set(
-          bufnr,
-          ns_diff_markers,
-          line_idx,
-          content_start,
-          #line,
-          "GitladDiffHeader",
-          { priority = 150 }
-        )
+        M.set(bufnr, ns_diff_markers, line_idx, 0, #line, "GitladDiffHeader", { priority = 150 })
       elseif first_char == "+" then
         -- Added line - use line background for diff color
         -- Priority 100 for background, treesitter (125) overrides for syntax colors
         M.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffAdd", { priority = 100 })
         -- Highlight the + sign - priority 150 to stay visible over treesitter
-        M.set(
-          bufnr,
-          ns_diff_markers,
-          line_idx,
-          content_start,
-          content_start + 1,
-          "GitladDiffAddSign",
-          { priority = 150 }
-        )
+        M.set(bufnr, ns_diff_markers, line_idx, 0, 1, "GitladDiffAddSign", { priority = 150 })
       elseif first_char == "-" then
         -- Deleted line - use line background for diff color
         -- Priority 100 for background, treesitter (125) overrides for syntax colors
         M.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffDelete", { priority = 100 })
         -- Highlight the - sign - priority 150 to stay visible over treesitter
-        M.set(
-          bufnr,
-          ns_diff_markers,
-          line_idx,
-          content_start,
-          content_start + 1,
-          "GitladDiffDeleteSign",
-          { priority = 150 }
-        )
+        M.set(bufnr, ns_diff_markers, line_idx, 0, 1, "GitladDiffDeleteSign", { priority = 150 })
       end
       -- Context lines (starting with space) don't need special highlighting
+
+      -- Submodule SHA diff lines
+    elseif line_map[i] and line_map[i].type == "submodule_diff" then
+      if line_map[i].diff_type == "add" then
+        M.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffAdd", { priority = 100 })
+        M.set(bufnr, ns_diff_markers, line_idx, 0, 1, "GitladDiffAddSign", { priority = 150 })
+      elseif line_map[i].diff_type == "delete" then
+        M.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffDelete", { priority = 100 })
+        M.set(bufnr, ns_diff_markers, line_idx, 0, 1, "GitladDiffDeleteSign", { priority = 150 })
+      end
 
       -- Commit lines in unpulled/unpushed sections: "hash subject" (no indent)
     elseif line:match("^%x%x%x%x%x%x%x") then
@@ -663,22 +648,21 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path)
   local line_mapping = {}
 
   for i, line in ipairs(diff_lines) do
-    -- Diff lines have 2-space indent, then +/-/space, then content
-    -- Format: "  +content" or "  -content" or "   context"
-    -- 1-indexed positions: 1-2 are spaces, 3 is marker, 4+ is content
-    -- 0-indexed columns: 0-1 are spaces, 2 is marker, 3+ is content
-    local marker_pos = 3 -- 1-indexed position of diff marker
-    local first_char = line:sub(marker_pos, marker_pos)
+    -- Diff lines have +/-/space marker at start, then content
+    -- Format: "+content" or "-content" or " context"
+    -- 1-indexed positions: 1 is marker, 2+ is content
+    -- 0-indexed columns: 0 is marker, 1+ is content
+    local first_char = line:sub(1, 1)
 
     if first_char == "+" or first_char == "-" or first_char == " " then
       -- Extract the actual code (after the diff marker)
-      local code = line:sub(marker_pos + 1) -- Everything after the marker
+      local code = line:sub(2) -- Everything after the marker
       code_lines[i] = code
       line_mapping[i] = {
         buffer_line = start_line + i - 1, -- 0-indexed
-        col_offset = marker_pos, -- 0-indexed column where code starts (3 = after "  " + marker)
+        col_offset = 1, -- 0-indexed column where code starts (1 = after marker)
       }
-    elseif line:match("^%s%s@@") then
+    elseif line:match("^@@") then
       -- Skip hunk headers - they're not code
       code_lines[i] = ""
       line_mapping[i] = nil -- Explicit nil to maintain index alignment
@@ -789,8 +773,8 @@ function M.apply_diff_treesitter_highlights(bufnr, lines, line_map, diff_cache)
     local info = line_map[i]
     local line = lines[i]
 
-    -- Check if this is a diff content line (starts with 2 spaces then +/-/space/@@)
-    local is_diff_content = line:match("^%s%s[%+%-%s@]")
+    -- Check if this is a diff content line (starts with +/-/space/@@)
+    local is_diff_content = line:match("^[%+%-%s@]")
 
     if info and not is_diff_content then
       -- This is a file entry line (not diff content)

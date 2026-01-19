@@ -1481,8 +1481,10 @@ function StatusBuffer:render()
 
       -- Handle submodule diffs (SHA diff format)
       if diff_data.is_submodule then
-        table.insert(lines, "  -" .. diff_data.old_sha)
-        table.insert(lines, "  +" .. diff_data.new_sha)
+        table.insert(lines, "-" .. diff_data.old_sha)
+        self.line_map[#lines] = { type = "submodule_diff", diff_type = "delete" }
+        table.insert(lines, "+" .. diff_data.new_sha)
+        self.line_map[#lines] = { type = "submodule_diff", diff_type = "add" }
       else
         -- Normal file diff
         local current_hunk_index = 0
@@ -1493,7 +1495,7 @@ function StatusBuffer:render()
             current_hunk_index = current_hunk_index + 1
           end
 
-          table.insert(lines, "  " .. diff_line)
+          table.insert(lines, diff_line)
           -- Diff lines map to the file and include hunk index
           self.line_map[#lines] = {
             type = "file",
@@ -1705,8 +1707,10 @@ function StatusBuffer:render()
           if diff_data and diff_data.is_submodule then
             self.sign_lines[#lines] = { expanded = true }
             -- Render the SHA diff lines: -oldsha, +newsha
-            table.insert(lines, "    -" .. diff_data.old_sha)
-            table.insert(lines, "    +" .. diff_data.new_sha)
+            table.insert(lines, "-" .. diff_data.old_sha)
+            self.line_map[#lines] = { type = "submodule_diff", diff_type = "delete" }
+            table.insert(lines, "+" .. diff_data.new_sha)
+            self.line_map[#lines] = { type = "submodule_diff", diff_type = "add" }
           end
         else
           self.sign_lines[#lines] = { expanded = false }
