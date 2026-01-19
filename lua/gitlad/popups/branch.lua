@@ -474,16 +474,38 @@ function M._spinoff(repo_state, _popup_data)
                       return
                     end
 
-                    vim.notify(
-                      "[gitlad] Spun off to '"
-                        .. new_branch_name
-                        .. "', reset '"
-                        .. current_branch
-                        .. "' to "
-                        .. upstream,
-                      vim.log.levels.INFO
+                    -- Switch to the new branch
+                    git.checkout(
+                      new_branch_name,
+                      {},
+                      { cwd = repo_state.repo_root },
+                      function(checkout_success, checkout_err)
+                        vim.schedule(function()
+                          if not checkout_success then
+                            vim.notify(
+                              "[gitlad] Spun off to '"
+                                .. new_branch_name
+                                .. "' but failed to switch: "
+                                .. (checkout_err or "unknown error"),
+                              vim.log.levels.WARN
+                            )
+                            repo_state:refresh_status(true)
+                            return
+                          end
+
+                          vim.notify(
+                            "[gitlad] Spun off to '"
+                              .. new_branch_name
+                              .. "', reset '"
+                              .. current_branch
+                              .. "' to "
+                              .. upstream,
+                            vim.log.levels.INFO
+                          )
+                          repo_state:refresh_status(true)
+                        end)
+                      end
                     )
-                    repo_state:refresh_status(true)
                   end)
                 end
               )

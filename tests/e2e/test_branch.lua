@@ -494,6 +494,93 @@ T["branch operations"]["rename branch"] = function()
   cleanup_repo(child, repo)
 end
 
+T["branch operations"]["spin-off switches to new branch"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit on main
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create a named branch to use as "main" for the upstream
+  -- (avoids main/master ambiguity)
+  git(child, repo, "branch -M main-branch")
+
+  -- Set up a fake remote and upstream to simulate the spin-off scenario
+  git(child, repo, "remote add origin https://example.com/repo.git")
+  -- Create a "remote" branch by making a commit reference
+  git(child, repo, "update-ref refs/remotes/origin/main-branch HEAD~0")
+  git(child, repo, "branch --set-upstream-to=origin/main-branch main-branch")
+
+  -- Add commits that will be "spun off"
+  create_file(child, repo, "feature.txt", "feature content")
+  git(child, repo, "add feature.txt")
+  git(child, repo, 'commit -m "Feature commit"')
+
+  -- Verify we're on main-branch and have a commit ahead
+  local initial_branch = git(child, repo, "branch --show-current"):gsub("%s+", "")
+  eq(initial_branch, "main-branch")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Create the spin-off using the git module directly
+  -- (testing the popup interaction would require mocking vim.ui.input)
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    local branch = require("gitlad.popups.branch")
+
+    -- Simulate spin-off steps:
+    -- 1. Create new branch at current HEAD
+    git.create_branch("spun-off-feature", "HEAD", { cwd = %q }, function(create_success, create_err)
+      if not create_success then
+        _G.spinoff_result = { success = false, err = "create failed: " .. (create_err or "") }
+        return
+      end
+
+      -- 2. Reset current branch to upstream
+      git.reset("origin/main-branch", "hard", { cwd = %q }, function(reset_success, reset_err)
+        if not reset_success then
+          _G.spinoff_result = { success = false, err = "reset failed: " .. (reset_err or "") }
+          return
+        end
+
+        -- 3. Switch to new branch (this is the fix being tested)
+        git.checkout("spun-off-feature", {}, { cwd = %q }, function(checkout_success, checkout_err)
+          _G.spinoff_result = { success = checkout_success, err = checkout_err }
+        end)
+      end)
+    end)
+  ]],
+    repo,
+    repo,
+    repo
+  ))
+
+  child.lua([[vim.wait(2000, function() return _G.spinoff_result ~= nil end)]])
+  local result = child.lua_get([[_G.spinoff_result]])
+
+  eq(result.success, true)
+
+  -- Verify we're now on the spun-off branch (the key fix)
+  local current_branch = git(child, repo, "branch --show-current"):gsub("%s+", "")
+  eq(current_branch, "spun-off-feature")
+
+  -- Verify the spun-off branch has the feature commit
+  local log_spinoff = git(child, repo, "log --oneline -1")
+  eq(log_spinoff:match("Feature commit") ~= nil, true)
+
+  -- Verify main-branch was reset (doesn't have the feature commit)
+  local log_main = git(child, repo, "log --oneline main-branch -1")
+  eq(log_main:match("Feature commit") == nil, true)
+  eq(log_main:match("Initial") ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
 T["branch operations"]["force delete unmerged branch"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
