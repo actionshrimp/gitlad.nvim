@@ -443,6 +443,69 @@ git add .
 git commit -m "Add component tests and test runner"
 
 # =============================================================================
+# Commit 7: Add a submodule
+# =============================================================================
+LIB_DIR="/tmp/gitlad-test-lib"
+
+# Create the library repo first
+rm -rf "$LIB_DIR"
+mkdir -p "$LIB_DIR"
+git -C "$LIB_DIR" init
+git -C "$LIB_DIR" config user.email "test@example.com"
+git -C "$LIB_DIR" config user.name "Test User"
+
+cat > "$LIB_DIR/index.js" << 'EOF'
+// Shared library utilities
+function add(a, b) {
+  return a + b;
+}
+
+function subtract(a, b) {
+  return a - b;
+}
+
+function multiply(a, b) {
+  return a * b;
+}
+
+module.exports = { add, subtract, multiply };
+EOF
+
+cat > "$LIB_DIR/README.md" << 'EOF'
+# Shared Library
+
+Common utilities shared across projects.
+
+## Usage
+
+```js
+const { add, subtract, multiply } = require('./lib');
+```
+EOF
+
+git -C "$LIB_DIR" add .
+git -C "$LIB_DIR" commit -m "Initial library with math utilities"
+
+# Add a second commit to the library
+cat >> "$LIB_DIR/index.js" << 'EOF'
+
+function divide(a, b) {
+  if (b === 0) throw new Error('Division by zero');
+  return a / b;
+}
+
+module.exports.divide = divide;
+EOF
+
+git -C "$LIB_DIR" add .
+git -C "$LIB_DIR" commit -m "Add divide function"
+
+# Add the library as a submodule to the main repo
+# Use -c protocol.file.allow=always to allow file:// protocol (Git security feature)
+git -c protocol.file.allow=always submodule add "$LIB_DIR" lib
+git commit -m "Add shared library as submodule"
+
+# =============================================================================
 # Now create working copy changes (staged and unstaged)
 # =============================================================================
 
@@ -690,6 +753,26 @@ EOF
 # Create an untracked binary file
 dd if=/dev/urandom of=assets/new-image.bin bs=128 count=1 2>/dev/null
 
+# --- Modified submodule (unstaged) ---
+# Add a new commit to the library and update the submodule to it
+# This makes the submodule appear in "Unstaged changes" with new commits
+
+cat >> "$LIB_DIR/index.js" << 'EOF'
+
+function modulo(a, b) {
+  return a % b;
+}
+
+module.exports.modulo = modulo;
+EOF
+
+git -C "$LIB_DIR" add .
+git -C "$LIB_DIR" commit -m "Add modulo function"
+
+# Update submodule to the new commit (this creates an unstaged change)
+git -C lib fetch
+git -C lib checkout origin/HEAD 2>/dev/null || git -C lib pull
+
 echo ""
 echo "=========================================="
 echo "Test repository created at: $REPO_DIR"
@@ -697,6 +780,12 @@ echo "=========================================="
 echo ""
 echo "Status:"
 git status --short
+echo ""
+echo "Submodule status:"
+git submodule status
+echo ""
+echo "The 'lib' submodule has new commits - it will appear in Unstaged changes."
+echo "Use this to test submodule popup context from file entries."
 echo ""
 echo "To use with gitlad.nvim:"
 echo "  cd $REPO_DIR && nvim -u $(dirname "$0")/../dev/init.lua"

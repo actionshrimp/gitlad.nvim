@@ -144,7 +144,7 @@ function RefsBuffer:_setup_keymaps()
   keymap.set(bufnr, "n", "b", function()
     local branch_popup = require("gitlad.popups.branch")
     local ref = self:_get_current_ref()
-    local context = ref and { ref = ref.name } or nil
+    local context = ref and { ref = ref.name, ref_type = ref.type } or nil
     branch_popup.open(self.repo_state, context)
   end, "Branch popup")
 

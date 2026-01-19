@@ -15,6 +15,7 @@ local git = require("gitlad.git")
 
 ---@class BranchContext
 ---@field ref? string Pre-selected ref name for checkout
+---@field ref_type? "local"|"remote"|"tag" Type of the ref (for smart checkout behavior)
 
 --- Get the current branch name from repo state
 ---@param repo_state RepoState
@@ -54,6 +55,34 @@ local function get_all_branch_names(branches)
   return names
 end
 
+--- Extract local branch name from a remote ref name
+--- e.g., "origin/feature" -> "feature", "upstream/fix/bug" -> "fix/bug"
+---@param remote_ref string The remote ref name (e.g., "origin/feature")
+---@return string|nil local_name The local branch name, or nil if not a remote ref
+---@return string|nil remote The remote name, or nil if not a remote ref
+local function extract_local_name_from_remote(remote_ref)
+  -- Match pattern: remote/branch where remote doesn't contain /
+  -- but branch can contain /
+  local remote, branch = remote_ref:match("^([^/]+)/(.+)$")
+  if remote and branch then
+    return branch, remote
+  end
+  return nil, nil
+end
+
+--- Check if a local branch exists in the branch list
+---@param branches table[] Array of branch info from git.branches()
+---@param branch_name string Branch name to check
+---@return boolean exists True if the local branch exists
+local function local_branch_exists(branches, branch_name)
+  for _, branch in ipairs(branches) do
+    if branch.name == branch_name then
+      return true
+    end
+  end
+  return false
+end
+
 --- Create and show the branch popup
 ---@param repo_state RepoState
 ---@param context? BranchContext Optional context with pre-selected ref
@@ -68,7 +97,7 @@ function M.open(repo_state, context)
     -- Actions - Checkout group
     :group_heading("Checkout")
     :action("b", "Checkout branch", function(popup_data)
-      M._checkout_branch(repo_state, popup_data, context.ref)
+      M._checkout_branch(repo_state, popup_data, context.ref, context.ref_type)
     end)
     :action("c", "Create and checkout", function(popup_data)
       M._create_and_checkout(repo_state, popup_data)
@@ -103,13 +132,17 @@ function M.open(repo_state, context)
 end
 
 --- Checkout an existing branch
+--- When checking out a remote branch (e.g., "origin/feature"), this follows magit's smart behavior:
+--- - If local branch "feature" exists: checkout the local branch
+--- - If local branch doesn't exist: create "feature" from "origin/feature" with upstream tracking
 ---@param repo_state RepoState
 ---@param popup_data PopupData
 ---@param preselected_ref? string Pre-selected ref to checkout directly
-function M._checkout_branch(repo_state, popup_data, preselected_ref)
+---@param ref_type? "local"|"remote"|"tag" Type of the ref for smart behavior
+function M._checkout_branch(repo_state, popup_data, preselected_ref, ref_type)
   local current_branch = get_current_branch(repo_state)
 
-  -- Helper to perform the checkout
+  -- Helper to perform simple checkout
   local function do_checkout(choice)
     local args = popup_data:get_arguments()
     git.checkout(choice, args, { cwd = repo_state.repo_root }, function(success, checkout_err)
@@ -133,8 +166,78 @@ function M._checkout_branch(repo_state, popup_data, preselected_ref)
     end)
   end
 
-  -- If we have a preselected ref, checkout directly
+  -- Helper to create and checkout a new local branch from a remote branch (with tracking)
+  local function do_create_and_checkout_from_remote(local_name, remote_ref)
+    local args = popup_data:get_arguments()
+    -- git checkout -b <local> <remote> automatically sets up tracking
+    git.checkout_new_branch(
+      local_name,
+      remote_ref,
+      args,
+      { cwd = repo_state.repo_root },
+      function(success, checkout_err)
+        vim.schedule(function()
+          if success then
+            vim.notify(
+              "[gitlad] Created and switched to branch '"
+                .. local_name
+                .. "' tracking '"
+                .. remote_ref
+                .. "'",
+              vim.log.levels.INFO
+            )
+            repo_state:refresh_status(true)
+            -- Also refresh refs buffer if it's open
+            local refs_view = require("gitlad.ui.views.refs")
+            local refs_buf = refs_view.get_buffer()
+            if refs_buf then
+              refs_buf:refresh()
+            end
+          else
+            vim.notify(
+              "[gitlad] Create and checkout failed: " .. (checkout_err or "unknown error"),
+              vim.log.levels.ERROR
+            )
+          end
+        end)
+      end
+    )
+  end
+
+  -- Handle preselected ref (from refs view context)
   if preselected_ref then
+    -- Check if it's a remote branch
+    if ref_type == "remote" then
+      local local_name, _ = extract_local_name_from_remote(preselected_ref)
+      if local_name then
+        -- Check if already on the corresponding local branch
+        if local_name == current_branch then
+          vim.notify("[gitlad] Already on '" .. local_name .. "'", vim.log.levels.INFO)
+          return
+        end
+
+        -- Fetch local branches to check if the local branch exists
+        git.branches({ cwd = repo_state.repo_root }, function(branches, err)
+          vim.schedule(function()
+            if err then
+              vim.notify("[gitlad] Failed to get branches: " .. err, vim.log.levels.ERROR)
+              return
+            end
+
+            if local_branch_exists(branches or {}, local_name) then
+              -- Local branch exists, just checkout it
+              do_checkout(local_name)
+            else
+              -- Local branch doesn't exist, create from remote with tracking
+              do_create_and_checkout_from_remote(local_name, preselected_ref)
+            end
+          end)
+        end)
+        return
+      end
+    end
+
+    -- Not a remote branch, or couldn't extract local name - checkout directly
     if preselected_ref == current_branch then
       vim.notify("[gitlad] Already on '" .. preselected_ref .. "'", vim.log.levels.INFO)
       return
@@ -143,7 +246,7 @@ function M._checkout_branch(repo_state, popup_data, preselected_ref)
     return
   end
 
-  -- Otherwise, show branch selection
+  -- No preselected ref - show branch selection
   git.branches({ cwd = repo_state.repo_root }, function(branches, err)
     vim.schedule(function()
       if err then

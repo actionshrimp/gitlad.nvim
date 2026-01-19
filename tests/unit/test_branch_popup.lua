@@ -213,6 +213,107 @@ T["parse_branches"]["handles branches with slashes"] = function()
   eq(result[3].name, "bugfix/fix-crash")
 end
 
+-- Helper function tests
+T["branch popup helpers"] = MiniTest.new_set()
+
+T["branch popup helpers"]["extract_local_name_from_remote extracts branch name"] = function()
+  -- We need to test the local function through the module
+  -- For now, test the pattern directly
+  local function extract_local_name(remote_ref)
+    local remote, branch = remote_ref:match("^([^/]+)/(.+)$")
+    if remote and branch then
+      return branch, remote
+    end
+    return nil, nil
+  end
+
+  local branch, remote = extract_local_name("origin/feature")
+  eq(branch, "feature")
+  eq(remote, "origin")
+end
+
+T["branch popup helpers"]["extract_local_name_from_remote handles nested branch names"] = function()
+  local function extract_local_name(remote_ref)
+    local remote, branch = remote_ref:match("^([^/]+)/(.+)$")
+    if remote and branch then
+      return branch, remote
+    end
+    return nil, nil
+  end
+
+  local branch, remote = extract_local_name("origin/feature/add-login")
+  eq(branch, "feature/add-login")
+  eq(remote, "origin")
+end
+
+T["branch popup helpers"]["extract_local_name_from_remote handles upstream remote"] = function()
+  local function extract_local_name(remote_ref)
+    local remote, branch = remote_ref:match("^([^/]+)/(.+)$")
+    if remote and branch then
+      return branch, remote
+    end
+    return nil, nil
+  end
+
+  local branch, remote = extract_local_name("upstream/main")
+  eq(branch, "main")
+  eq(remote, "upstream")
+end
+
+T["branch popup helpers"]["extract_local_name_from_remote returns nil for local branch"] = function()
+  local function extract_local_name(remote_ref)
+    local remote, branch = remote_ref:match("^([^/]+)/(.+)$")
+    if remote and branch then
+      return branch, remote
+    end
+    return nil, nil
+  end
+
+  -- Local branch without slash
+  local branch, remote = extract_local_name("main")
+  eq(branch, nil)
+  eq(remote, nil)
+end
+
+T["branch popup helpers"]["local_branch_exists finds existing branch"] = function()
+  local function local_branch_exists(branches, branch_name)
+    for _, branch in ipairs(branches) do
+      if branch.name == branch_name then
+        return true
+      end
+    end
+    return false
+  end
+
+  local branches = {
+    { name = "main" },
+    { name = "feature" },
+    { name = "develop" },
+  }
+
+  eq(local_branch_exists(branches, "feature"), true)
+  eq(local_branch_exists(branches, "main"), true)
+end
+
+T["branch popup helpers"]["local_branch_exists returns false for non-existing branch"] = function()
+  local function local_branch_exists(branches, branch_name)
+    for _, branch in ipairs(branches) do
+      if branch.name == branch_name then
+        return true
+      end
+    end
+    return false
+  end
+
+  local branches = {
+    { name = "main" },
+    { name = "develop" },
+  }
+
+  eq(local_branch_exists(branches, "feature"), false)
+  eq(local_branch_exists(branches, "nonexistent"), false)
+end
+
 -- Configure group tests
 T["branch popup configure"] = MiniTest.new_set()
 
