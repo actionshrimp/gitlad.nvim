@@ -117,6 +117,12 @@ function M._checkout_branch(repo_state, popup_data, preselected_ref)
         if success then
           vim.notify("[gitlad] Switched to branch '" .. choice .. "'", vim.log.levels.INFO)
           repo_state:refresh_status(true)
+          -- Also refresh refs buffer if it's open
+          local refs_view = require("gitlad.ui.views.refs")
+          local refs_buf = refs_view.get_buffer()
+          if refs_buf then
+            refs_buf:refresh()
+          end
         else
           vim.notify(
             "[gitlad] Checkout failed: " .. (checkout_err or "unknown error"),
