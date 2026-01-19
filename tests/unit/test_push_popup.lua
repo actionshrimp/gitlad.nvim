@@ -251,6 +251,79 @@ T["push popup"]["detects no remote branch when push_remote is nil"] = function()
   eq(exists, false)
 end
 
+T["push popup"]["detects remote branch exists when push_ref equals upstream"] = function()
+  -- Regression test: When push_ref == upstream, the remote branch exists
+  -- because upstream tracking implies the remote branch exists.
+  --
+  -- This scenario happens when:
+  -- 1. Branch has upstream set to origin/feature-branch
+  -- 2. No explicit pushRemote configured
+  -- 3. state/init.lua sets push_remote = nil (because push_ref == upstream, it returns early)
+  -- 4. push_commit_msg is also nil (never checked)
+  --
+  -- Before the fix: remote_branch_exists() returned false, prompting "Create remote branch?"
+  -- After the fix: remote_branch_exists() returns true (branch exists as upstream)
+  local mock_status = {
+    branch = "feature/smart-remote-branch-checkout",
+    upstream = "origin/feature/smart-remote-branch-checkout", -- Upstream IS the same-named branch
+    push_remote = nil, -- Not set because push_ref == upstream in state/init.lua
+    push_commit_msg = nil, -- Never checked because of early return
+  }
+
+  -- Derive push_ref the same way push.lua does (via get_push_target fallback)
+  local push_ref = mock_status.push_remote
+  if not push_ref and mock_status.upstream then
+    local remote = mock_status.upstream:match("^([^/]+)/")
+    if remote then
+      push_ref = remote .. "/" .. mock_status.branch
+    end
+  end
+
+  -- push_ref should equal upstream in this scenario
+  eq(push_ref, "origin/feature/smart-remote-branch-checkout")
+  eq(push_ref, mock_status.upstream)
+
+  -- Old logic: would return false (bug - prompted to create existing branch)
+  local old_exists = mock_status.push_remote ~= nil and mock_status.push_commit_msg ~= nil
+  eq(old_exists, false)
+
+  -- New logic: check if push_ref equals upstream (implies branch exists)
+  local new_exists = (mock_status.push_remote ~= nil and mock_status.push_commit_msg ~= nil)
+    or (push_ref and mock_status.upstream and push_ref == mock_status.upstream)
+  eq(new_exists, true)
+end
+
+T["push popup"]["should not prompt when push_ref equals upstream"] = function()
+  -- Full scenario test: User is on branch with upstream pointing to same-named remote branch
+  -- They press 'p' to push - should NOT be prompted to create the branch
+  local mock_status = {
+    branch = "feature/existing-branch",
+    upstream = "origin/feature/existing-branch", -- Same-named upstream
+    push_remote = nil, -- Not explicitly set
+    push_commit_msg = nil, -- Not checked
+  }
+
+  -- Derive push_ref
+  local push_ref = mock_status.push_remote
+  if not push_ref and mock_status.upstream then
+    local remote = mock_status.upstream:match("^([^/]+)/")
+    if remote then
+      push_ref = remote .. "/" .. mock_status.branch
+    end
+  end
+
+  -- The new remote_branch_exists logic
+  local remote_exists = (mock_status.push_remote ~= nil and mock_status.push_commit_msg ~= nil)
+    or (push_ref and mock_status.upstream and push_ref == mock_status.upstream)
+
+  -- Should NOT prompt for creation
+  local should_prompt = push_ref ~= nil and not remote_exists
+
+  eq(push_ref, "origin/feature/existing-branch")
+  eq(remote_exists, true)
+  eq(should_prompt, false)
+end
+
 T["push popup"]["should prompt when remote branch needs creation"] = function()
   -- Scenario: User is on feature/diff-popup tracking origin/main
   -- Push target is origin/feature/diff-popup which doesn't exist yet

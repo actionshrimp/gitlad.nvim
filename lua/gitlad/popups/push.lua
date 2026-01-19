@@ -152,14 +152,27 @@ end
 --- Check if remote branch exists
 --- Uses the status data which already tracks whether push_commit_msg was fetched
 ---@param status GitStatusResult|nil
+---@param push_ref string|nil The push target ref to check
 ---@return boolean
-local function remote_branch_exists(status)
+local function remote_branch_exists(status, push_ref)
   if not status then
     return false
   end
   -- If push_remote is set and push_commit_msg exists, the remote branch exists
   -- state/init.lua only sets push_commit_msg if the remote branch was found
-  return status.push_remote ~= nil and status.push_commit_msg ~= nil
+  if status.push_remote ~= nil and status.push_commit_msg ~= nil then
+    return true
+  end
+
+  -- If the push target is the same as upstream, the branch exists
+  -- (because upstream tracking implies the remote branch exists)
+  -- This handles the case where push_remote is not explicitly set but the branch
+  -- is being tracked via upstream (e.g., origin/feature-branch as both upstream and push target)
+  if push_ref and status.upstream and push_ref == status.upstream then
+    return true
+  end
+
+  return false
 end
 
 --- Push to push target (same-name branch on remote)
@@ -214,7 +227,7 @@ function M._push_upstream(repo_state, popup_data)
 
   -- Check if remote branch exists
   -- If not, prompt user to create it
-  if push_ref and not remote_branch_exists(status) then
+  if push_ref and not remote_branch_exists(status, push_ref) then
     local prompt = string.format("Create remote branch '%s'?", push_ref)
     vim.ui.select({ "Yes", "No" }, { prompt = prompt }, function(choice)
       if choice ~= "Yes" then
