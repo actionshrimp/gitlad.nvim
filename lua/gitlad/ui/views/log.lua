@@ -11,6 +11,12 @@ local keymap = require("gitlad.utils.keymap")
 local hl = require("gitlad.ui.hl")
 local git = require("gitlad.git")
 
+-- Namespace for sign column indicators
+local ns_signs = vim.api.nvim_create_namespace("gitlad_log_signs")
+
+---@class LogSignInfo
+---@field expanded boolean Whether the commit is expanded
+
 ---@class LogBuffer
 ---@field bufnr number Buffer number
 ---@field winnr number|nil Window number if open
@@ -20,6 +26,7 @@ local git = require("gitlad.git")
 ---@field line_map table<number, CommitLineInfo> Map of line numbers to commit info
 ---@field expanded_commits table<string, boolean> Map of commit hash to expanded state
 ---@field commit_ranges table<string, {start: number, end_line: number}> Hash → line range
+---@field sign_lines table<number, LogSignInfo> Map of line numbers to sign info
 local LogBuffer = {}
 LogBuffer.__index = LogBuffer
 
@@ -42,6 +49,7 @@ local function get_or_create_buffer(repo_state)
   self.line_map = {}
   self.expanded_commits = {}
   self.commit_ranges = {}
+  self.sign_lines = {}
 
   -- Create buffer
   self.bufnr = vim.api.nvim_create_buf(false, true)
@@ -102,6 +110,42 @@ function LogBuffer:_setup_keymaps()
   keymap.set(bufnr, "n", "q", function()
     self:close()
   end, "Close log")
+
+  -- Branch popup
+  keymap.set(bufnr, "n", "b", function()
+    local branch_popup = require("gitlad.popups.branch")
+    branch_popup.open(self.repo_state)
+  end, "Branch popup")
+
+  -- Rebase popup
+  keymap.set(bufnr, "n", "r", function()
+    local rebase_popup = require("gitlad.popups.rebase")
+    rebase_popup.open(self.repo_state)
+  end, "Rebase popup")
+
+  -- Cherry-pick popup
+  keymap.set(bufnr, "n", "A", function()
+    local cherrypick_popup = require("gitlad.popups.cherrypick")
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    cherrypick_popup.open(self.repo_state, context)
+  end, "Cherry-pick popup")
+
+  -- Revert popup
+  keymap.set(bufnr, "n", "_", function()
+    local revert_popup = require("gitlad.popups.revert")
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    revert_popup.open(self.repo_state, context)
+  end, "Revert popup")
+
+  -- Reset popup
+  keymap.set(bufnr, "n", "X", function()
+    local reset_popup = require("gitlad.popups.reset")
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    reset_popup.open(self.repo_state, context)
+  end, "Reset popup")
 end
 
 --- Get current commit under cursor
@@ -258,6 +302,7 @@ function LogBuffer:render()
   local lines = {}
   self.line_map = {}
   self.commit_ranges = {}
+  self.sign_lines = {}
 
   -- Header
   local header = "Commits"
@@ -277,7 +322,7 @@ function LogBuffer:render()
   else
     -- Use log_list component to render commits
     local result = log_list.render(self.commits, self.expanded_commits, {
-      indent = 2,
+      indent = 0,
       section = "log",
       show_author = true,
       show_date = true,
@@ -292,11 +337,16 @@ function LogBuffer:render()
       end
     end
 
-    -- Update commit_ranges with correct offsets
+    -- Update commit_ranges with correct offsets and track sign_lines
     for hash, range in pairs(result.commit_ranges) do
+      local adjusted_start = range.start + header_lines
       self.commit_ranges[hash] = {
-        start = range.start + header_lines,
+        start = adjusted_start,
         end_line = range.end_line + header_lines,
+      }
+      -- Add sign indicator for the first line of each commit
+      self.sign_lines[adjusted_start] = {
+        expanded = self.expanded_commits[hash] or false,
       }
     end
   end
@@ -307,6 +357,9 @@ function LogBuffer:render()
 
   -- Apply syntax highlighting
   self:_apply_highlights(header_lines)
+
+  -- Place expand/collapse signs
+  self:_place_signs()
 
   -- Make buffer non-modifiable to prevent accidental edits
   vim.bo[self.bufnr].modifiable = false
@@ -326,12 +379,30 @@ function LogBuffer:_apply_highlights(header_lines)
   -- Use log_list's highlight function for commit lines
   if #self.commits > 0 then
     local result = log_list.render(self.commits, self.expanded_commits, {
-      indent = 2,
+      indent = 0,
       section = "log",
       show_author = true,
       show_date = true,
     })
     log_list.apply_highlights(self.bufnr, header_lines, result)
+  end
+end
+
+--- Place expand/collapse signs in the sign column
+function LogBuffer:_place_signs()
+  -- Clear existing signs
+  vim.api.nvim_buf_clear_namespace(self.bufnr, ns_signs, 0, -1)
+
+  -- Place signs for lines that have expand indicators
+  for line_num, sign_info in pairs(self.sign_lines) do
+    local sign_text = sign_info.expanded and "v" or ">"
+    local sign_hl = "GitladExpandIndicator"
+
+    vim.api.nvim_buf_set_extmark(self.bufnr, ns_signs, line_num - 1, 0, {
+      sign_text = sign_text,
+      sign_hl_group = sign_hl,
+      priority = 10,
+    })
   end
 end
 
@@ -355,6 +426,13 @@ function LogBuffer:open_with_commits(repo_state, commits, args)
   -- Open in current window (like status buffer)
   vim.api.nvim_set_current_buf(self.bufnr)
   self.winnr = vim.api.nvim_get_current_win()
+
+  -- Set window-local options for clean log display
+  vim.wo[self.winnr].number = false
+  vim.wo[self.winnr].relativenumber = false
+  vim.wo[self.winnr].signcolumn = "yes:1"
+  vim.wo[self.winnr].foldcolumn = "0"
+  vim.wo[self.winnr].wrap = false
 
   self:render()
 

@@ -224,6 +224,39 @@ T["log view"]["displays commits"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["log view"]["commit lines have no leading indent"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create a commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+
+  -- Find the commit line (contains 7-char hash followed by subject)
+  local commit_line_found = false
+  for _, line in ipairs(lines) do
+    if line:match("Test commit") then
+      commit_line_found = true
+      -- Line should start directly with hash (no leading spaces)
+      expect.equality(line:match("^%x%x%x%x%x%x%x ") ~= nil, true)
+      break
+    end
+  end
+  expect.equality(commit_line_found, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 T["log view"]["can yank commit hash with y"] = function()
   local repo = create_test_repo(child)
   cd(child, repo)
@@ -347,6 +380,219 @@ T["log view"]["buffer is not modifiable"] = function()
   -- Check that buffer is not modifiable
   local modifiable = child.lua_get("vim.bo.modifiable")
   eq(modifiable, false)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["has sign column with expand indicators"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create commits
+  create_file(child, repo, "file1.txt", "content 1")
+  git(child, repo, "add file1.txt")
+  git(child, repo, "commit -m 'First commit'")
+
+  create_file(child, repo, "file2.txt", "content 2")
+  git(child, repo, "add file2.txt")
+  git(child, repo, "commit -m 'Second commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  -- Check sign column is enabled
+  local signcolumn = child.lua_get("vim.wo.signcolumn")
+  eq(signcolumn, "yes:1")
+
+  -- Check that extmarks exist in the sign namespace
+  child.lua([[
+    _G.test_has_signs = false
+    local log_view = require("gitlad.ui.views.log")
+    local buf = log_view.get_buffer()
+    if buf then
+      local ns = vim.api.nvim_get_namespaces()["gitlad_log_signs"]
+      if ns then
+        local marks = vim.api.nvim_buf_get_extmarks(buf.bufnr, ns, 0, -1, {})
+        _G.test_has_signs = #marks > 0
+      end
+    end
+  ]])
+  local has_signs = child.lua_get("_G.test_has_signs")
+  eq(has_signs, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["sign indicator changes when commit is expanded"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create a commit with a body
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, 'commit -m "Test commit" -m "This is the body of the commit"')
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  -- Get sign text before expansion
+  child.lua([[
+    _G.test_sign_text = nil
+    local log_view = require("gitlad.ui.views.log")
+    local buf = log_view.get_buffer()
+    if buf then
+      local ns = vim.api.nvim_get_namespaces()["gitlad_log_signs"]
+      if ns then
+        local marks = vim.api.nvim_buf_get_extmarks(buf.bufnr, ns, 0, -1, { details = true })
+        if #marks > 0 then
+          _G.test_sign_text = marks[1][4].sign_text
+        end
+      end
+    end
+  ]])
+  local sign_text_before = child.lua_get("_G.test_sign_text")
+  -- Sign text may include trailing space for alignment
+  expect.equality(sign_text_before:match("^>") ~= nil, true)
+
+  -- Navigate to commit line and expand it
+  child.type_keys("gj") -- Go to first commit
+  child.type_keys("<Tab>")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Get sign text after expansion
+  child.lua([[
+    _G.test_sign_text = nil
+    local log_view = require("gitlad.ui.views.log")
+    local buf = log_view.get_buffer()
+    if buf then
+      local ns = vim.api.nvim_get_namespaces()["gitlad_log_signs"]
+      if ns then
+        local marks = vim.api.nvim_buf_get_extmarks(buf.bufnr, ns, 0, -1, { details = true })
+        if #marks > 0 then
+          _G.test_sign_text = marks[1][4].sign_text
+        end
+      end
+    end
+  ]])
+  local sign_text_after = child.lua_get("_G.test_sign_text")
+  -- Sign text may include trailing space for alignment
+  expect.equality(sign_text_after:match("^v") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["has popup keymaps (b, r, A, _, X)"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create a commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  -- Check that popup keymaps exist
+  child.lua([[
+    _G.popup_keymaps = {}
+    local keymaps = vim.api.nvim_buf_get_keymap(0, 'n')
+    for _, km in ipairs(keymaps) do
+      if km.lhs == "b" then _G.popup_keymaps.branch = true end
+      if km.lhs == "r" then _G.popup_keymaps.rebase = true end
+      if km.lhs == "A" then _G.popup_keymaps.cherrypick = true end
+      if km.lhs == "_" then _G.popup_keymaps.revert = true end
+      if km.lhs == "X" then _G.popup_keymaps.reset = true end
+    end
+  ]])
+
+  local has_branch = child.lua_get("_G.popup_keymaps.branch")
+  local has_rebase = child.lua_get("_G.popup_keymaps.rebase")
+  local has_cherrypick = child.lua_get("_G.popup_keymaps.cherrypick")
+  local has_revert = child.lua_get("_G.popup_keymaps.revert")
+  local has_reset = child.lua_get("_G.popup_keymaps.reset")
+
+  eq(has_branch, true)
+  eq(has_rebase, true)
+  eq(has_cherrypick, true)
+  eq(has_revert, true)
+  eq(has_reset, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["branch popup opens from log view"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create a commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  local win_count_before = child.lua_get("vim.fn.winnr('$')")
+
+  -- Open branch popup
+  child.type_keys("b")
+  child.lua("vim.wait(200, function() end)")
+
+  -- Should have opened a popup window
+  local win_count_after = child.lua_get("vim.fn.winnr('$')")
+  eq(win_count_after > win_count_before, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["reset popup opens with commit context"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create commits
+  create_file(child, repo, "file1.txt", "content 1")
+  git(child, repo, "add file1.txt")
+  git(child, repo, "commit -m 'First commit'")
+
+  create_file(child, repo, "file2.txt", "content 2")
+  git(child, repo, "add file2.txt")
+  git(child, repo, "commit -m 'Second commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  local win_count_before = child.lua_get("vim.fn.winnr('$')")
+
+  -- Navigate to first commit and open reset popup
+  child.type_keys("gj")
+  child.lua("vim.wait(100, function() end)")
+  child.type_keys("X")
+  child.lua("vim.wait(200, function() end)")
+
+  -- Should have opened a popup window
+  local win_count_after = child.lua_get("vim.fn.winnr('$')")
+  eq(win_count_after > win_count_before, true)
 
   cleanup_test_repo(child, repo)
 end
