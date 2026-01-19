@@ -519,19 +519,14 @@ function RefsBuffer:render()
   table.sort(remotes)
 
   if #remotes > 0 then
-    table.insert(lines, "Remotes")
-    self.section_lines[#lines] = "remotes"
-    self.line_map[#lines] = { type = "section", section = "remotes" }
-    table.insert(lines, "")
-
     for _, remote in ipairs(remotes) do
       local remote_refs = self.remote_branches[remote]
-      table.insert(lines, "  " .. remote .. " (" .. #remote_refs .. ")")
+      table.insert(lines, remote .. " (" .. #remote_refs .. ")")
       self.section_lines[#lines] = "remote:" .. remote
       self.line_map[#lines] = { type = "section", section = "remote:" .. remote }
 
       for _, ref in ipairs(remote_refs) do
-        self:_render_ref(lines, ref, 2)
+        self:_render_ref(lines, ref)
       end
       table.insert(lines, "")
     end
@@ -608,10 +603,10 @@ function RefsBuffer:_render_ref(lines, ref, base_indent)
   local line_num = #lines
   self.line_map[line_num] = { type = "ref", ref = ref }
 
-  -- Track sign for expandable refs
+  -- Track sign for expandable refs (only show if expanded or has cached cherries)
   local is_expanded = self.expanded_refs[ref.name]
   local has_cherry = self.cherry_cache[ref.name] and #self.cherry_cache[ref.name] > 0
-  if is_expanded or ref.type == "local" then
+  if is_expanded or has_cherry then
     self.sign_lines[line_num] = { expanded = is_expanded or false }
   end
 
