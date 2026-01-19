@@ -250,11 +250,11 @@ function StatusBuffer:_setup_keymaps()
     local context = self:_get_diff_context()
     diff_popup.open(self.repo_state, context)
   end, "Diff popup")
-  keymap.set(bufnr, "n", "y", function()
-    self:_yank_commit_hash()
-  end, "Yank commit hash")
-
-  -- Refs popup (evil-collection style: yr)
+  -- Yank bindings (evil-collection style: y prefix)
+  -- yy is left to vim's default (yank line)
+  keymap.set(bufnr, "n", "ys", function()
+    self:_yank_section_value()
+  end, "Yank section value")
   keymap.set(bufnr, "n", "yr", function()
     local refs_popup = require("gitlad.popups.refs")
     refs_popup.open(self.repo_state)
@@ -373,16 +373,36 @@ function StatusBuffer:_get_diff_context()
   return { file_path = file_path, section = section, commit = commit }
 end
 
---- Yank commit hash to clipboard
-function StatusBuffer:_yank_commit_hash()
+--- Yank section value to clipboard (commit hash, file path, or stash name)
+function StatusBuffer:_yank_section_value()
+  -- Try commit first
   local commit = self:_get_current_commit()
-  if not commit then
+  if commit then
+    vim.fn.setreg("+", commit.hash)
+    vim.fn.setreg('"', commit.hash)
+    vim.notify("[gitlad] Yanked: " .. commit.hash, vim.log.levels.INFO)
     return
   end
 
-  vim.fn.setreg("+", commit.hash)
-  vim.fn.setreg('"', commit.hash)
-  vim.notify("[gitlad] Yanked: " .. commit.hash, vim.log.levels.INFO)
+  -- Try file path
+  local file_path = self:_get_current_file()
+  if file_path then
+    vim.fn.setreg("+", file_path)
+    vim.fn.setreg('"', file_path)
+    vim.notify("[gitlad] Yanked: " .. file_path, vim.log.levels.INFO)
+    return
+  end
+
+  -- Try stash
+  local stash = self:_get_current_stash()
+  if stash then
+    vim.fn.setreg("+", stash.name)
+    vim.fn.setreg('"', stash.name)
+    vim.notify("[gitlad] Yanked: " .. stash.name, vim.log.levels.INFO)
+    return
+  end
+
+  vim.notify("[gitlad] Nothing to yank at cursor", vim.log.levels.INFO)
 end
 
 --- Get the cache key for a file's diff
