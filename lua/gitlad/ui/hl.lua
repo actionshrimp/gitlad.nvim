@@ -114,6 +114,14 @@ local highlight_groups = {
   -- Status indicator (spinner/idle)
   GitladStatusSpinner = { link = "DiagnosticInfo" },
   GitladStatusIdle = { link = "Comment" },
+
+  -- Output viewer (streaming command output)
+  GitladOutputSuccess = { link = "DiagnosticOk" },
+  GitladOutputFailure = { link = "DiagnosticError" },
+  GitladOutputSpinner = { link = "DiagnosticInfo" },
+  GitladOutputCommand = { link = "Comment" },
+  GitladOutputSeparator = { link = "Comment" },
+  GitladOutputStderr = { link = "DiagnosticError" },
 }
 
 -- Section header definition: single style for all section headers (like magit/neogit)

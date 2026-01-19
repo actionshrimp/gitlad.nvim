@@ -116,7 +116,8 @@ function M._do_extend(repo_state, popup_data)
   local git = require("gitlad.git")
   local args = popup_data:get_arguments()
 
-  git.commit_amend_no_edit(args, { cwd = repo_state.repo_root }, function(success, err)
+  -- Use streaming version to show hook output
+  git.commit_amend_no_edit_streaming(args, { cwd = repo_state.repo_root }, function(success, err)
     vim.schedule(function()
       if success then
         vim.notify("[gitlad] Commit extended", vim.log.levels.INFO)

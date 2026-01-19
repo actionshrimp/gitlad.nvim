@@ -276,6 +276,68 @@ function M.commit_amend_no_edit(args, opts, callback)
   end)
 end
 
+--- Create a commit with streaming output viewer
+--- Shows a floating window with real-time hook output
+---@param message_lines string[] Commit message lines
+---@param args string[] Extra arguments (from popup switches/options)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.commit_streaming(message_lines, args, opts, callback)
+  local output_viewer = require("gitlad.ui.views.output")
+
+  -- Build display command for the viewer
+  local display_cmd = "git commit " .. table.concat(args, " ")
+
+  local viewer = output_viewer.open({
+    title = "Commit",
+    command = display_cmd,
+  })
+
+  -- Build commit args: commit -F - <extra_args>
+  local commit_args = { "commit", "-F", "-" }
+  vim.list_extend(commit_args, args)
+
+  cli.run_async_with_stdin(commit_args, message_lines, {
+    cwd = opts and opts.cwd,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
+  }, function(result)
+    viewer:complete(result.code)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Amend the current commit without editing the message, with streaming output viewer
+--- Shows a floating window with real-time hook output
+---@param args string[] Extra arguments (from popup switches/options)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.commit_amend_no_edit_streaming(args, opts, callback)
+  local output_viewer = require("gitlad.ui.views.output")
+
+  -- Build display command for the viewer
+  local display_cmd = "git commit --amend --no-edit " .. table.concat(args, " ")
+
+  local viewer = output_viewer.open({
+    title = "Amend",
+    command = display_cmd,
+  })
+
+  local commit_args = { "commit", "--amend", "--no-edit" }
+  vim.list_extend(commit_args, args)
+
+  cli.run_async(commit_args, {
+    cwd = opts and opts.cwd,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
+  }, function(result)
+    viewer:complete(result.code)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
 --- Check if path is inside a git repository
 ---@param path? string Path to check (defaults to cwd)
 ---@return boolean
