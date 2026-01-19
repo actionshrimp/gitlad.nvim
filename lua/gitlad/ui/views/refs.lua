@@ -368,6 +368,9 @@ function RefsBuffer:_smart_delete_local_branch(ref, on_complete)
         return
       end
 
+      -- DEBUG: Log the error to see what we're getting
+      vim.notify("[DEBUG] delete_branch error: " .. vim.inspect(err), vim.log.levels.INFO)
+
       -- Check if it's an "unmerged" error
       if err and err:match("not fully merged") then
         -- Prompt user to confirm force delete
