@@ -482,9 +482,40 @@ function RefsBuffer:refresh()
       self.expanded_refs = {}
       self.cherry_cache = {}
 
+      -- Render immediately so user sees content
       self:render()
+
+      -- Pre-fetch cherry data for local branches (fast operation)
+      self:_prefetch_local_cherries()
     end)
   end)
+end
+
+--- Pre-fetch cherry commits for all local branches
+function RefsBuffer:_prefetch_local_cherries()
+  if #self.local_branches == 0 then
+    return
+  end
+
+  local pending = #self.local_branches
+  local cwd = self.repo_state.repo_root
+
+  for _, ref in ipairs(self.local_branches) do
+    git.cherry(ref.name, self.base_ref, { cwd = cwd }, function(commits, err)
+      vim.schedule(function()
+        pending = pending - 1
+
+        if not err then
+          self.cherry_cache[ref.name] = commits or {}
+        end
+
+        -- Re-render once all cherry data is fetched
+        if pending == 0 then
+          self:render()
+        end
+      end)
+    end)
+  end
 end
 
 --- Render the refs buffer
