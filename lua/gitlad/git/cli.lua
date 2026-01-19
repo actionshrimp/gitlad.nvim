@@ -17,6 +17,7 @@ local history = require("gitlad.git.history")
 ---@field cwd? string Working directory (defaults to current)
 ---@field env? table<string, string> Environment variables
 ---@field timeout? number Timeout in milliseconds (default: 30000)
+---@field on_output_line? fun(line: string, is_stderr: boolean) Callback for each output line (streaming)
 
 -- Standard git flags for performance and consistency
 local GIT_FLAGS = {
@@ -135,6 +136,14 @@ function M.run_async(args, opts, callback)
         if #data > 0 and data[#data] == "" then
           table.remove(data)
         end
+        -- Stream each line to callback if provided
+        if opts.on_output_line then
+          for _, line in ipairs(data) do
+            vim.schedule(function()
+              opts.on_output_line(line, false)
+            end)
+          end
+        end
         vim.list_extend(stdout_data, data)
       end
     end,
@@ -142,6 +151,14 @@ function M.run_async(args, opts, callback)
       if data then
         if #data > 0 and data[#data] == "" then
           table.remove(data)
+        end
+        -- Stream each line to callback if provided
+        if opts.on_output_line then
+          for _, line in ipairs(data) do
+            vim.schedule(function()
+              opts.on_output_line(line, true)
+            end)
+          end
         end
         vim.list_extend(stderr_data, data)
       end
@@ -271,6 +288,14 @@ function M.run_async_with_stdin(args, stdin_lines, opts, callback)
         if #data > 0 and data[#data] == "" then
           table.remove(data)
         end
+        -- Stream each line to callback if provided
+        if opts.on_output_line then
+          for _, line in ipairs(data) do
+            vim.schedule(function()
+              opts.on_output_line(line, false)
+            end)
+          end
+        end
         vim.list_extend(stdout_data, data)
       end
     end,
@@ -278,6 +303,14 @@ function M.run_async_with_stdin(args, stdin_lines, opts, callback)
       if data then
         if #data > 0 and data[#data] == "" then
           table.remove(data)
+        end
+        -- Stream each line to callback if provided
+        if opts.on_output_line then
+          for _, line in ipairs(data) do
+            vim.schedule(function()
+              opts.on_output_line(line, true)
+            end)
+          end
         end
         vim.list_extend(stderr_data, data)
       end

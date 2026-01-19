@@ -225,8 +225,8 @@ local function do_commit()
   -- Close editor first
   close_editor()
 
-  -- Execute commit
-  git.commit(message, args, { cwd = repo_state.repo_root }, function(success, err)
+  -- Execute commit with streaming output viewer (shows hook progress)
+  git.commit_streaming(message, args, { cwd = repo_state.repo_root }, function(success, err)
     vim.schedule(function()
       if success then
         vim.notify("[gitlad] Commit created", vim.log.levels.INFO)

@@ -55,7 +55,18 @@ local function reset_with_prompt(repo_state, context, prompt, reset_fn, mode_nam
   end)
 end
 
+--- Check if there are uncommitted changes (staged or unstaged)
+---@param status GitStatusResult|nil
+---@return boolean
+local function has_uncommitted_changes(status)
+  if not status then
+    return false
+  end
+  return (status.staged and #status.staged > 0) or (status.unstaged and #status.unstaged > 0)
+end
+
 --- Prompt for target ref with confirmation for destructive operations
+--- Refreshes status first and only shows confirmation if there are uncommitted changes
 ---@param repo_state RepoState
 ---@param context? { commit: string } Optional commit from cursor context
 ---@param prompt string Prompt to show user
@@ -66,25 +77,38 @@ local function reset_with_confirmation(repo_state, context, prompt, reset_fn, mo
   -- Get the target ref first
   local target_ref = context and context.commit or nil
 
-  local function do_reset(ref)
-    -- Show confirmation dialog
-    vim.ui.select({ "Yes", "No" }, {
-      prompt = warning .. " Continue?",
-    }, function(choice)
-      if choice ~= "Yes" then
-        return
-      end
+  local function execute_reset(ref)
+    vim.notify("[gitlad] Resetting (" .. mode_name .. ")...", vim.log.levels.INFO)
+    reset_fn(ref, { cwd = repo_state.repo_root }, function(success, err)
+      vim.schedule(function()
+        if success then
+          vim.notify("[gitlad] Reset to " .. ref, vim.log.levels.INFO)
+          repo_state:refresh_status(true)
+        else
+          vim.notify("[gitlad] Reset failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        end
+      end)
+    end)
+  end
 
-      vim.notify("[gitlad] Resetting (" .. mode_name .. ")...", vim.log.levels.INFO)
-      reset_fn(ref, { cwd = repo_state.repo_root }, function(success, err)
-        vim.schedule(function()
-          if success then
-            vim.notify("[gitlad] Reset to " .. ref, vim.log.levels.INFO)
-            repo_state:refresh_status(true)
-          else
-            vim.notify("[gitlad] Reset failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
-          end
-        end)
+  local function do_reset(ref)
+    -- Force refresh status first to check for uncommitted changes
+    repo_state:refresh_status(true, function()
+      vim.schedule(function()
+        -- Only show confirmation if there are uncommitted changes
+        if has_uncommitted_changes(repo_state.status) then
+          vim.ui.select({ "Yes", "No" }, {
+            prompt = warning .. " Continue?",
+          }, function(choice)
+            if choice ~= "Yes" then
+              return
+            end
+            execute_reset(ref)
+          end)
+        else
+          -- No uncommitted changes, proceed directly
+          execute_reset(ref)
+        end
       end)
     end)
   end

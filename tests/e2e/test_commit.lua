@@ -96,6 +96,7 @@ T["commit popup"]["opens from status buffer with c key"] = function()
   local found_commit = false
   local found_amend = false
   local found_extend = false
+  local found_reword = false
   for _, line in ipairs(lines) do
     if line:match("c%s+Commit") then
       found_commit = true
@@ -106,11 +107,15 @@ T["commit popup"]["opens from status buffer with c key"] = function()
     if line:match("e%s+Extend") then
       found_extend = true
     end
+    if line:match("w%s+Reword") then
+      found_reword = true
+    end
   end
 
   eq(found_commit, true)
   eq(found_amend, true)
   eq(found_extend, true)
+  eq(found_reword, true)
 
   -- Clean up
   child.type_keys("q")
@@ -685,6 +690,100 @@ T["amend action"]["opens editor with previous commit message"] = function()
 
   -- Clean up - abort the amend
   child.type_keys("<C-c><C-k>")
+  cleanup_repo(child, repo)
+end
+
+-- Reword action tests
+T["reword action"] = MiniTest.new_set()
+
+T["reword action"]["opens editor with previous commit message"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Original commit message"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open commit popup and press w for reword
+  child.type_keys("c")
+  child.type_keys("w")
+
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Verify editor contains previous message
+  local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
+  local found_message = false
+  for _, line in ipairs(lines) do
+    if line:match("Original commit message") then
+      found_message = true
+    end
+  end
+  eq(found_message, true)
+
+  -- Clean up - abort the reword
+  child.type_keys("<C-c><C-k>")
+  cleanup_repo(child, repo)
+end
+
+T["reword action"]["ignores staged changes"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial commit"')
+
+  -- Stage a new file that should NOT be included in the reword
+  create_file(child, repo, "newfile.txt", "new content")
+  git(child, repo, "add newfile.txt")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open commit popup and press w for reword
+  child.type_keys("c")
+  child.type_keys("w")
+
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Edit the commit message
+  child.type_keys("ggdG") -- Delete all
+  child.type_keys("iReworded message")
+  child.type_keys("<Esc>")
+
+  -- Confirm with C-c C-c
+  child.type_keys("<C-c><C-c>")
+
+  -- Wait for async commit operation to complete
+  child.lua([[vim.wait(1500, function() return false end)]])
+
+  -- Verify only one commit exists (reword, not new commit)
+  local log = git(child, repo, "log --oneline")
+  local commit_count = 0
+  for _ in log:gmatch("[^\n]+") do
+    commit_count = commit_count + 1
+  end
+  eq(commit_count, 1)
+
+  -- Verify commit message was changed
+  local message = git(child, repo, "log -1 --pretty=%B")
+  eq(message:match("Reworded message") ~= nil, true)
+
+  -- Verify newfile.txt is NOT in the commit (still staged, not committed)
+  local show = git(child, repo, "show --name-only")
+  eq(show:match("newfile.txt") == nil, true)
+
+  -- Verify newfile.txt is still staged
+  local status = git(child, repo, "status --porcelain")
+  eq(status:match("A%s+newfile.txt") ~= nil, true)
+
   cleanup_repo(child, repo)
 end
 

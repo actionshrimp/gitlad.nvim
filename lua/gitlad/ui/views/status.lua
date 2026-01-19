@@ -14,6 +14,7 @@ local utils = require("gitlad.utils")
 local hl = require("gitlad.ui.hl")
 local log_list = require("gitlad.ui.components.log_list")
 local signs_util = require("gitlad.ui.utils.signs")
+local spinner_util = require("gitlad.ui.utils.spinner")
 
 -- Namespace for sign column indicators
 local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
@@ -61,6 +62,8 @@ local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 ---@field expanded_commits table<string, boolean> Map of commit hash to expanded state
 ---@field diff_cache table<string, DiffData> Map of "section:path" to parsed diff data
 ---@field sign_lines table<number, SignInfo> Map of line numbers to sign info
+---@field spinner Spinner Animated spinner for refresh indicator
+---@field status_line_num number|nil Line number of the status indicator line
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
 
@@ -85,9 +88,13 @@ local function get_or_create_buffer(repo_state)
   self.expanded_commits = {} -- Tracks which commits have details expanded
   self.collapsed_sections = {} -- Tracks which commit sections are collapsed
   self.diff_cache = {} -- Caches fetched diff lines
+  self.status_line_num = nil -- Line number of the status indicator
   -- Initialize submodules section visibility from config
   local cfg = require("gitlad.config").get()
   self.show_submodules_section = cfg.status and cfg.status.show_submodules_section or false
+
+  -- Create spinner for refresh indicator
+  self.spinner = spinner_util.new()
 
   -- Create buffer
   self.bufnr = vim.api.nvim_create_buf(false, true)
@@ -106,6 +113,15 @@ local function get_or_create_buffer(repo_state)
   -- Listen for status updates
   repo_state:on("status", function()
     vim.schedule(function()
+      -- Manage spinner based on refreshing state
+      if repo_state.refreshing then
+        self.spinner:start(function()
+          self:_update_status_line()
+        end)
+      else
+        self.spinner:stop()
+      end
+
       -- Clear diff/expansion data when status changes to avoid stale data
       self.expanded_files = {}
       self.expanded_commits = {}
@@ -113,6 +129,15 @@ local function get_or_create_buffer(repo_state)
       self:render()
     end)
   end)
+
+  -- Clean up spinner when buffer is wiped
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    buffer = self.bufnr,
+    callback = function()
+      self.spinner:destroy()
+      status_buffers[key] = nil
+    end,
+  })
 
   status_buffers[key] = self
   return self
@@ -1167,6 +1192,28 @@ function StatusBuffer:_toggle_diff()
   end)
 end
 
+--- Update just the status indicator line (called by spinner animation)
+function StatusBuffer:_update_status_line()
+  if not vim.api.nvim_buf_is_valid(self.bufnr) then
+    return
+  end
+  if not self.status_line_num then
+    return
+  end
+
+  local line_idx = self.status_line_num - 1 -- 0-indexed
+  local new_text = self.spinner:get_display()
+
+  -- Temporarily make buffer modifiable
+  vim.bo[self.bufnr].modifiable = true
+  vim.api.nvim_buf_set_lines(self.bufnr, line_idx, line_idx + 1, false, { new_text })
+  vim.bo[self.bufnr].modifiable = false
+
+  -- Re-apply highlighting for just this line
+  local ns_status = vim.api.nvim_create_namespace("gitlad_status")
+  hl.apply_status_line_highlight(self.bufnr, ns_status, line_idx, new_text)
+end
+
 --- Navigate to next file entry
 function StatusBuffer:_goto_next_file()
   local cursor = vim.api.nvim_win_get_cursor(0)
@@ -1545,9 +1592,6 @@ function StatusBuffer:render()
   if status.head_commit_msg then
     head_line = head_line .. "  " .. status.head_commit_msg
   end
-  if self.repo_state.refreshing then
-    head_line = head_line .. "  (Refreshing...)"
-  end
   table.insert(lines, head_line)
 
   -- Merge (upstream) line
@@ -1573,6 +1617,10 @@ function StatusBuffer:render()
     end
     table.insert(lines, push_line)
   end
+
+  -- Status indicator line (shows spinner when refreshing, placeholder when idle)
+  table.insert(lines, self.spinner:get_display())
+  self.status_line_num = #lines
 
   -- Sequencer state (cherry-pick/revert/rebase in progress)
   if status.cherry_pick_in_progress then
@@ -1764,7 +1812,6 @@ function StatusBuffer:render()
   end
 
   -- Help line
-  table.insert(lines, "")
   table.insert(lines, "Press ? for help")
 
   -- Allow modification while updating buffer

@@ -142,6 +142,7 @@ T["commit popup"]["creates actions correctly"] = function()
 
   local commit_called = false
   local extend_called = false
+  local reword_called = false
   local amend_called = false
 
   local data = popup
@@ -154,13 +155,16 @@ T["commit popup"]["creates actions correctly"] = function()
     :action("e", "Extend", function()
       extend_called = true
     end)
+    :action("w", "Reword", function()
+      reword_called = true
+    end)
     :action("a", "Amend", function()
       amend_called = true
     end)
     :build()
 
-  -- 2 headings + 3 actions
-  eq(#data.actions, 5)
+  -- 2 headings + 4 actions
+  eq(#data.actions, 6)
   eq(data.actions[1].type, "heading")
   eq(data.actions[1].text, "Create")
   eq(data.actions[2].type, "action")
@@ -170,7 +174,9 @@ T["commit popup"]["creates actions correctly"] = function()
   eq(data.actions[4].type, "action")
   eq(data.actions[4].key, "e")
   eq(data.actions[5].type, "action")
-  eq(data.actions[5].key, "a")
+  eq(data.actions[5].key, "w")
+  eq(data.actions[6].type, "action")
+  eq(data.actions[6].key, "a")
 
   -- Test callbacks (pass data as popup argument, matching actual invocation)
   data.actions[2].callback(data)
@@ -180,6 +186,9 @@ T["commit popup"]["creates actions correctly"] = function()
   eq(extend_called, true)
 
   data.actions[5].callback(data)
+  eq(reword_called, true)
+
+  data.actions[6].callback(data)
   eq(amend_called, true)
 end
 

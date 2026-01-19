@@ -110,6 +110,18 @@ local highlight_groups = {
 
   -- Help text
   GitladHelpText = { link = "Comment" },
+
+  -- Status indicator (spinner/idle)
+  GitladStatusSpinner = { link = "DiagnosticInfo" },
+  GitladStatusIdle = { link = "Comment" },
+
+  -- Output viewer (streaming command output)
+  GitladOutputSuccess = { link = "DiagnosticOk" },
+  GitladOutputFailure = { link = "DiagnosticError" },
+  GitladOutputSpinner = { link = "DiagnosticInfo" },
+  GitladOutputCommand = { link = "Comment" },
+  GitladOutputSeparator = { link = "Comment" },
+  GitladOutputStderr = { link = "DiagnosticError" },
 }
 
 -- Section header definition: single style for all section headers (like magit/neogit)
@@ -341,6 +353,22 @@ local section_hl = {
   recent = "GitladSectionRecent",
 }
 
+--- Apply highlight to a status indicator line
+--- Used both during full render and during spinner animation updates
+---@param bufnr number Buffer number
+---@param ns number Namespace for extmarks
+---@param line_idx number 0-indexed line number
+---@param line string The line content
+function M.apply_status_line_highlight(bufnr, ns, line_idx, line)
+  -- Clear any existing highlight on this line
+  vim.api.nvim_buf_clear_namespace(bufnr, ns, line_idx, line_idx + 1)
+
+  -- Check if this is the spinner (refreshing) or idle state
+  local is_spinning = line:match("Refreshing")
+  local hl_group = is_spinning and "GitladStatusSpinner" or "GitladStatusIdle"
+  M.set(bufnr, ns, line_idx, 0, #line, hl_group)
+end
+
 --- Apply highlights to the status buffer
 ---@param bufnr number Buffer number
 ---@param lines string[] The rendered lines
@@ -371,12 +399,7 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
           -- Rest is commit message
           local msg_start = line:find("%S", branch_end)
           if msg_start then
-            -- Check for "(Refreshing...)" at the end
-            local refresh_start = line:find("%s*%(Refreshing%.%.%.%)$")
-            local msg_end = refresh_start and refresh_start - 1 or #line
-            if msg_start <= msg_end then
-              M.set(bufnr, ns_status, line_idx, msg_start - 1, msg_end, "GitladCommitMsg")
-            end
+            M.set(bufnr, ns_status, line_idx, msg_start - 1, #line, "GitladCommitMsg")
           end
         else
           -- Branch name goes to end of line
@@ -455,6 +478,10 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
           M.set(bufnr, ns_status, line_idx, remote_start - 1, #line, "GitladRemote")
         end
       end
+
+      -- Status indicator line: "· " or "⠋ Refreshing..."
+    elseif line:match("^[·⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]") then
+      M.apply_status_line_highlight(bufnr, ns_status, line_idx, line)
 
       -- Section headers: "Staged (n)", "Unstaged (n)", "Unmerged into X (n)", etc.
       -- Expand indicators are now in sign column, not in text
