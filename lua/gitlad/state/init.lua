@@ -180,11 +180,12 @@ function RepoState:_fetch_extended_status(result, callback)
     complete_one()
   end)
 
-  -- 4. Fetch sequencer state (cherry-pick/revert in progress)
+  -- 4. Fetch sequencer state (cherry-pick/revert/rebase in progress)
   start_op()
   git.get_sequencer_state(opts, function(seq_state)
     result.cherry_pick_in_progress = seq_state.cherry_pick_in_progress
     result.revert_in_progress = seq_state.revert_in_progress
+    result.rebase_in_progress = seq_state.rebase_in_progress
     result.sequencer_head_oid = seq_state.sequencer_head_oid
 
     -- If there's a sequencer operation in progress, fetch the commit subject

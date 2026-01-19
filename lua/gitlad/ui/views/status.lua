@@ -283,6 +283,12 @@ function StatusBuffer:_setup_keymaps()
     local context = commit and { commit = commit.hash } or nil
     reset_popup.open(self.repo_state, context)
   end, "Reset popup")
+
+  -- Rebase popup
+  keymap.set(bufnr, "n", "r", function()
+    local rebase_popup = require("gitlad.popups.rebase")
+    rebase_popup.open(self.repo_state)
+  end, "Rebase popup")
 end
 
 --- Get the file path at the current cursor position
@@ -1373,7 +1379,7 @@ function StatusBuffer:render()
     table.insert(lines, push_line)
   end
 
-  -- Sequencer state (cherry-pick/revert in progress)
+  -- Sequencer state (cherry-pick/revert/rebase in progress)
   if status.cherry_pick_in_progress then
     local short_oid = status.sequencer_head_oid and status.sequencer_head_oid:sub(1, 7) or "unknown"
     local seq_line = "Cherry-picking: " .. short_oid
@@ -1388,6 +1394,8 @@ function StatusBuffer:render()
       seq_line = seq_line .. " " .. status.sequencer_head_subject
     end
     table.insert(lines, seq_line)
+  elseif status.rebase_in_progress then
+    table.insert(lines, "Rebasing: resolve conflicts and press 'r' to continue")
   end
 
   table.insert(lines, "")
