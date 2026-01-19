@@ -35,6 +35,9 @@ function M.open(repo_state)
     :action("e", "Extend", function(popup_data)
       M._do_extend(repo_state, popup_data)
     end)
+    :action("w", "Reword", function(popup_data)
+      M._do_reword(repo_state, popup_data)
+    end)
     :action("a", "Amend", function(popup_data)
       M._do_commit(repo_state, popup_data, true)
     end)
@@ -123,6 +126,21 @@ function M._do_extend(repo_state, popup_data)
       end
     end)
   end)
+end
+
+--- Reword the current commit (amend message only, ignore staged changes)
+---@param repo_state RepoState
+---@param popup_data PopupData
+function M._do_reword(repo_state, popup_data)
+  local commit_editor = require("gitlad.ui.views.commit_editor")
+  local args = popup_data:get_arguments()
+
+  -- Add --amend and --only flags
+  -- --only with no paths means "only commit what's already in HEAD, ignore index"
+  table.insert(args, "--amend")
+  table.insert(args, "--only")
+
+  commit_editor.open(repo_state, args)
 end
 
 return M
