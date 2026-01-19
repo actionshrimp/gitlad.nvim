@@ -1029,4 +1029,231 @@ function M.delete_remote_tag(remote, tag, opts, callback)
   end)
 end
 
+-- =============================================================================
+-- Submodule Operations
+-- =============================================================================
+
+--- Get submodule status
+---@param opts? GitCommandOptions
+---@param callback fun(submodules: SubmoduleEntry[]|nil, err: string|nil)
+function M.submodule_status(opts, callback)
+  cli.run_async({ "submodule", "status" }, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    callback(parse.parse_submodule_status(result.stdout), nil)
+  end)
+end
+
+--- Get the recorded SHA for a submodule in the index
+--- Returns the SHA that git expects the submodule to be at
+---@param path string Submodule path
+---@param staged boolean Whether to get staged (index) or committed (HEAD) SHA
+---@param opts? GitCommandOptions
+---@param callback fun(sha: string|nil, err: string|nil)
+function M.submodule_recorded_sha(path, staged, opts, callback)
+  local args
+  if staged then
+    -- Get SHA from index
+    args = { "ls-tree", "-d", "HEAD", "--", path }
+  else
+    -- Get SHA from HEAD (committed)
+    args = { "ls-tree", "-d", "HEAD", "--", path }
+  end
+
+  cli.run_async(args, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    -- Format: "160000 commit <sha>\t<path>"
+    local sha = result.stdout[1] and result.stdout[1]:match("^%d+%s+%w+%s+(%x+)")
+    callback(sha, nil)
+  end)
+end
+
+--- Get the current SHA for a submodule (what it's actually at)
+---@param path string Submodule path
+---@param opts? GitCommandOptions
+---@param callback fun(sha: string|nil, err: string|nil)
+function M.submodule_current_sha(path, opts, callback)
+  local submodule_opts = vim.tbl_extend("force", opts or {}, {
+    cwd = (opts and opts.cwd or vim.fn.getcwd()) .. "/" .. path,
+  })
+
+  cli.run_async({ "rev-parse", "HEAD" }, submodule_opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
+    end
+    local sha = result.stdout[1] and vim.trim(result.stdout[1])
+    callback(sha, nil)
+  end)
+end
+
+--- Update submodules
+---@param paths string[]|nil Specific submodule paths (nil for all)
+---@param args string[] Extra arguments (e.g., {"--init", "--recursive"})
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.submodule_update(paths, args, opts, callback)
+  local update_args = { "submodule", "update" }
+  vim.list_extend(update_args, args)
+  if paths and #paths > 0 then
+    table.insert(update_args, "--")
+    vim.list_extend(update_args, paths)
+  end
+
+  cli.run_async(update_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Initialize submodules
+---@param paths string[]|nil Specific submodule paths (nil for all)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.submodule_init(paths, opts, callback)
+  local init_args = { "submodule", "init" }
+  if paths and #paths > 0 then
+    table.insert(init_args, "--")
+    vim.list_extend(init_args, paths)
+  end
+
+  cli.run_async(init_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Synchronize submodule URLs
+---@param paths string[]|nil Specific submodule paths (nil for all)
+---@param args string[] Extra arguments (e.g., {"--recursive"})
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.submodule_sync(paths, args, opts, callback)
+  local sync_args = { "submodule", "sync" }
+  vim.list_extend(sync_args, args)
+  if paths and #paths > 0 then
+    table.insert(sync_args, "--")
+    vim.list_extend(sync_args, paths)
+  end
+
+  cli.run_async(sync_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Deinitialize submodules (remove working tree)
+---@param paths string[] Specific submodule paths
+---@param args string[] Extra arguments (e.g., {"--force"})
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.submodule_deinit(paths, args, opts, callback)
+  local deinit_args = { "submodule", "deinit" }
+  vim.list_extend(deinit_args, args)
+  if #paths > 0 then
+    table.insert(deinit_args, "--")
+    vim.list_extend(deinit_args, paths)
+  end
+
+  cli.run_async(deinit_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Add a new submodule
+---@param url string Repository URL
+---@param path string|nil Destination path (optional, git will derive from URL)
+---@param args string[] Extra arguments (e.g., {"-b", "main"})
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.submodule_add(url, path, args, opts, callback)
+  local add_args = { "submodule", "add" }
+  vim.list_extend(add_args, args)
+  table.insert(add_args, url)
+  if path and path ~= "" then
+    table.insert(add_args, path)
+  end
+
+  cli.run_async(add_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Absorb submodule git directories (register)
+--- Moves .git directories from submodules into the superproject's .git/modules
+---@param paths string[]|nil Specific submodule paths (nil for all)
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.submodule_absorb(paths, opts, callback)
+  local absorb_args = { "submodule", "absorbgitdirs" }
+  if paths and #paths > 0 then
+    table.insert(absorb_args, "--")
+    vim.list_extend(absorb_args, paths)
+  end
+
+  cli.run_async(absorb_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Fetch in all submodules
+---@param args string[] Extra arguments (e.g., {"--recurse-submodules"})
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.fetch_modules(args, opts, callback)
+  local fetch_args = { "submodule", "foreach", "git", "fetch" }
+  vim.list_extend(fetch_args, args)
+
+  cli.run_async(fetch_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- List submodule paths from .gitmodules
+---@param opts? GitCommandOptions
+---@param callback fun(paths: string[]|nil, err: string|nil)
+function M.submodule_list(opts, callback)
+  -- Use config to list all submodule paths
+  cli.run_async({ "config", "--file", ".gitmodules", "--get-regexp", "^submodule\\..+\\.path$" }, opts, function(result)
+    if result.code ~= 0 then
+      -- No .gitmodules or no submodules configured
+      callback({}, nil)
+      return
+    end
+
+    local paths = {}
+    for _, line in ipairs(result.stdout) do
+      -- Format: "submodule.foo/bar.path foo/bar"
+      local path = line:match("^submodule%..+%.path%s+(.+)$")
+      if path then
+        table.insert(paths, path)
+      end
+    end
+    callback(paths, nil)
+  end)
+end
+
 return M

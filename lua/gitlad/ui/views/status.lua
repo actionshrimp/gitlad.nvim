@@ -41,6 +41,11 @@ local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 ---@field stash StashEntry Full stash entry
 ---@field section "stashes" Section identifier
 
+---@class SubmoduleLineInfo
+---@field type "submodule" Discriminator for union type
+---@field submodule SubmoduleEntry Full submodule entry
+---@field section "submodules" Section identifier
+
 ---@class SignInfo
 ---@field expanded boolean Whether the item is expanded
 
@@ -48,7 +53,7 @@ local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 ---@field bufnr number Buffer number
 ---@field winnr number|nil Window number if open
 ---@field repo_state RepoState Repository state
----@field line_map table<number, LineInfo|CommitLineInfo|StashLineInfo> Map of line numbers to file, commit, or stash info
+---@field line_map table<number, LineInfo|CommitLineInfo|StashLineInfo|SubmoduleLineInfo> Map of line numbers to file, commit, stash, or submodule info
 ---@field section_lines table<number, SectionInfo> Map of line numbers to section headers
 ---@field expanded_files table<string, boolean> Map of "section:path" to expanded state
 ---@field expanded_commits table<string, boolean> Map of commit hash to expanded state
@@ -297,6 +302,22 @@ function StatusBuffer:_setup_keymaps()
     local rebase_popup = require("gitlad.popups.rebase")
     rebase_popup.open(self.repo_state)
   end, "Rebase popup")
+
+  -- Submodule popup (evil-collection-magit style: ' for submodule)
+  keymap.set(bufnr, "n", "'", function()
+    local submodule_popup = require("gitlad.popups.submodule")
+    local submodule = self:_get_current_submodule()
+    local context = submodule and { submodule = submodule } or nil
+    submodule_popup.open(self.repo_state, context)
+  end, "Submodule popup")
+
+  -- Visual mode submodule popup (for operations on selected submodules)
+  keymap.set(bufnr, "v", "'", function()
+    local submodule_popup = require("gitlad.popups.submodule")
+    local paths = self:_get_selected_submodule_paths()
+    local context = #paths > 0 and { paths = paths } or nil
+    submodule_popup.open(self.repo_state, context)
+  end, "Submodule popup (selection)")
 end
 
 --- Get the file path at the current cursor position
@@ -328,6 +349,20 @@ function StatusBuffer:_get_current_commit()
   end
 
   return nil, nil
+end
+
+--- Get the submodule at the current cursor position
+---@return SubmoduleEntry|nil submodule
+function StatusBuffer:_get_current_submodule()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+
+  local info = self.line_map[line]
+  if info and info.type == "submodule" then
+    return info.submodule
+  end
+
+  return nil
 end
 
 --- Get the stash at the current cursor position
@@ -363,6 +398,31 @@ function StatusBuffer:_get_selected_commits()
     end
   end
   return {}
+end
+
+--- Get selected submodule paths (visual mode)
+---@return string[] Selected submodule paths
+function StatusBuffer:_get_selected_submodule_paths()
+  local mode = vim.fn.mode()
+  if not mode:match("[vV]") then
+    return {}
+  end
+
+  -- Exit visual mode to get marks
+  local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
+  vim.api.nvim_feedkeys(esc, "nx", false)
+  local start_line = vim.fn.line("'<")
+  local end_line = vim.fn.line("'>")
+
+  local paths = {}
+  for line = start_line, end_line do
+    local info = self.line_map[line]
+    if info and info.type == "submodule" then
+      table.insert(paths, info.submodule.path)
+    end
+  end
+
+  return paths
 end
 
 --- Get diff context for current cursor position
@@ -953,7 +1013,7 @@ function StatusBuffer:_toggle_diff()
   local section_info = self.section_lines[line]
 
   if section_info then
-    -- Check if this is a collapsible section (commit sections and stashes)
+    -- Check if this is a collapsible section (commit sections, stashes, submodules)
     local collapsible_sections = {
       unpulled_upstream = true,
       unpushed_upstream = true,
@@ -961,6 +1021,7 @@ function StatusBuffer:_toggle_diff()
       unpushed_push = true,
       recent = true,
       stashes = true,
+      submodules = true,
     }
     if collapsible_sections[section_info.section] then
       -- Toggle the section collapsed state
@@ -969,6 +1030,46 @@ function StatusBuffer:_toggle_diff()
       self:render()
       return
     end
+  end
+
+  -- Check if on a submodule entry
+  local submodule = self:_get_current_submodule()
+  if submodule then
+    local key = "submodule:" .. submodule.path
+
+    -- Toggle expanded state
+    if self.expanded_files[key] then
+      self.expanded_files[key] = false
+      self.diff_cache[key] = nil
+      self:render()
+      return
+    end
+
+    -- For submodules, fetch the recorded SHA and show the diff
+    local opts = { cwd = self.repo_state.repo_root }
+    git.submodule_recorded_sha(submodule.path, false, opts, function(recorded_sha, err)
+      if err then
+        vim.notify("[gitlad] Submodule SHA error: " .. err, vim.log.levels.ERROR)
+        return
+      end
+
+      vim.schedule(function()
+        -- Create a simple diff showing old->new SHA
+        local old_sha = recorded_sha or "0000000000000000000000000000000000000000"
+        local new_sha = submodule.sha
+
+        -- Store as a special "submodule diff" format
+        self.diff_cache[key] = {
+          is_submodule = true,
+          old_sha = old_sha,
+          new_sha = new_sha,
+          hunks = {}, -- No hunks for submodule diffs
+        }
+        self.expanded_files[key] = true
+        self:render()
+      end)
+    end)
+    return
   end
 
   local path, section = self:_get_current_file()
@@ -1080,6 +1181,16 @@ end
 
 --- Visit the file at cursor
 function StatusBuffer:_visit_file()
+  -- Check if on a submodule - open its directory
+  local submodule = self:_get_current_submodule()
+  if submodule then
+    local submodule_path = self.repo_state.repo_root .. submodule.path
+    -- Close status and open submodule directory
+    self:close()
+    vim.cmd("edit " .. vim.fn.fnameescape(submodule_path))
+    return
+  end
+
   local path = self:_get_current_file()
   if path then
     local full_path = self.repo_state.repo_root .. path
@@ -1492,6 +1603,59 @@ function StatusBuffer:render()
           stash = stash,
           section = "stashes",
         }
+      end
+    end
+    table.insert(lines, "")
+  end
+
+  -- === Submodules section (after stashes, before commit sections) ===
+  if status.submodules and #status.submodules > 0 then
+    local is_collapsed = self.collapsed_sections["submodules"]
+    table.insert(lines, string.format("Submodules (%d)", #status.submodules))
+    self.section_lines[#lines] = { name = "Submodules", section = "submodules" }
+    self.sign_lines[#lines] = { expanded = not is_collapsed }
+
+    if not is_collapsed then
+      for _, submodule in ipairs(status.submodules) do
+        -- Format: status indicator, path, (describe or SHA)
+        local status_char = ""
+        if submodule.status == "modified" then
+          status_char = "+"
+        elseif submodule.status == "uninitialized" then
+          status_char = "-"
+        elseif submodule.status == "merge_conflict" then
+          status_char = "U"
+        end
+
+        -- Show describe if available, otherwise abbreviated SHA
+        local info = submodule.describe or submodule.sha:sub(1, 7)
+        local line_text
+        if status_char ~= "" then
+          line_text = string.format("  %s %s (%s)", status_char, submodule.path, info)
+        else
+          line_text = string.format("    %s (%s)", submodule.path, info)
+        end
+
+        table.insert(lines, line_text)
+        self.line_map[#lines] = {
+          type = "submodule",
+          submodule = submodule,
+          section = "submodules",
+        }
+
+        -- Check if submodule is expanded and render SHA diff
+        local cache_key = "submodule:" .. submodule.path
+        if self.expanded_files[cache_key] then
+          local diff_data = self.diff_cache[cache_key]
+          if diff_data and diff_data.is_submodule then
+            self.sign_lines[#lines] = { expanded = true }
+            -- Render the SHA diff lines: -oldsha, +newsha
+            table.insert(lines, "    -" .. diff_data.old_sha)
+            table.insert(lines, "    +" .. diff_data.new_sha)
+          end
+        else
+          self.sign_lines[#lines] = { expanded = false }
+        end
       end
     end
     table.insert(lines, "")

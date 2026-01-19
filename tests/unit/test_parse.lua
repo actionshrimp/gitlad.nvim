@@ -650,4 +650,114 @@ T["parse_rev_list_count"]["handles large counts"] = function()
   eq(behind, 456)
 end
 
+-- =============================================================================
+-- parse_submodule_status tests
+-- =============================================================================
+
+T["parse_submodule_status"] = MiniTest.new_set()
+
+T["parse_submodule_status"]["parses clean submodule (space prefix)"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_submodule_status({
+    " abc123def456abc123def456abc123def456abc123 path/to/submodule (v1.0.0)",
+  })
+
+  eq(#result, 1)
+  eq(result[1].path, "path/to/submodule")
+  eq(result[1].sha, "abc123def456abc123def456abc123def456abc123")
+  eq(result[1].status, "clean")
+  eq(result[1].describe, "v1.0.0")
+end
+
+T["parse_submodule_status"]["parses modified submodule (+ prefix)"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_submodule_status({
+    "+abc123def456abc123def456abc123def456abc123 vendor/lib (heads/main)",
+  })
+
+  eq(#result, 1)
+  eq(result[1].path, "vendor/lib")
+  eq(result[1].sha, "abc123def456abc123def456abc123def456abc123")
+  eq(result[1].status, "modified")
+  eq(result[1].describe, "heads/main")
+end
+
+T["parse_submodule_status"]["parses uninitialized submodule (- prefix)"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_submodule_status({
+    "-abc123def456abc123def456abc123def456abc123 external/dep",
+  })
+
+  eq(#result, 1)
+  eq(result[1].path, "external/dep")
+  eq(result[1].sha, "abc123def456abc123def456abc123def456abc123")
+  eq(result[1].status, "uninitialized")
+  eq(result[1].describe, nil)
+end
+
+T["parse_submodule_status"]["parses merge conflict submodule (U prefix)"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_submodule_status({
+    "Uabc123def456abc123def456abc123def456abc123 libs/conflict",
+  })
+
+  eq(#result, 1)
+  eq(result[1].path, "libs/conflict")
+  eq(result[1].sha, "abc123def456abc123def456abc123def456abc123")
+  eq(result[1].status, "merge_conflict")
+end
+
+T["parse_submodule_status"]["handles multiple submodules"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_submodule_status({
+    " abc123def456abc123def456abc123def456abc123 vendor/lib1 (v1.0.0)",
+    "+def456abc123def456abc123def456abc123def456 vendor/lib2 (v2.0.0)",
+    "-111222333444555666777888999000aaabbbcccdd external/new",
+  })
+
+  eq(#result, 3)
+  eq(result[1].status, "clean")
+  eq(result[1].path, "vendor/lib1")
+  eq(result[2].status, "modified")
+  eq(result[2].path, "vendor/lib2")
+  eq(result[3].status, "uninitialized")
+  eq(result[3].path, "external/new")
+end
+
+T["parse_submodule_status"]["handles empty input"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_submodule_status({})
+
+  eq(#result, 0)
+end
+
+T["parse_submodule_status"]["handles paths with spaces"] = function()
+  local parse = require("gitlad.git.parse")
+
+  -- Note: git submodule paths can't actually have spaces, but test robustness
+  local result = parse.parse_submodule_status({
+    " abc123def456abc123def456abc123def456abc123 path/to/sub (tag-name)",
+  })
+
+  eq(#result, 1)
+  eq(result[1].path, "path/to/sub")
+end
+
+T["parse_submodule_status"]["handles describe with special characters"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_submodule_status({
+    " abc123def456abc123def456abc123def456abc123 submod (v1.0.0-rc1-5-gabc1234)",
+  })
+
+  eq(#result, 1)
+  eq(result[1].describe, "v1.0.0-rc1-5-gabc1234")
+end
+
 return T
