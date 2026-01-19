@@ -341,8 +341,9 @@ See PLAN.md for the detailed roadmap.
 Cloned in parent directory for reference:
 
 - `../magit/` - Popup system architecture, comprehensive features
-- `../neogit/` - Popup system architecture, comprehensive features
+- `../evil-collection/` - Canonical keybindings reference
 - `../vim-fugitive/` - Performance patterns, vim-way design
+- `../neogit/` - Popup system architecture, neovim implementation details, comprehensive features
 - `../lazygit/` - AsyncHandler pattern, loader architecture
 
 External dependency (integrate, don't reinvent):
