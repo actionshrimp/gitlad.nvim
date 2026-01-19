@@ -277,7 +277,7 @@ function LogBuffer:render()
   else
     -- Use log_list component to render commits
     local result = log_list.render(self.commits, self.expanded_commits, {
-      indent = 2,
+      indent = 0,
       section = "log",
       show_author = true,
       show_date = true,
@@ -326,7 +326,7 @@ function LogBuffer:_apply_highlights(header_lines)
   -- Use log_list's highlight function for commit lines
   if #self.commits > 0 then
     local result = log_list.render(self.commits, self.expanded_commits, {
-      indent = 2,
+      indent = 0,
       section = "log",
       show_author = true,
       show_date = true,

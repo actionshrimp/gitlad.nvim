@@ -224,6 +224,39 @@ T["log view"]["displays commits"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["log view"]["commit lines have no leading indent"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create a commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open log view
+  child.type_keys("ll")
+  child.lua("vim.wait(1000, function() end)")
+
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+
+  -- Find the commit line (contains 7-char hash followed by subject)
+  local commit_line_found = false
+  for _, line in ipairs(lines) do
+    if line:match("Test commit") then
+      commit_line_found = true
+      -- Line should start directly with hash (no leading spaces)
+      expect.equality(line:match("^%x%x%x%x%x%x%x ") ~= nil, true)
+      break
+    end
+  end
+  expect.equality(commit_line_found, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 T["log view"]["can yank commit hash with y"] = function()
   local repo = create_test_repo(child)
   cd(child, repo)
