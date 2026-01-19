@@ -819,9 +819,10 @@ end
 ---@class SequencerState
 ---@field cherry_pick_in_progress boolean
 ---@field revert_in_progress boolean
+---@field rebase_in_progress boolean
 ---@field sequencer_head_oid string|nil The commit being cherry-picked/reverted
 
---- Check if a cherry-pick or revert is in progress
+--- Check if a cherry-pick, revert, or rebase is in progress
 ---@param opts? GitCommandOptions
 ---@param callback fun(state: SequencerState)
 function M.get_sequencer_state(opts, callback)
@@ -830,6 +831,7 @@ function M.get_sequencer_state(opts, callback)
     callback({
       cherry_pick_in_progress = false,
       revert_in_progress = false,
+      rebase_in_progress = false,
       sequencer_head_oid = nil,
     })
     return
@@ -838,6 +840,7 @@ function M.get_sequencer_state(opts, callback)
   local state = {
     cherry_pick_in_progress = false,
     revert_in_progress = false,
+    rebase_in_progress = false,
     sequencer_head_oid = nil,
   }
 
@@ -865,7 +868,75 @@ function M.get_sequencer_state(opts, callback)
     return
   end
 
+  -- Check for rebase in progress (rebase-merge or rebase-apply directories)
+  local rebase_merge = git_dir .. "/rebase-merge"
+  local rebase_apply = git_dir .. "/rebase-apply"
+  if vim.fn.isdirectory(rebase_merge) == 1 or vim.fn.isdirectory(rebase_apply) == 1 then
+    state.rebase_in_progress = true
+    callback(state)
+    return
+  end
+
   callback(state)
+end
+
+--- Rebase current branch onto a target
+---@param target string Target ref to rebase onto (e.g., "origin/main")
+---@param args string[] Extra arguments (from popup switches, e.g., {"--autostash"})
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.rebase(target, args, opts, callback)
+  local rebase_args = { "rebase" }
+  vim.list_extend(rebase_args, args)
+  table.insert(rebase_args, target)
+
+  cli.run_async(rebase_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
+end
+
+--- Continue an in-progress rebase
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.rebase_continue(opts, callback)
+  cli.run_async({ "rebase", "--continue" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Abort an in-progress rebase
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.rebase_abort(opts, callback)
+  cli.run_async({ "rebase", "--abort" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Skip the current commit during rebase
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.rebase_skip(opts, callback)
+  cli.run_async({ "rebase", "--skip" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Check if a rebase is in progress (synchronous)
+---@param opts? GitCommandOptions
+---@return boolean
+function M.rebase_in_progress(opts)
+  local git_dir = cli.find_git_dir(opts and opts.cwd or nil)
+  if not git_dir then
+    return false
+  end
+
+  local rebase_merge = git_dir .. "/rebase-merge"
+  local rebase_apply = git_dir .. "/rebase-apply"
+  return vim.fn.isdirectory(rebase_merge) == 1 or vim.fn.isdirectory(rebase_apply) == 1
 end
 
 return M
