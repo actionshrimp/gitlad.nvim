@@ -136,7 +136,7 @@ function OutputViewer:complete(exit_code)
     local timer = vim.uv.new_timer()
     self._auto_close_timer = timer
     timer:start(
-      1500,
+      200,
       0,
       vim.schedule_wrap(function()
         self:close()
