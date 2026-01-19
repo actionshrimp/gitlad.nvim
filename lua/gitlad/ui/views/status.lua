@@ -1507,12 +1507,8 @@ function StatusBuffer:render()
     )
   end
 
-  -- Show "Recent commits" when there's nothing to push (like magit)
-  -- This provides context even when the branch is in sync with upstream
-  local has_any_unpushed = has_unpushed_upstream
-    or (status.unpushed_push and #status.unpushed_push > 0)
-
-  if not has_any_unpushed and status.recent_commits and #status.recent_commits > 0 then
+  -- Always show "Recent commits" section for context
+  if status.recent_commits and #status.recent_commits > 0 then
     add_commit_section("Recent commits", status.recent_commits, "recent")
   end
 

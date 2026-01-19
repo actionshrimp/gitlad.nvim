@@ -399,6 +399,50 @@ end
 
 T["recent commits"] = MiniTest.new_set()
 
+T["recent commits"]["shows Recent commits section even with unpushed commits"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "file1.txt", "content 1")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "First commit"')
+
+  -- Create a named branch and set up fake remote/upstream
+  git(child, repo, "branch -M main-branch")
+  git(child, repo, "remote add origin https://example.com/repo.git")
+  git(child, repo, "update-ref refs/remotes/origin/main-branch HEAD~0")
+  git(child, repo, "branch --set-upstream-to=origin/main-branch main-branch")
+
+  -- Add a commit that will be "unpushed"
+  create_file(child, repo, "file2.txt", "content 2")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Second commit (unpushed)"')
+
+  open_gitlad(child, repo)
+
+  -- Wait for extended status fetch (includes recent commits and unpushed)
+  child.lua([[vim.wait(2000, function()
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    local found_recent = false
+    local found_unmerged = false
+    for _, line in ipairs(lines) do
+      if line:find("Recent commits", 1, true) then found_recent = true end
+      if line:find("Unmerged into", 1, true) then found_unmerged = true end
+    end
+    return found_recent and found_unmerged
+  end)]])
+
+  local lines = get_buffer_lines(child)
+
+  -- Should show BOTH unpushed section AND recent commits
+  local unmerged_line = find_line_with(lines, "Unmerged into")
+  local recent_line = find_line_with(lines, "Recent commits")
+
+  assert_truthy(unmerged_line, "Should show Unmerged section when ahead of upstream")
+  assert_truthy(recent_line, "Should show Recent commits even when there are unpushed commits")
+end
+
 T["recent commits"]["shows Recent commits section when no upstream"] = function()
   local child = _G.child
   local repo = create_test_repo(child)

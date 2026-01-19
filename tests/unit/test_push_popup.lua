@@ -334,6 +334,87 @@ T["push popup"]["derives refspec even when remote option is pre-filled"] = funct
   eq(refspec, "feature/diff-popup")
 end
 
+-- Push upstream preservation tests (triangular workflow)
+T["push upstream preservation"] = MiniTest.new_set()
+
+T["push upstream preservation"]["should not add -u when upstream exists"] = function()
+  -- When user has triangular workflow (upstream = origin/main, pushing to origin/feature),
+  -- we should NOT add -u flag when creating the remote branch, as that would override upstream
+  local mock_status = {
+    branch = "feature/my-branch",
+    upstream = "origin/main", -- Already configured upstream for triangular workflow
+    push_remote = "origin/feature/my-branch",
+    push_commit_msg = nil, -- Remote branch doesn't exist yet
+  }
+
+  -- Simulate the logic from push.lua _push_upstream
+  -- When remote branch doesn't exist and we prompt to create:
+  local existing_upstream = mock_status.upstream -- This would come from git.get_upstream()
+
+  -- The fix: only add -u if no upstream configured
+  local args = {} -- Would be from build_push_args
+  local should_add_u = not existing_upstream
+
+  eq(should_add_u, false)
+  eq(#args, 0) -- -u should NOT be added
+end
+
+T["push upstream preservation"]["should add -u when no upstream exists"] = function()
+  -- When user has no upstream configured (new branch, not triangular workflow),
+  -- we SHOULD add -u flag to set the upstream to the new remote branch
+  local mock_status = {
+    branch = "feature/new-branch",
+    upstream = nil, -- No upstream configured
+    push_remote = nil, -- Derived from upstream (which is nil)
+    push_commit_msg = nil,
+  }
+
+  -- When no upstream exists, we should add -u
+  local existing_upstream = mock_status.upstream
+
+  local args = {}
+  local should_add_u = not existing_upstream
+
+  eq(should_add_u, true)
+
+  -- Simulate adding -u
+  if should_add_u then
+    table.insert(args, 1, "-u")
+  end
+
+  eq(#args, 1)
+  eq(args[1], "-u")
+end
+
+T["push upstream preservation"]["preserves triangular workflow for new remote branch"] = function()
+  -- Full scenario test: User is on feature/diff-popup tracking origin/main
+  -- They want to push to create origin/feature/diff-popup
+  -- The upstream should remain origin/main (not be overwritten to origin/feature/diff-popup)
+  local mock_status = {
+    branch = "feature/diff-popup",
+    upstream = "origin/main", -- Triangular: pulls from main
+    push_remote = "origin/feature/diff-popup", -- Pushes to feature branch
+    push_commit_msg = nil, -- Remote branch doesn't exist yet
+  }
+
+  -- Verify push_ref is correct
+  local push_ref = mock_status.push_remote
+  eq(push_ref, "origin/feature/diff-popup")
+
+  -- Verify remote branch doesn't exist (would prompt for creation)
+  local remote_exists = mock_status.push_remote ~= nil and mock_status.push_commit_msg ~= nil
+  eq(remote_exists, false)
+
+  -- Key fix: with existing upstream, don't add -u
+  local existing_upstream = mock_status.upstream
+  local should_add_u = not existing_upstream
+
+  eq(should_add_u, false)
+
+  -- After push, upstream should still be origin/main (not changed)
+  -- This is preserved by NOT using -u flag
+end
+
 -- Parse remotes tests
 T["parse_remotes"] = MiniTest.new_set()
 

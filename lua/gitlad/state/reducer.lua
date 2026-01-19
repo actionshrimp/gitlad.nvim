@@ -78,9 +78,13 @@ local function copy_status(status)
     unpushed_upstream = vim.deepcopy(status.unpushed_upstream or {}),
     unpulled_push = vim.deepcopy(status.unpulled_push or {}),
     unpushed_push = vim.deepcopy(status.unpushed_push or {}),
+    -- Recent commits and stashes
+    recent_commits = vim.deepcopy(status.recent_commits or {}),
+    stashes = vim.deepcopy(status.stashes or {}),
     -- Sequencer state fields
     cherry_pick_in_progress = status.cherry_pick_in_progress,
     revert_in_progress = status.revert_in_progress,
+    rebase_in_progress = status.rebase_in_progress,
     sequencer_head_oid = status.sequencer_head_oid,
     sequencer_head_subject = status.sequencer_head_subject,
   }

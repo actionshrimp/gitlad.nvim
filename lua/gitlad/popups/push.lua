@@ -213,27 +213,45 @@ function M._push_upstream(repo_state, popup_data)
   end
 
   -- Check if remote branch exists
-  -- If not, prompt user to create it with -u flag
+  -- If not, prompt user to create it
   if push_ref and not remote_branch_exists(status) then
-    local prompt = string.format("Create remote branch '%s' and set as push target?", push_ref)
+    local prompt = string.format("Create remote branch '%s'?", push_ref)
     vim.ui.select({ "Yes", "No" }, { prompt = prompt }, function(choice)
       if choice ~= "Yes" then
         return
       end
-      -- Add -u flag to set upstream when creating the branch
-      local args = build_push_args(popup_data, remote, refspec)
-      -- Ensure -u is in args if not already
-      local has_set_upstream = false
-      for _, arg in ipairs(args) do
-        if arg == "--set-upstream" or arg == "-u" then
-          has_set_upstream = true
-          break
-        end
+
+      -- Only add -u flag if no upstream is already configured
+      -- This preserves triangular workflow where upstream might be e.g. origin/main
+      local current_branch = status and status.branch
+      if not current_branch then
+        local args = build_push_args(popup_data, remote, refspec)
+        do_push(repo_state, args)
+        return
       end
-      if not has_set_upstream then
-        table.insert(args, 1, "-u")
-      end
-      do_push(repo_state, args)
+
+      git.get_upstream(current_branch, { cwd = repo_state.repo_root }, function(upstream, _)
+        vim.schedule(function()
+          local args = build_push_args(popup_data, remote, refspec)
+
+          -- Only set upstream if one isn't already configured
+          if not upstream then
+            -- Ensure -u is in args if not already
+            local has_set_upstream = false
+            for _, arg in ipairs(args) do
+              if arg == "--set-upstream" or arg == "-u" then
+                has_set_upstream = true
+                break
+              end
+            end
+            if not has_set_upstream then
+              table.insert(args, 1, "-u")
+            end
+          end
+
+          do_push(repo_state, args)
+        end)
+      end)
     end)
     return
   end
