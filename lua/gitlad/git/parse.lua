@@ -39,6 +39,7 @@ local M = {}
 ---@field sequencer_head_subject? string Subject of the commit being cherry-picked/reverted
 ---@field stashes StashEntry[] Recent stashes (populated by refresh_status)
 ---@field recent_commits GitCommitInfo[] Recent commits (populated by refresh_status)
+---@field submodules SubmoduleEntry[] Submodule status entries (populated by refresh_status)
 
 -- Status codes from git status --porcelain=v2
 local STATUS_CODES = {
@@ -217,6 +218,12 @@ end
 ---@field hash string Commit hash
 ---@field subject string Commit subject
 ---@field equivalent boolean True if commit is in upstream (- prefix), false if unique (+ prefix)
+
+---@class SubmoduleEntry
+---@field path string Submodule path
+---@field sha string Current HEAD SHA (40 chars)
+---@field status "clean"|"modified"|"uninitialized"|"merge_conflict" Submodule status
+---@field describe? string Output of git describe in submodule
 
 ---@class GitRemote
 ---@field name string Remote name (e.g., "origin")
@@ -464,6 +471,62 @@ function M.parse_rev_list_count(lines)
   -- Format: "ahead\tbehind"
   local ahead, behind = line:match("^(%d+)\t(%d+)$")
   return tonumber(ahead) or 0, tonumber(behind) or 0
+end
+
+--- Parse git submodule status output
+--- Format varies by status prefix:
+---   " <sha> <path> (<describe>)" - clean (SHA matches recorded)
+---   "+<sha> <path> (<describe>)" - modified (SHA differs from recorded)
+---   "-<sha> <path>" - uninitialized
+---   "U<sha> <path>" - merge conflict
+---@param lines string[] Output lines from git submodule status
+---@return SubmoduleEntry[]
+function M.parse_submodule_status(lines)
+  local submodules = {}
+
+  for _, line in ipairs(lines) do
+    -- First character is status prefix: space, +, -, or U
+    local prefix = line:sub(1, 1)
+    local rest = line:sub(2)
+
+    -- Parse: <sha> <path> [(<describe>)]
+    -- SHA is always 40 characters
+    local sha, path_and_desc = rest:match("^(%x+)%s+(.+)$")
+
+    if sha and path_and_desc then
+      -- Check for describe in parentheses at the end
+      local path, describe = path_and_desc:match("^(.-)%s+%((.+)%)$")
+      if not path then
+        -- No describe, just the path
+        path = path_and_desc
+        describe = nil
+      end
+
+      -- Determine status from prefix
+      local status
+      if prefix == " " then
+        status = "clean"
+      elseif prefix == "+" then
+        status = "modified"
+      elseif prefix == "-" then
+        status = "uninitialized"
+      elseif prefix == "U" then
+        status = "merge_conflict"
+      else
+        -- Unknown prefix, skip
+        status = "clean"
+      end
+
+      table.insert(submodules, {
+        path = path,
+        sha = sha,
+        status = status,
+        describe = describe,
+      })
+    end
+  end
+
+  return submodules
 end
 
 return M

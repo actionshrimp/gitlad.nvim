@@ -208,7 +208,14 @@ function RepoState:_fetch_extended_status(result, callback)
     complete_one()
   end)
 
-  -- 6. Determine push destination
+  -- 6. Fetch submodule status
+  start_op()
+  git.submodule_status(opts, function(submodules, _err)
+    result.submodules = submodules or {}
+    complete_one()
+  end)
+
+  -- 7. Determine push destination
   -- Push goes to <push-remote>/<branch-name> where push-remote is:
   --   1. branch.<name>.pushRemote (explicit config)
   --   2. remote.pushDefault (global default)

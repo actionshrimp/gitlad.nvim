@@ -4,11 +4,15 @@ local M = {}
 ---@class GitladCommitEditorConfig
 ---@field split "above"|"replace" How to open the commit editor ("above" = split above status, "replace" = replace current buffer)
 
+---@class GitladStatusConfig
+---@field show_submodules_section boolean Whether to show the dedicated Submodules section (default: false, like magit)
+
 ---@class GitladConfig
 ---@field refresh_on_focus boolean
 ---@field watch_gitdir boolean
 ---@field signs GitladSigns
 ---@field commit_editor GitladCommitEditorConfig
+---@field status GitladStatusConfig
 local defaults = {
   refresh_on_focus = true,
   watch_gitdir = true,
@@ -20,6 +24,9 @@ local defaults = {
   },
   commit_editor = {
     split = "above", -- "above" or "replace"
+  },
+  status = {
+    show_submodules_section = false, -- Off by default, like magit
   },
 }
 

@@ -60,10 +60,16 @@ local highlight_groups = {
   GitladSectionUnpushed = { link = "GitladSectionHeader" },
   GitladSectionRecent = { link = "GitladSectionHeader" },
   GitladSectionStashes = { link = "GitladSectionHeader" },
+  GitladSectionSubmodules = { link = "GitladSectionHeader" },
 
   -- Stash entries
   GitladStashRef = { link = "Constant" },
   GitladStashMessage = { link = "Comment" },
+
+  -- Submodule entries
+  GitladSubmodulePath = { link = "Directory" },
+  GitladSubmoduleStatus = { link = "Special" },
+  GitladSubmoduleInfo = { link = "Comment" },
 
   -- File entries
   GitladFileAdded = { link = "DiffAdd" },
@@ -324,8 +330,9 @@ local section_hl = {
   unstaged = "GitladSectionUnstaged",
   untracked = "GitladSectionUntracked",
   conflicted = "GitladSectionConflicted",
-  -- Stash section
+  -- Stash and submodule sections
   stashes = "GitladSectionStashes",
+  submodules = "GitladSectionSubmodules",
   -- Commit sections
   unpulled_upstream = "GitladSectionUnpulled",
   unpushed_upstream = "GitladSectionUnpushed",
@@ -582,6 +589,29 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
         if ref_end < #line then
           M.set(bufnr, ns_status, line_idx, ref_end + 1, #line, "GitladStashMessage")
         end
+      end
+
+      -- Submodule entries: "  + path/to/submodule (info)" or "    path/to/submodule (info)"
+    elseif line_map[i] and line_map[i].type == "submodule" then
+      -- Find the status indicator if present (+, -, U)
+      local status_match = line:match("^%s+([%+%-U])")
+      if status_match then
+        local status_start = line:find("[%+%-U]")
+        if status_start then
+          M.set(bufnr, ns_status, line_idx, status_start - 1, status_start, "GitladSubmoduleStatus")
+        end
+      end
+      -- Find path (before the parentheses)
+      local path_start, path_end = line:find("[%w/_%-%.]+%s+%(")
+      if path_start then
+        -- Adjust to not include the space and paren
+        local actual_end = line:find("%s+%(", path_start) or path_end
+        M.set(bufnr, ns_status, line_idx, path_start - 1, actual_end - 1, "GitladSubmodulePath")
+      end
+      -- Find info in parentheses
+      local info_start, info_end = line:find("%(.-%)$")
+      if info_start then
+        M.set(bufnr, ns_status, line_idx, info_start - 1, info_end, "GitladSubmoduleInfo")
       end
 
       -- Help line
