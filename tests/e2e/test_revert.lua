@@ -190,7 +190,7 @@ T["revert operations"]["reverts a commit"] = function()
     commit_hash,
     repo
   ))
-  wait(child, 1000)
+  child.lua([[vim.wait(2000, function() return _G.revert_result ~= nil end)]])
 
   local result = child.lua_get([[_G.revert_result]])
   eq(result.success, true)
@@ -247,7 +247,7 @@ T["revert operations"]["revert no-commit stages changes"] = function()
     commit_hash,
     repo
   ))
-  wait(child, 1000)
+  child.lua([[vim.wait(2000, function() return _G.revert_result ~= nil end)]])
 
   local result = child.lua_get([[_G.revert_result]])
   eq(result.success, true)
@@ -365,7 +365,7 @@ T["revert in-progress"]["detects revert in progress via git sequencer state"] = 
   ]],
     repo
   ))
-  wait(child, 500)
+  child.lua([[vim.wait(2000, function() return _G.sequencer_state ~= nil end)]])
 
   local state = child.lua_get("_G.sequencer_state")
   eq(state.revert_in_progress, true)
