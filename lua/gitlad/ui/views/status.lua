@@ -1210,9 +1210,13 @@ function StatusBuffer:_update_status_line()
   local line_idx = self.status_line_num - 1 -- 0-indexed
   local new_text = self.spinner:get_display()
 
-  -- Temporarily make buffer modifiable
+  -- Get current line length for in-place text replacement
+  local current_lines = vim.api.nvim_buf_get_lines(self.bufnr, line_idx, line_idx + 1, false)
+  local old_len = current_lines[1] and #current_lines[1] or 0
+
+  -- Use nvim_buf_set_text for in-place modification (more stable for extmarks than set_lines)
   vim.bo[self.bufnr].modifiable = true
-  vim.api.nvim_buf_set_lines(self.bufnr, line_idx, line_idx + 1, false, { new_text })
+  vim.api.nvim_buf_set_text(self.bufnr, line_idx, 0, line_idx, old_len, { new_text })
   vim.bo[self.bufnr].modifiable = false
 
   -- Update just the text highlight (leaves background intact to avoid flicker)
