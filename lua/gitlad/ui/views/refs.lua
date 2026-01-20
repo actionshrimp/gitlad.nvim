@@ -705,17 +705,11 @@ function RefsBuffer:_render_ref(lines, ref, base_indent)
     self.sign_lines[line_num] = { expanded = is_expanded or false }
   end
 
-  -- Render cherry commits if expanded
+  -- Render cherry commits if expanded (no indentation per TODO requirement)
   if is_expanded and self.cherry_cache[ref.name] then
     for _, cherry in ipairs(self.cherry_cache[ref.name]) do
       local cherry_prefix = cherry.equivalent and "-" or "+"
-      local cherry_line = indent
-        .. "    "
-        .. cherry_prefix
-        .. " "
-        .. cherry.hash:sub(1, 7)
-        .. " "
-        .. cherry.subject
+      local cherry_line = cherry_prefix .. " " .. cherry.hash:sub(1, 7) .. " " .. cherry.subject
       table.insert(lines, cherry_line)
       self.line_map[#lines] = { type = "cherry", cherry = cherry, parent_ref = ref.name }
     end
