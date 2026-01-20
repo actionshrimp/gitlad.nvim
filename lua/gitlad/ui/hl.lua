@@ -362,8 +362,8 @@ local section_hl = {
   recent = "GitladSectionRecent",
 }
 
---- Apply highlight to a status indicator line
---- Used both during full render and during spinner animation updates
+--- Apply highlight to a status indicator line (full render)
+--- Used during full render to set up both background and text highlights
 ---@param bufnr number Buffer number
 ---@param ns number Namespace for extmarks
 ---@param line_idx number 0-indexed line number
@@ -379,6 +379,30 @@ function M.apply_status_line_highlight(bufnr, ns, line_idx, line)
   local is_spinning = line:match("Refreshing")
   local hl_group = is_spinning and "GitladStatusSpinner" or "GitladStatusIdle"
   -- Apply text highlight on top (higher priority)
+  M.set(bufnr, ns, line_idx, 0, #line, hl_group, { priority = 60 })
+end
+
+--- Update just the text highlight on the status line (spinner animation)
+--- Does not touch the background to avoid visual flicker during animation
+---@param bufnr number Buffer number
+---@param ns number Namespace for extmarks
+---@param line_idx number 0-indexed line number
+---@param line string The line content
+function M.update_status_line_text(bufnr, ns, line_idx, line)
+  -- Get all extmarks on this line
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, { line_idx, 0 }, { line_idx, -1 }, { details = true })
+
+  -- Remove only text highlights (those with hl_group, not line_hl_group)
+  for _, mark in ipairs(marks) do
+    local details = mark[4]
+    if details.hl_group and not details.line_hl_group then
+      vim.api.nvim_buf_del_extmark(bufnr, ns, mark[1])
+    end
+  end
+
+  -- Apply new text highlight
+  local is_spinning = line:match("Refreshing")
+  local hl_group = is_spinning and "GitladStatusSpinner" or "GitladStatusIdle"
   M.set(bufnr, ns, line_idx, 0, #line, hl_group, { priority = 60 })
 end
 

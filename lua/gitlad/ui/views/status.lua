@@ -1215,9 +1215,9 @@ function StatusBuffer:_update_status_line()
   vim.api.nvim_buf_set_lines(self.bufnr, line_idx, line_idx + 1, false, { new_text })
   vim.bo[self.bufnr].modifiable = false
 
-  -- Re-apply highlighting for just this line
+  -- Update just the text highlight (leaves background intact to avoid flicker)
   local ns_status = vim.api.nvim_create_namespace("gitlad_status")
-  hl.apply_status_line_highlight(self.bufnr, ns_status, line_idx, new_text)
+  hl.update_status_line_text(self.bufnr, ns_status, line_idx, new_text)
 end
 
 --- Navigate to next file entry
