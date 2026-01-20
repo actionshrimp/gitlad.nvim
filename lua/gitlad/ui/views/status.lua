@@ -1491,6 +1491,8 @@ function StatusBuffer:render()
   end
 
   local cfg = config.get()
+  local show_tags =
+    git.config_get_bool("gitlad.showTagsInRefs", { cwd = self.repo_state.repo_root })
   local lines = {}
   self.line_map = {} -- Reset line map
   self.section_lines = {} -- Reset section lines
@@ -1577,6 +1579,7 @@ function StatusBuffer:render()
       local result = log_list.render(commits, self.expanded_commits, {
         indent = 0,
         section = section_type,
+        show_tags = show_tags,
       })
 
       for i, line in ipairs(result.lines) do

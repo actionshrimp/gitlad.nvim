@@ -194,17 +194,17 @@ T["render() refs"]["formats multiple refs with spaces"] = function()
     make_commit("abc1234", "Fix bug", {
       refs = {
         make_ref("origin/main", "remote", { is_combined = true }),
-        make_ref("v1.0.0", "tag"),
+        make_ref("origin/feature", "remote"),
       },
     }),
   }
 
   local result = log_list.render(commits, nil, nil)
 
-  eq(result.lines[1], "  abc1234 origin/main v1.0.0 Fix bug")
+  eq(result.lines[1], "  abc1234 origin/main origin/feature Fix bug")
 end
 
-T["render() refs"]["formats tag correctly"] = function()
+T["render() refs"]["hides tags by default"] = function()
   local commits = {
     make_commit("abc1234", "Release", {
       refs = { make_ref("v1.0.0", "tag") },
@@ -212,6 +212,19 @@ T["render() refs"]["formats tag correctly"] = function()
   }
 
   local result = log_list.render(commits, nil, nil)
+
+  -- Tags are hidden by default (show_tags = false)
+  eq(result.lines[1], "  abc1234 Release")
+end
+
+T["render() refs"]["shows tags when show_tags option is true"] = function()
+  local commits = {
+    make_commit("abc1234", "Release", {
+      refs = { make_ref("v1.0.0", "tag") },
+    }),
+  }
+
+  local result = log_list.render(commits, nil, { show_tags = true })
 
   eq(result.lines[1], "  abc1234 v1.0.0 Release")
 end

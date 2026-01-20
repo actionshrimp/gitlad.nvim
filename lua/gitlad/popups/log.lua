@@ -79,6 +79,10 @@ end
 --- Create and show the log popup
 ---@param repo_state RepoState
 function M.open(repo_state)
+  -- Read current show_tags setting for display
+  local show_tags = git.config_get_bool("gitlad.showTagsInRefs", { cwd = repo_state.repo_root })
+  local tags_label = show_tags and "Hide tags in refs" or "Show tags in refs"
+
   local log_popup = popup
     .builder()
     :name("Log")
@@ -104,6 +108,10 @@ function M.open(repo_state)
     end)
     :action("L", "Log all branches", function(popup_data)
       M._log_all(repo_state, popup_data)
+    end)
+    :group_heading("Toggle")
+    :action("t", tags_label, function(_)
+      M._toggle_tags(repo_state)
     end)
     :build()
 
@@ -170,6 +178,40 @@ function M._log_all(repo_state, popup_data)
   -- The --all switch should already be set, but ensure it's included
   local args = build_log_args(popup_data, { "--all" })
   open_log_view(repo_state, args)
+end
+
+--- Toggle showing tags in refs
+---@param repo_state RepoState
+function M._toggle_tags(repo_state)
+  git.config_toggle(
+    "gitlad.showTagsInRefs",
+    { cwd = repo_state.repo_root },
+    function(new_value, err)
+      vim.schedule(function()
+        if err then
+          vim.notify("[gitlad] Failed to toggle tags: " .. err, vim.log.levels.ERROR)
+          return
+        end
+
+        local msg = new_value and "Tags in refs: shown" or "Tags in refs: hidden"
+        vim.notify("[gitlad] " .. msg, vim.log.levels.INFO)
+
+        -- Refresh status view if open
+        local status_view = require("gitlad.ui.views.status")
+        local status_buf = status_view.get_buffer(repo_state)
+        if status_buf then
+          status_buf:render()
+        end
+
+        -- Refresh log view if open
+        local log_view = require("gitlad.ui.views.log")
+        local log_buf = log_view.get_buffer()
+        if log_buf then
+          log_buf:render()
+        end
+      end)
+    end
+  )
 end
 
 return M
