@@ -390,7 +390,13 @@ end
 ---@param line string The line content
 function M.update_status_line_text(bufnr, ns, line_idx, line)
   -- Get all extmarks on this line
-  local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns, { line_idx, 0 }, { line_idx, -1 }, { details = true })
+  local marks = vim.api.nvim_buf_get_extmarks(
+    bufnr,
+    ns,
+    { line_idx, 0 },
+    { line_idx, -1 },
+    { details = true }
+  )
 
   -- Remove only text highlights (those with hl_group, not line_hl_group)
   for _, mark in ipairs(marks) do
