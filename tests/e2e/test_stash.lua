@@ -687,7 +687,7 @@ T["stash section"]["TAB collapses and expands stash section"] = function()
   cleanup_repo(child, repo)
 end
 
-T["stash section"]["p on stash entry opens pop confirmation"] = function()
+T["stash section"]["p on stash entry opens stash popup"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -715,25 +715,40 @@ T["stash section"]["p on stash entry opens pop confirmation"] = function()
     end
   ]])
 
-  -- Mock vim.ui.select to capture the call
+  -- Press p on stash entry (should open stash popup, not push popup)
+  child.type_keys("p")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should have a popup window
+  local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(win_count, 2)
+
+  -- Verify it's the stash popup by checking content
+  -- Stash popup has "Stash" group heading and "Use" group heading with pop/apply/drop actions
   child.lua([[
-    _G.ui_select_called = false
-    _G.ui_select_prompt = nil
-    vim.ui.select = function(items, opts, on_choice)
-      _G.ui_select_called = true
-      _G.ui_select_prompt = opts.prompt
-      -- Don't actually call on_choice to avoid the operation
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    _G.has_stash_group = false
+    _G.has_use_group = false
+    _G.has_pop_action = false
+    for _, line in ipairs(lines) do
+      if line:match("^Stash$") then
+        _G.has_stash_group = true
+      end
+      if line:match("^Use$") then
+        _G.has_use_group = true
+      end
+      -- Pop action shows "Pop stash@{0}" when stash is at point
+      if line:match("p%s+Pop") then
+        _G.has_pop_action = true
+      end
     end
   ]])
+  eq(child.lua_get([[_G.has_stash_group]]), true)
+  eq(child.lua_get([[_G.has_use_group]]), true)
+  eq(child.lua_get([[_G.has_pop_action]]), true)
 
-  -- Press p to pop (should trigger confirmation)
-  child.type_keys("p")
-  child.lua([[vim.wait(200, function() return _G.ui_select_called end)]])
-
-  eq(child.lua_get([[_G.ui_select_called]]), true)
-  local prompt = child.lua_get([[_G.ui_select_prompt]])
-  eq(prompt:match("Pop stash@{0}") ~= nil, true)
-
+  child.type_keys("q")
   cleanup_repo(child, repo)
 end
 

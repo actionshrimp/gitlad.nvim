@@ -242,16 +242,18 @@ function StatusBuffer:_setup_keymaps()
   end, "Commit popup")
 
   -- Push popup (evil-collection-magit style: p instead of P)
-  -- Context-aware: pops stash when on stash entry
+  -- Context-aware: opens stash popup when on stash entry
   keymap.set(bufnr, "n", "p", function()
     local stash = self:_get_current_stash()
     if stash then
-      self:_stash_pop(stash)
+      -- Open stash popup with stash at point for context-aware operations
+      local stash_popup = require("gitlad.popups.stash")
+      stash_popup.open(self.repo_state, { stash = stash })
     else
       local push_popup = require("gitlad.popups.push")
       push_popup.open(self.repo_state)
     end
-  end, "Push popup / Pop stash")
+  end, "Push popup / Stash popup")
 
   -- Apply stash at point
   keymap.set(bufnr, "n", "a", function()
