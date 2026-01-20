@@ -52,7 +52,7 @@ local highlight_groups = {
   -- Ref highlighting (branches, tags on commits)
   GitladRefLocal = { link = "DiagnosticError" }, -- Red for local branches
   GitladRefRemote = { link = "DiagnosticOk" }, -- Green for remote branches
-  GitladRefCombined = { link = "DiagnosticError" }, -- Red for local part of combined refs
+  GitladRefCombined = { link = "diffRemoved" }, -- Muted red for local part of combined refs
   GitladRefTag = { link = "Type" }, -- Tags (typically yellow/gold)
   GitladRefHead = { link = "DiagnosticWarn" }, -- HEAD indicator (orange)
   GitladRefSeparator = { link = "Comment" }, -- Parentheses and commas

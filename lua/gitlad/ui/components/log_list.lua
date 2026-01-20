@@ -29,7 +29,7 @@ local M = {}
 ---@field commit_ranges table<string, {start: number, end_line: number}> Hash → line range (for expansion)
 
 --- Format refs for display (no brackets, space-separated)
---- Skips the current branch (is_head) since it's obvious from context
+--- Skips the current branch (is_head) and remote HEAD refs since they're obvious from context
 ---@param refs CommitRef[] Array of refs
 ---@return string Formatted refs string (e.g., "origin/main v1.0.0 ")
 ---@return CommitRef[] filtered_refs The refs that were actually included
@@ -43,7 +43,9 @@ local function format_refs(refs)
   local first = true
   for _, ref in ipairs(refs) do
     -- Skip the current branch (HEAD) - it's obvious from context
-    if not ref.is_head then
+    -- Also skip remote HEAD refs like "origin/HEAD"
+    local is_remote_head = ref.name:match("/HEAD$")
+    if not ref.is_head and not is_remote_head then
       if not first then
         table.insert(parts, " ")
       end
