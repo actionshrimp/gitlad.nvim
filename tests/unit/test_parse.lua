@@ -217,6 +217,56 @@ T["parse_log_oneline"]["handles hash-only lines"] = function()
   eq(result[1].subject, "")
 end
 
+T["parse_log_oneline"]["parses decorated output with refs"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_log_oneline({
+    "abc1234 (HEAD -> main, origin/main) Add feature X",
+    "def5678 Fix bug Y",
+    "111aaaa (tag: v1.0.0) Release 1.0.0",
+  })
+
+  eq(#result, 3)
+  -- First commit has combined refs
+  eq(result[1].hash, "abc1234")
+  eq(result[1].subject, "Add feature X")
+  expect.equality(result[1].refs ~= nil, true)
+  eq(#result[1].refs, 1) -- combined main + origin/main
+  eq(result[1].refs[1].name, "origin/main")
+  eq(result[1].refs[1].is_combined, true)
+  eq(result[1].refs[1].is_head, true)
+  -- Second commit has no refs
+  eq(result[2].hash, "def5678")
+  eq(result[2].subject, "Fix bug Y")
+  eq(#result[2].refs, 0)
+  -- Third commit has tag
+  eq(result[3].hash, "111aaaa")
+  eq(result[3].subject, "Release 1.0.0")
+  eq(#result[3].refs, 1)
+  eq(result[3].refs[1].name, "v1.0.0")
+  eq(result[3].refs[1].type, "tag")
+end
+
+T["parse_log_oneline"]["handles refs with parentheses in subject"] = function()
+  local parse = require("gitlad.git.parse")
+
+  -- Tricky case: subject contains parentheses
+  local result = parse.parse_log_oneline({
+    "abc1234 (main) fix(parser): handle edge case",
+    "def5678 feat: add feature (experimental)",
+  })
+
+  eq(#result, 2)
+  eq(result[1].hash, "abc1234")
+  eq(result[1].subject, "fix(parser): handle edge case")
+  eq(#result[1].refs, 1)
+  eq(result[1].refs[1].name, "main")
+  -- Second commit has no refs (parentheses are part of subject)
+  eq(result[2].hash, "def5678")
+  eq(result[2].subject, "feat: add feature (experimental)")
+  eq(#result[2].refs, 0)
+end
+
 T["parse_remote_branches"] = MiniTest.new_set()
 
 T["parse_remote_branches"]["parses remote branches correctly"] = function()
@@ -278,8 +328,9 @@ T["parse_log_format"] = MiniTest.new_set()
 T["parse_log_format"]["parses commits with all fields"] = function()
   local parse = require("gitlad.git.parse")
 
+  -- Format: hash|||decorations|||author|||date|||subject
   local output =
-    "abc1234|||John Doe|||2 hours ago|||Add feature X\ndef5678|||Jane Smith|||1 day ago|||Fix bug Y"
+    "abc1234||||||John Doe|||2 hours ago|||Add feature X\ndef5678||||||Jane Smith|||1 day ago|||Fix bug Y"
 
   local result = parse.parse_log_format(output)
 
@@ -305,8 +356,8 @@ end
 T["parse_log_format"]["handles commits with empty optional fields"] = function()
   local parse = require("gitlad.git.parse")
 
-  -- Author and date can be empty (9 pipes = 3 separators)
-  local output = "abc1234|||||||||Just a hash and subject"
+  -- Format: hash|||decorations|||author|||date|||subject (12 pipes = 4 separators)
+  local output = "abc1234||||||||||||Just a hash and subject"
 
   local result = parse.parse_log_format(output)
 
@@ -320,7 +371,8 @@ end
 T["parse_log_format"]["handles subjects with special characters"] = function()
   local parse = require("gitlad.git.parse")
 
-  local output = "abc1234|||John|||1 hour ago|||feat: add login (WIP) [#123]"
+  -- Format: hash|||decorations|||author|||date|||subject
+  local output = "abc1234||||||John|||1 hour ago|||feat: add login (WIP) [#123]"
 
   local result = parse.parse_log_format(output)
 
@@ -333,11 +385,49 @@ T["parse_log_format"]["get_log_format_string returns expected format"] = functio
 
   local format = parse.get_log_format_string()
 
-  -- Should contain placeholders for hash, author, date, subject
+  -- Should contain placeholders for hash, decorations, author, date, subject
   expect.equality(format:match("%%h"), "%h")
+  expect.equality(format:match("%%D"), "%D")
   expect.equality(format:match("%%an"), "%an")
   expect.equality(format:match("%%ar"), "%ar")
   expect.equality(format:match("%%s"), "%s")
+end
+
+T["parse_log_format"]["parses commits with refs"] = function()
+  local parse = require("gitlad.git.parse")
+
+  -- Format: hash|||decorations|||author|||date|||subject
+  local output = "abc1234|||HEAD -> main, origin/main|||John Doe|||2 hours ago|||Add feature X"
+
+  local result = parse.parse_log_format(output)
+
+  eq(#result, 1)
+  eq(result[1].hash, "abc1234")
+  eq(result[1].author, "John Doe")
+  eq(result[1].date, "2 hours ago")
+  eq(result[1].subject, "Add feature X")
+  -- Should have refs parsed
+  expect.equality(result[1].refs ~= nil, true)
+  eq(#result[1].refs, 1) -- main and origin/main combined
+  eq(result[1].refs[1].name, "origin/main")
+  eq(result[1].refs[1].is_combined, true)
+  eq(result[1].refs[1].is_head, true)
+end
+
+T["parse_log_format"]["parses commits without refs"] = function()
+  local parse = require("gitlad.git.parse")
+
+  -- Format: hash|||decorations|||author|||date|||subject (empty decorations)
+  local output = "abc1234||||||John Doe|||2 hours ago|||Add feature X"
+
+  local result = parse.parse_log_format(output)
+
+  eq(#result, 1)
+  eq(result[1].hash, "abc1234")
+  eq(result[1].subject, "Add feature X")
+  -- Should have empty refs
+  expect.equality(result[1].refs ~= nil, true)
+  eq(#result[1].refs, 0)
 end
 
 -- =============================================================================
@@ -758,6 +848,175 @@ T["parse_submodule_status"]["handles describe with special characters"] = functi
 
   eq(#result, 1)
   eq(result[1].describe, "v1.0.0-rc1-5-gabc1234")
+end
+
+-- =============================================================================
+-- parse_decorations tests
+-- =============================================================================
+
+T["parse_decorations"] = MiniTest.new_set()
+
+T["parse_decorations"]["returns empty array for empty string"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("")
+
+  eq(#result, 0)
+end
+
+T["parse_decorations"]["parses single local branch"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("main")
+
+  eq(#result, 1)
+  eq(result[1].name, "main")
+  eq(result[1].type, "local")
+  eq(result[1].is_head, false)
+  eq(result[1].is_combined, false)
+end
+
+T["parse_decorations"]["parses single remote branch"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("origin/main")
+
+  eq(#result, 1)
+  eq(result[1].name, "origin/main")
+  eq(result[1].type, "remote")
+  eq(result[1].is_head, false)
+  eq(result[1].is_combined, false)
+end
+
+T["parse_decorations"]["parses tag"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("tag: v1.0.0")
+
+  eq(#result, 1)
+  eq(result[1].name, "v1.0.0")
+  eq(result[1].type, "tag")
+  eq(result[1].is_head, false)
+  eq(result[1].is_combined, false)
+end
+
+T["parse_decorations"]["parses HEAD pointing to branch"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("HEAD -> main")
+
+  eq(#result, 1)
+  eq(result[1].name, "main")
+  eq(result[1].type, "local")
+  eq(result[1].is_head, true)
+  eq(result[1].is_combined, false)
+end
+
+T["parse_decorations"]["parses multiple refs"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("HEAD -> main, origin/main, tag: v1.0.0")
+
+  -- After deduplication, main and origin/main should combine
+  -- So we expect: combined origin/main, tag: v1.0.0
+  eq(#result, 2)
+  -- First should be the combined ref
+  eq(result[1].name, "origin/main")
+  eq(result[1].is_head, true)
+  eq(result[1].is_combined, true)
+  -- Second should be the tag
+  eq(result[2].name, "v1.0.0")
+  eq(result[2].type, "tag")
+end
+
+T["parse_decorations"]["combines local and remote at same commit"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("main, origin/main")
+
+  -- Should combine into single entry
+  eq(#result, 1)
+  eq(result[1].name, "origin/main")
+  eq(result[1].type, "remote")
+  eq(result[1].is_combined, true)
+end
+
+T["parse_decorations"]["handles origin/HEAD correctly"] = function()
+  local parse = require("gitlad.git.parse")
+
+  -- origin/HEAD -> origin/main should be filtered out
+  local result = parse.parse_decorations("origin/HEAD -> origin/main, origin/main")
+
+  eq(#result, 1)
+  eq(result[1].name, "origin/main")
+  eq(result[1].type, "remote")
+end
+
+T["parse_decorations"]["handles multiple remotes"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("origin/main, upstream/main")
+
+  eq(#result, 2)
+  eq(result[1].name, "origin/main")
+  eq(result[1].type, "remote")
+  eq(result[2].name, "upstream/main")
+  eq(result[2].type, "remote")
+end
+
+T["parse_decorations"]["handles branch names with slashes"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("feature/add-login, origin/feature/add-login")
+
+  eq(#result, 1)
+  eq(result[1].name, "origin/feature/add-login")
+  eq(result[1].is_combined, true)
+end
+
+T["parse_decorations"]["preserves order: HEAD first, then tags, then branches"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_decorations("tag: v1.0.0, HEAD -> develop, origin/develop")
+
+  -- develop and origin/develop combine
+  eq(#result, 2)
+  -- HEAD ref should come first
+  eq(result[1].name, "origin/develop")
+  eq(result[1].is_head, true)
+  eq(result[1].is_combined, true)
+  -- Then tag
+  eq(result[2].name, "v1.0.0")
+  eq(result[2].type, "tag")
+end
+
+T["parse_decorations"]["handles detached HEAD"] = function()
+  local parse = require("gitlad.git.parse")
+
+  -- When HEAD is detached, it just shows HEAD without an arrow
+  local result = parse.parse_decorations("HEAD, tag: v1.0.0")
+
+  eq(#result, 2)
+  eq(result[1].name, "HEAD")
+  eq(result[1].type, "local")
+  eq(result[1].is_head, true)
+  eq(result[2].name, "v1.0.0")
+  eq(result[2].type, "tag")
+end
+
+T["parse_decorations"]["does not combine unrelated branches"] = function()
+  local parse = require("gitlad.git.parse")
+
+  -- main and origin/develop should not combine
+  local result = parse.parse_decorations("main, origin/develop")
+
+  eq(#result, 2)
+  eq(result[1].name, "main")
+  eq(result[1].type, "local")
+  eq(result[1].is_combined, false)
+  eq(result[2].name, "origin/develop")
+  eq(result[2].type, "remote")
+  eq(result[2].is_combined, false)
 end
 
 return T

@@ -1556,6 +1556,9 @@ function StatusBuffer:render()
     end
   end
 
+  -- Track commit section results for highlighting
+  local commit_section_results = {}
+
   -- Helper to render a commit section using log_list component
   local function add_commit_section(title, commits, section_type)
     if #commits == 0 then
@@ -1570,6 +1573,7 @@ function StatusBuffer:render()
 
     -- Only render commits if section is not collapsed
     if not is_collapsed then
+      local start_line = #lines -- 0-indexed for highlighting
       local result = log_list.render(commits, self.expanded_commits, {
         indent = 0,
         section = section_type,
@@ -1583,6 +1587,9 @@ function StatusBuffer:render()
           self.line_map[#lines] = info
         end
       end
+
+      -- Track for later highlighting
+      table.insert(commit_section_results, { start_line = start_line, result = result })
     end
     table.insert(lines, "")
   end
@@ -1820,6 +1827,11 @@ function StatusBuffer:render()
 
   -- Apply syntax highlighting
   hl.apply_status_highlights(self.bufnr, lines, self.line_map, self.section_lines)
+
+  -- Apply commit ref highlighting for commit sections
+  for _, section in ipairs(commit_section_results) do
+    log_list.apply_highlights(self.bufnr, section.start_line, section.result)
+  end
 
   -- Apply treesitter highlighting to expanded diffs
   hl.apply_diff_treesitter_highlights(self.bufnr, lines, self.line_map, self.diff_cache)

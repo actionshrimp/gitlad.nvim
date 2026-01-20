@@ -49,6 +49,14 @@ local highlight_groups = {
   GitladCommitDate = { link = "Comment" },
   GitladCommitBody = { link = "Normal" },
 
+  -- Ref highlighting (branches, tags on commits)
+  GitladRefLocal = { link = "DiagnosticError" }, -- Red for local branches
+  GitladRefRemote = { link = "DiagnosticOk" }, -- Green for remote branches
+  GitladRefCombined = { link = "diffRemoved" }, -- Muted red for local part of combined refs
+  GitladRefTag = { link = "Type" }, -- Tags (typically yellow/gold)
+  GitladRefHead = { link = "DiagnosticWarn" }, -- HEAD indicator (orange)
+  GitladRefSeparator = { link = "Comment" }, -- Parentheses and commas
+
   -- Section headers - all use a single common style (like magit/neogit)
   -- GitladSectionHeader is the base, all others link to it
   GitladSectionHeader = { link = "Title" },
@@ -390,12 +398,12 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
     if line:match("^Head:") then
       -- Highlight "Head:" label
       M.set(bufnr, ns_status, line_idx, 0, 5, "GitladHead")
-      -- Find and highlight branch name
+      -- Find and highlight branch name (muted red for local branch)
       local branch_start = line:find("%S", 11) -- After "Head:     "
       if branch_start then
         local branch_end = line:find("%s", branch_start)
         if branch_end then
-          M.set(bufnr, ns_status, line_idx, branch_start - 1, branch_end - 1, "GitladBranch")
+          M.set(bufnr, ns_status, line_idx, branch_start - 1, branch_end - 1, "GitladRefCombined")
           -- Rest is commit message
           local msg_start = line:find("%S", branch_end)
           if msg_start then
@@ -403,7 +411,7 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
           end
         else
           -- Branch name goes to end of line
-          M.set(bufnr, ns_status, line_idx, branch_start - 1, #line, "GitladBranch")
+          M.set(bufnr, ns_status, line_idx, branch_start - 1, #line, "GitladRefCombined")
         end
       end
 
@@ -414,9 +422,36 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
       if remote_start then
         local remote_end = line:find("%s", remote_start)
         if remote_end then
-          M.set(bufnr, ns_status, line_idx, remote_start - 1, remote_end - 1, "GitladRemote")
-          -- Find ahead/behind indicator
+          local ref_name = line:sub(remote_start, remote_end - 1)
+          -- Find ahead/behind indicator to determine if in sync
           local ahead_behind = line:match("%[%+%d+/%-?%d+%]")
+          local is_in_sync = not ahead_behind -- No indicator means in sync
+
+          -- Highlight the ref: combined (green prefix + red name) if in sync, else all green
+          local slash_pos = ref_name:find("/")
+          if is_in_sync and slash_pos then
+            -- In sync: green prefix + muted red branch name
+            M.set(
+              bufnr,
+              ns_status,
+              line_idx,
+              remote_start - 1,
+              remote_start - 1 + slash_pos,
+              "GitladRefRemote"
+            )
+            M.set(
+              bufnr,
+              ns_status,
+              line_idx,
+              remote_start - 1 + slash_pos,
+              remote_end - 1,
+              "GitladRefCombined"
+            )
+          else
+            -- Not in sync or no slash: all green
+            M.set(bufnr, ns_status, line_idx, remote_start - 1, remote_end - 1, "GitladRefRemote")
+          end
+
           if ahead_behind then
             local ab_start = line:find("%[%+%d+/%-?%d+%]")
             M.set(
@@ -440,7 +475,7 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
             end
           end
         else
-          M.set(bufnr, ns_status, line_idx, remote_start - 1, #line, "GitladRemote")
+          M.set(bufnr, ns_status, line_idx, remote_start - 1, #line, "GitladRefRemote")
         end
       end
 
@@ -451,9 +486,36 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
       if remote_start then
         local remote_end = line:find("%s", remote_start)
         if remote_end then
-          M.set(bufnr, ns_status, line_idx, remote_start - 1, remote_end - 1, "GitladRemote")
-          -- Find ahead/behind indicator
+          local ref_name = line:sub(remote_start, remote_end - 1)
+          -- Find ahead/behind indicator to determine if in sync
           local ahead_behind = line:match("%[%+%d+/%-?%d+%]")
+          local is_in_sync = not ahead_behind -- No indicator means in sync
+
+          -- Highlight the ref: combined (green prefix + red name) if in sync, else all green
+          local slash_pos = ref_name:find("/")
+          if is_in_sync and slash_pos then
+            -- In sync: green prefix + muted red branch name
+            M.set(
+              bufnr,
+              ns_status,
+              line_idx,
+              remote_start - 1,
+              remote_start - 1 + slash_pos,
+              "GitladRefRemote"
+            )
+            M.set(
+              bufnr,
+              ns_status,
+              line_idx,
+              remote_start - 1 + slash_pos,
+              remote_end - 1,
+              "GitladRefCombined"
+            )
+          else
+            -- Not in sync or no slash: all green
+            M.set(bufnr, ns_status, line_idx, remote_start - 1, remote_end - 1, "GitladRefRemote")
+          end
+
           if ahead_behind then
             local ab_start = line:find("%[%+%d+/%-?%d+%]")
             M.set(
@@ -475,7 +537,7 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
             end
           end
         else
-          M.set(bufnr, ns_status, line_idx, remote_start - 1, #line, "GitladRemote")
+          M.set(bufnr, ns_status, line_idx, remote_start - 1, #line, "GitladRefRemote")
         end
       end
 

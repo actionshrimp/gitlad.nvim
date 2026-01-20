@@ -193,12 +193,203 @@ function M.status_description(code)
   return STATUS_CODES[code] or "unknown"
 end
 
+---@class CommitRef
+---@field name string Display name (e.g., "main", "origin/main", "v1.0")
+---@field type "local"|"remote"|"tag" Ref type
+---@field is_head boolean Whether this ref has HEAD pointing to it
+---@field is_combined boolean Whether this combines local+remote at same commit
+---@field remote_prefix string|nil For combined refs, the remote prefix (e.g., "origin/") to highlight separately
+
 ---@class GitCommitInfo
 ---@field hash string Short commit hash
 ---@field subject string Commit subject line
 ---@field author? string Author name (optional, for detailed views)
 ---@field date? string Relative date (optional)
 ---@field body? string Commit body/message (optional, for expansion)
+---@field refs? CommitRef[] Array of refs pointing to this commit (optional)
+
+--- Parse git decorations string (from %D format)
+--- Input examples:
+---   "HEAD -> main, origin/main, tag: v1.0"
+---   "origin/feature"
+---   "" (empty for commits without refs)
+---@param decorate_str string The decorations string from git log %D
+---@return CommitRef[]
+function M.parse_decorations(decorate_str)
+  if not decorate_str or decorate_str == "" then
+    return {}
+  end
+
+  -- Split by ", " to get individual refs
+  local raw_refs = {}
+  for ref in (decorate_str .. ", "):gmatch("([^,]+), ") do
+    local trimmed = vim.trim(ref)
+    if trimmed ~= "" then
+      table.insert(raw_refs, trimmed)
+    end
+  end
+
+  -- First pass: collect all branch names (tags and HEAD handled separately)
+  -- We need to know all branch names first to determine which are local vs remote
+  local branch_names = {} -- Set of all branch-like ref names (excluding tags, HEAD)
+  local tag_names = {} -- Set of tag names
+  local head_target = nil -- Branch that HEAD points to, if any
+
+  for _, ref_str in ipairs(raw_refs) do
+    -- Check for "HEAD -> branch" pattern
+    local target = ref_str:match("^HEAD%s*->%s*(.+)$")
+    if target then
+      head_target = target
+      branch_names[target] = true
+    -- Skip "origin/HEAD -> origin/branch" patterns
+    elseif ref_str:match("^[^/]+/HEAD%s*->") then
+      -- Skip these
+      -- Check for "tag: name" pattern
+    elseif ref_str:match("^tag:%s*") then
+      local name = ref_str:match("^tag:%s*(.+)$")
+      tag_names[name] = true
+    -- Check for detached HEAD (just "HEAD")
+    elseif ref_str == "HEAD" then
+      -- Will be handled specially
+      -- Everything else is a branch
+    else
+      branch_names[ref_str] = true
+    end
+  end
+
+  -- Common remote names - used as fallback heuristic when we can't determine
+  -- from context whether a branch is local or remote
+  local common_remotes = {
+    origin = true,
+    upstream = true,
+    fork = true,
+    github = true,
+    gitlab = true,
+    bitbucket = true,
+  }
+
+  -- Second pass: classify branches as local or remote
+  -- A branch "a/b/c" is considered remote if:
+  --   1. There exists a branch "b/c" (the part after first slash), OR
+  --   2. The first path component is a common remote name (origin, upstream, etc.)
+  -- This handles: "main" (local), "origin/main" (remote because "main" exists OR "origin" is common),
+  -- "feature/foo" (local), "origin/feature/foo" (remote because "feature/foo" exists OR "origin" is common)
+  local remote_branches = {} -- Set of branch names that are remote
+  for name, _ in pairs(branch_names) do
+    -- Check if this looks like it could be a remote ref (has a slash)
+    local first_component, after_first_slash = name:match("^([^/]+)/(.+)$")
+    if first_component and after_first_slash then
+      -- This is remote if the part after slash is also a branch, OR if first component is a common remote
+      if branch_names[after_first_slash] or common_remotes[first_component] then
+        remote_branches[name] = true
+      end
+    end
+  end
+
+  -- Third pass: build parsed refs with proper classification
+  local parsed = {}
+  local local_branch_indices = {} -- Map: branch_name -> index in parsed
+  local remote_branch_indices = {} -- Map: "remote/branch" -> index in parsed
+
+  for _, ref_str in ipairs(raw_refs) do
+    ---@type CommitRef
+    local ref = {
+      name = "",
+      type = "local",
+      is_head = false,
+      is_combined = false,
+    }
+
+    -- Check for "HEAD -> branch" pattern
+    local target = ref_str:match("^HEAD%s*->%s*(.+)$")
+    if target then
+      ref.name = target
+      ref.is_head = true
+      -- Classify based on our remote detection
+      ref.type = remote_branches[target] and "remote" or "local"
+    -- Skip "origin/HEAD -> origin/branch" patterns
+    elseif ref_str:match("^[^/]+/HEAD%s*->") then
+      goto continue
+    -- Check for "tag: name" pattern
+    elseif ref_str:match("^tag:%s*") then
+      ref.name = ref_str:match("^tag:%s*(.+)$")
+      ref.type = "tag"
+    -- Check for detached HEAD (just "HEAD")
+    elseif ref_str == "HEAD" then
+      ref.name = "HEAD"
+      ref.type = "local"
+      ref.is_head = true
+    -- Everything else is a branch
+    else
+      ref.name = ref_str
+      ref.type = remote_branches[ref_str] and "remote" or "local"
+    end
+
+    -- Track indices for deduplication
+    if ref.type == "local" and ref.name ~= "HEAD" then
+      local_branch_indices[ref.name] = #parsed + 1
+    elseif ref.type == "remote" then
+      remote_branch_indices[ref.name] = #parsed + 1
+    end
+
+    table.insert(parsed, ref)
+    ::continue::
+  end
+
+  -- Fourth pass: combine local and remote branches that match
+  -- When local "main" and "origin/main" both exist, keep only "origin/main" with is_combined=true
+  local to_remove = {}
+  for local_name, local_idx in pairs(local_branch_indices) do
+    -- Look for matching remote refs
+    for remote_name, remote_idx in pairs(remote_branch_indices) do
+      -- Extract branch name from remote (e.g., "main" from "origin/main")
+      local remote_prefix, remote_branch = remote_name:match("^([^/]+/)(.+)$")
+      if remote_branch == local_name then
+        -- Found a match! Mark remote as combined, mark local for removal
+        parsed[remote_idx].is_combined = true
+        parsed[remote_idx].remote_prefix = remote_prefix -- Store prefix for separate highlighting
+        -- Transfer is_head from local to remote if HEAD points to the local branch
+        if parsed[local_idx].is_head then
+          parsed[remote_idx].is_head = true
+        end
+        to_remove[local_idx] = true
+        break -- Only combine with first matching remote
+      end
+    end
+  end
+
+  -- Build final result, excluding removed refs
+  -- Order: HEAD refs first, then tags, then other branches
+  local head_refs = {}
+  local tags = {}
+  local branches = {}
+
+  for i, ref in ipairs(parsed) do
+    if not to_remove[i] then
+      if ref.is_head then
+        table.insert(head_refs, ref)
+      elseif ref.type == "tag" then
+        table.insert(tags, ref)
+      else
+        table.insert(branches, ref)
+      end
+    end
+  end
+
+  -- Combine in order: HEAD refs, tags, branches
+  local result = {}
+  for _, ref in ipairs(head_refs) do
+    table.insert(result, ref)
+  end
+  for _, ref in ipairs(tags) do
+    table.insert(result, ref)
+  end
+  for _, ref in ipairs(branches) do
+    table.insert(result, ref)
+  end
+
+  return result
+end
 
 ---@class StashEntry
 ---@field index number Stash index (0, 1, 2, ...)
@@ -270,20 +461,63 @@ function M.parse_remotes(lines)
   return remotes
 end
 
+--- Check if a string looks like git refs (decorations)
+--- Refs typically contain: HEAD, ->, tag:, origin/, or comma-separated branch names
+---@param str string Potential refs string (without parentheses)
+---@return boolean
+local function looks_like_refs(str)
+  if not str or str == "" then
+    return false
+  end
+  -- Contains clear ref indicators
+  if str:match("HEAD") or str:match("->") or str:match("tag:") then
+    return true
+  end
+  -- Contains comma (multiple refs)
+  if str:match(",") then
+    return true
+  end
+  -- Looks like a remote ref (origin/something, upstream/something)
+  if str:match("^origin/") or str:match("^upstream/") then
+    return true
+  end
+  -- Simple branch name (no spaces, no special chars except /-_)
+  if str:match("^[%w/_%-]+$") then
+    return true
+  end
+  return false
+end
+
 --- Parse git log --oneline output
----@param lines string[] Output lines from git log --oneline
+--- Handles both plain and decorated output:
+---   "abc1234 commit subject"
+---   "abc1234 (HEAD -> main, origin/main) commit subject"
+---@param lines string[] Output lines from git log --oneline [--decorate]
 ---@return GitCommitInfo[]
 function M.parse_log_oneline(lines)
   local commits = {}
 
   for _, line in ipairs(lines) do
-    -- Format: "<hash> <subject>" (space separated, hash is first word)
-    local hash, subject = line:match("^(%S+)%s+(.*)$")
-    if hash then
+    -- Try to match decorated format: "<hash> (<refs>) <subject>"
+    local hash, potential_refs, after_refs = line:match("^(%S+)%s+%(([^)]+)%)%s*(.*)$")
+
+    if hash and potential_refs and looks_like_refs(potential_refs) then
+      -- Decorated format with refs
       table.insert(commits, {
         hash = hash,
-        subject = subject or "",
+        subject = after_refs or "",
+        refs = M.parse_decorations(potential_refs),
       })
+    else
+      -- Plain format: "<hash> <subject>" (no refs, or parentheses are part of subject)
+      hash, subject = line:match("^(%S+)%s+(.*)$")
+      if hash then
+        table.insert(commits, {
+          hash = hash,
+          subject = subject or "",
+          refs = {},
+        })
+      end
     end
   end
 
@@ -294,7 +528,7 @@ end
 local LOG_FORMAT_SEP = "|||"
 
 --- Parse git log output with custom format
---- Format: hash|||author|||date|||subject
+--- Format: hash|||decorations|||author|||date|||subject
 --- Each commit is separated by a record separator (newline + COMMIT_START marker)
 ---@param output string Raw output from git log
 ---@return GitCommitInfo[]
@@ -303,14 +537,16 @@ function M.parse_log_format(output)
 
   -- Split by newlines and parse each line as a commit
   for line in output:gmatch("[^\n]+") do
-    -- Format: "hash|||author|||date|||subject"
-    local hash, author, date, subject = line:match("^([^|]+)|||([^|]*)|||([^|]*)|||(.*)$")
+    -- Format: "hash|||decorations|||author|||date|||subject"
+    local hash, decorations, author, date, subject =
+      line:match("^([^|]+)|||([^|]*)|||([^|]*)|||([^|]*)|||(.*)$")
     if hash then
       table.insert(commits, {
         hash = hash,
         author = author ~= "" and author or nil,
         date = date ~= "" and date or nil,
         subject = subject or "",
+        refs = M.parse_decorations(decorations or ""),
       })
     end
   end
@@ -321,7 +557,15 @@ end
 --- Get the git log format string for parse_log_format
 ---@return string
 function M.get_log_format_string()
-  return "%h" .. LOG_FORMAT_SEP .. "%an" .. LOG_FORMAT_SEP .. "%ar" .. LOG_FORMAT_SEP .. "%s"
+  return "%h"
+    .. LOG_FORMAT_SEP
+    .. "%D"
+    .. LOG_FORMAT_SEP
+    .. "%an"
+    .. LOG_FORMAT_SEP
+    .. "%ar"
+    .. LOG_FORMAT_SEP
+    .. "%s"
 end
 
 --- Parse git branch -r output (remote branches)

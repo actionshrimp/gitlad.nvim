@@ -11,6 +11,7 @@ local M = {}
 ---@field indent number|nil Spaces to indent (default: 2)
 ---@field show_author boolean|nil Show author column (default: false)
 ---@field show_date boolean|nil Show relative date (default: false)
+---@field show_refs boolean|nil Show refs on commits (default: true)
 ---@field hash_length number|nil Characters of hash to show (default: 7)
 ---@field max_subject_len number|nil Truncate subject at this length (default: nil, no truncation)
 
@@ -20,11 +21,47 @@ local M = {}
 ---@field commit GitCommitInfo Full commit info
 ---@field section string Which section this belongs to
 ---@field expanded boolean|nil Whether details are expanded
+---@field displayed_refs CommitRef[]|nil Filtered refs actually displayed on this line
 
 ---@class LogListResult
 ---@field lines string[] Formatted lines
 ---@field line_info table<number, CommitLineInfo> Maps line index (1-based) to commit info
 ---@field commit_ranges table<string, {start: number, end_line: number}> Hash → line range (for expansion)
+
+--- Format refs for display (no brackets, space-separated)
+--- Skips the current branch (is_head) and remote HEAD refs since they're obvious from context
+---@param refs CommitRef[] Array of refs
+---@return string Formatted refs string (e.g., "origin/main v1.0.0 ")
+---@return CommitRef[] filtered_refs The refs that were actually included
+local function format_refs(refs)
+  if not refs or #refs == 0 then
+    return "", {}
+  end
+
+  local parts = {}
+  local filtered = {}
+  local first = true
+  for _, ref in ipairs(refs) do
+    -- Skip the current branch (HEAD) - it's obvious from context
+    -- Also skip remote HEAD refs like "origin/HEAD"
+    local is_remote_head = ref.name:match("/HEAD$")
+    if not ref.is_head and not is_remote_head then
+      if not first then
+        table.insert(parts, " ")
+      end
+      first = false
+      table.insert(parts, ref.name)
+      table.insert(filtered, ref)
+    end
+  end
+
+  if #filtered == 0 then
+    return "", {}
+  end
+
+  table.insert(parts, " ")
+  return table.concat(parts), filtered
+end
 
 --- Render a list of commits into formatted lines with metadata
 ---@param commits GitCommitInfo[] List of commits to render
@@ -38,6 +75,7 @@ function M.render(commits, expanded_hashes, opts)
   local hash_len = opts.hash_length or 7
   local section = opts.section or "log"
   local max_subject = opts.max_subject_len
+  local show_refs = opts.show_refs ~= false -- Default to true
 
   local result = {
     lines = {},
@@ -56,7 +94,19 @@ function M.render(commits, expanded_hashes, opts)
       subject = subject:sub(1, max_subject - 3) .. "..."
     end
 
-    local parts = { indent_str, hash, " ", subject }
+    local parts = { indent_str, hash, " " }
+
+    -- Add refs if present and show_refs is true (filtered to exclude current branch)
+    local displayed_refs = {}
+    if show_refs and commit.refs and #commit.refs > 0 then
+      local refs_str
+      refs_str, displayed_refs = format_refs(commit.refs)
+      if #displayed_refs > 0 then
+        table.insert(parts, refs_str)
+      end
+    end
+
+    table.insert(parts, subject)
 
     -- Optionally add author
     if opts.show_author and commit.author then
@@ -79,6 +129,7 @@ function M.render(commits, expanded_hashes, opts)
       commit = commit,
       section = section,
       expanded = is_expanded or false,
+      displayed_refs = displayed_refs, -- Filtered refs actually shown on this line
     }
 
     -- If expanded, add detail lines (body)
@@ -126,6 +177,19 @@ function M.get_commits_in_range(line_info, start_line, end_line)
   return commits
 end
 
+--- Get highlight group for a ref based on its type (non-combined refs only)
+---@param ref CommitRef
+---@return string highlight group name
+local function get_ref_highlight_group(ref)
+  if ref.type == "tag" then
+    return "GitladRefTag"
+  elseif ref.type == "remote" then
+    return "GitladRefRemote"
+  else -- local
+    return "GitladRefLocal"
+  end
+end
+
 --- Apply syntax highlighting to rendered log list
 ---@param bufnr number Buffer number
 ---@param start_line number 0-indexed line where the log list starts in buffer
@@ -149,8 +213,41 @@ function M.apply_highlights(bufnr, start_line, result)
         -- Highlight the hash
         hl.set(bufnr, ns, line_idx, hash_start - 1, hash_end, "GitladCommitHash")
 
-        -- Subject is everything after hash + space
-        local subject_start = hash_end + 2 -- +1 for space, +1 for 1-indexing
+        -- Track position after hash for refs highlighting
+        local pos = hash_end + 2 -- After hash and space
+        local subject_start = pos -- Default: right after hash + space
+
+        -- Highlight refs if present (use displayed_refs which excludes current branch)
+        local refs = info.displayed_refs or {}
+        if #refs > 0 then
+          for _, ref in ipairs(refs) do
+            -- For combined refs, highlight prefix and name separately
+            if ref.is_combined and ref.remote_prefix then
+              -- Highlight remote prefix (e.g., "origin/")
+              local prefix_len = #ref.remote_prefix
+              hl.set(bufnr, ns, line_idx, pos - 1, pos - 1 + prefix_len, "GitladRefRemote")
+              pos = pos + prefix_len
+
+              -- Highlight branch name with combined color (muted red)
+              local branch_name = ref.name:sub(prefix_len + 1) -- Remove prefix from name
+              local branch_len = #branch_name
+              hl.set(bufnr, ns, line_idx, pos - 1, pos - 1 + branch_len, "GitladRefCombined")
+              pos = pos + branch_len
+            else
+              -- Regular ref - highlight entire name
+              local ref_len = #ref.name
+              local ref_hl = get_ref_highlight_group(ref)
+              hl.set(bufnr, ns, line_idx, pos - 1, pos - 1 + ref_len, ref_hl)
+              pos = pos + ref_len
+            end
+
+            -- Space after ref (last ref has trailing space before subject)
+            pos = pos + 1
+          end
+          subject_start = pos
+        end
+
+        -- Highlight subject
         if subject_start <= #line then
           -- Find where subject ends (before author in parens, or end of line)
           local subject_end = line:find(" %(", subject_start)
