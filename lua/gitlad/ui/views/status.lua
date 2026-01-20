@@ -95,6 +95,8 @@ local function get_or_create_buffer(repo_state)
 
   -- Create spinner for refresh indicator
   self.spinner = spinner_util.new()
+  -- Track whether initial data load has completed (for loading animation)
+  self.initial_load_complete = false
 
   -- Create buffer
   self.bufnr = vim.api.nvim_create_buf(false, true)
@@ -120,6 +122,10 @@ local function get_or_create_buffer(repo_state)
         end)
       else
         self.spinner:stop()
+        -- Mark initial load as complete once data arrives
+        if not self.initial_load_complete then
+          self.initial_load_complete = true
+        end
       end
 
       -- Clear diff/expansion data when status changes to avoid stale data
@@ -1209,9 +1215,9 @@ function StatusBuffer:_update_status_line()
   vim.api.nvim_buf_set_lines(self.bufnr, line_idx, line_idx + 1, false, { new_text })
   vim.bo[self.bufnr].modifiable = false
 
-  -- Re-apply highlighting for just this line
+  -- Update just the text highlight (leaves background intact to avoid flicker)
   local ns_status = vim.api.nvim_create_namespace("gitlad_status")
-  hl.apply_status_line_highlight(self.bufnr, ns_status, line_idx, new_text)
+  hl.update_status_line_text(self.bufnr, ns_status, line_idx, new_text)
 end
 
 --- Navigate to next file entry
@@ -1486,7 +1492,18 @@ function StatusBuffer:render()
 
   local status = self.repo_state.status
   if not status then
-    vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, { "Loading..." })
+    -- Show spinner with full-buffer loading background during initial load
+    local loading_line = self.spinner:get_display()
+    vim.bo[self.bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, { loading_line })
+    vim.bo[self.bufnr].modifiable = false
+
+    -- Apply loading background to the whole buffer
+    local ns_status = vim.api.nvim_create_namespace("gitlad_status")
+    hl.clear(self.bufnr, ns_status)
+    hl.apply_status_line_highlight(self.bufnr, ns_status, 0, loading_line)
+
+    self.status_line_num = 1
     return
   end
 
@@ -1597,6 +1614,10 @@ function StatusBuffer:render()
     table.insert(lines, "")
   end
 
+  -- Status indicator line at the very top (shows spinner when refreshing, placeholder when idle)
+  table.insert(lines, self.spinner:get_display())
+  self.status_line_num = #lines -- Always line 1
+
   -- Header
   local head_line = "Head:     " .. status.branch
   if status.head_commit_msg then
@@ -1627,10 +1648,6 @@ function StatusBuffer:render()
     end
     table.insert(lines, push_line)
   end
-
-  -- Status indicator line (shows spinner when refreshing, placeholder when idle)
-  table.insert(lines, self.spinner:get_display())
-  self.status_line_num = #lines
 
   -- Sequencer state (cherry-pick/revert/rebase in progress)
   if status.cherry_pick_in_progress then
@@ -1831,6 +1848,13 @@ function StatusBuffer:render()
   -- Apply syntax highlighting
   hl.apply_status_highlights(self.bufnr, lines, self.line_map, self.section_lines)
 
+  -- Apply full-buffer background during initial load for visual effect
+  -- Once loading completes, only the status line (line 1) keeps the background
+  if not self.initial_load_complete and self.spinner:is_spinning() then
+    local ns_status = vim.api.nvim_create_namespace("gitlad_status")
+    hl.apply_loading_background(self.bufnr, ns_status, #lines)
+  end
+
   -- Apply commit ref highlighting for commit sections
   for _, section in ipairs(commit_section_results) do
     log_list.apply_highlights(self.bufnr, section.start_line, section.result)
@@ -1870,7 +1894,12 @@ function StatusBuffer:open()
   -- Set window-local options for clean status display
   utils.setup_view_window_options(self.winnr)
 
-  -- Initial render
+  -- Start spinner before initial render so we show "Refreshing..." not "Idle"
+  self.spinner:start(function()
+    self:_update_status_line()
+  end)
+
+  -- Initial render (will show spinner with loading background)
   self:render()
 
   -- Trigger refresh

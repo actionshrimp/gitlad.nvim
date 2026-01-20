@@ -50,7 +50,7 @@ local highlight_groups = {
   GitladCommitBody = { link = "Normal" },
 
   -- Ref highlighting (branches, tags on commits)
-  GitladRefLocal = { link = "DiagnosticError" }, -- Red for local branches
+  GitladRefLocal = { link = "diffRemoved" }, -- Muted red for local branches
   GitladRefRemote = { link = "DiagnosticOk" }, -- Green for remote branches
   GitladRefCombined = { link = "diffRemoved" }, -- Muted red for local part of combined refs
   GitladRefTag = { link = "Type" }, -- Tags (typically yellow/gold)
@@ -122,6 +122,7 @@ local highlight_groups = {
   -- Status indicator (spinner/idle)
   GitladStatusSpinner = { link = "DiagnosticInfo" },
   GitladStatusIdle = { link = "Comment" },
+  GitladStatusLineBackground = { bg = "#2a2a2a" }, -- Faint grey background for status line
 
   -- Output viewer (streaming command output)
   GitladOutputSuccess = { link = "DiagnosticOk" },
@@ -361,8 +362,8 @@ local section_hl = {
   recent = "GitladSectionRecent",
 }
 
---- Apply highlight to a status indicator line
---- Used both during full render and during spinner animation updates
+--- Apply highlight to a status indicator line (full render)
+--- Used during full render to set up both background and text highlights
 ---@param bufnr number Buffer number
 ---@param ns number Namespace for extmarks
 ---@param line_idx number 0-indexed line number
@@ -371,10 +372,56 @@ function M.apply_status_line_highlight(bufnr, ns, line_idx, line)
   -- Clear any existing highlight on this line
   vim.api.nvim_buf_clear_namespace(bufnr, ns, line_idx, line_idx + 1)
 
+  -- Apply faint background to the entire line (lower priority)
+  M.set_line(bufnr, ns, line_idx, "GitladStatusLineBackground", { priority = 50 })
+
   -- Check if this is the spinner (refreshing) or idle state
   local is_spinning = line:match("Refreshing")
   local hl_group = is_spinning and "GitladStatusSpinner" or "GitladStatusIdle"
-  M.set(bufnr, ns, line_idx, 0, #line, hl_group)
+  -- Apply text highlight on top (higher priority)
+  M.set(bufnr, ns, line_idx, 0, #line, hl_group, { priority = 60 })
+end
+
+--- Update just the text highlight on the status line (spinner animation)
+--- Does not touch the background to avoid visual flicker during animation
+---@param bufnr number Buffer number
+---@param ns number Namespace for extmarks
+---@param line_idx number 0-indexed line number
+---@param line string The line content
+function M.update_status_line_text(bufnr, ns, line_idx, line)
+  -- Get all extmarks on this line
+  local marks = vim.api.nvim_buf_get_extmarks(
+    bufnr,
+    ns,
+    { line_idx, 0 },
+    { line_idx, -1 },
+    { details = true }
+  )
+
+  -- Remove only text highlights (those with hl_group, not line_hl_group)
+  for _, mark in ipairs(marks) do
+    local details = mark[4]
+    if details.hl_group and not details.line_hl_group then
+      vim.api.nvim_buf_del_extmark(bufnr, ns, mark[1])
+    end
+  end
+
+  -- Apply new text highlight
+  local is_spinning = line:match("Refreshing")
+  local hl_group = is_spinning and "GitladStatusSpinner" or "GitladStatusIdle"
+  M.set(bufnr, ns, line_idx, 0, #line, hl_group, { priority = 60 })
+end
+
+--- Apply loading background to all lines (during initial load)
+--- This creates a visual effect where the entire buffer has the faint background,
+--- which transitions to just the first line once loading completes.
+---@param bufnr number Buffer number
+---@param ns number Namespace for extmarks
+---@param line_count number Total number of lines in buffer
+function M.apply_loading_background(bufnr, ns, line_count)
+  for i = 0, line_count - 1 do
+    M.set_line(bufnr, ns, i, "GitladStatusLineBackground", { priority = 50 })
+  end
 end
 
 --- Apply highlights to the status buffer
@@ -541,8 +588,8 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
         end
       end
 
-      -- Status indicator line: "· " or "⠋ Refreshing..."
-    elseif line:match("^[·⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]") then
+      -- Status indicator line is always on line 0 (first line of buffer)
+    elseif line_idx == 0 then
       M.apply_status_line_highlight(bufnr, ns_status, line_idx, line)
 
       -- Section headers: "Staged (n)", "Unstaged (n)", "Unmerged into X (n)", etc.

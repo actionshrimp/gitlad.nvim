@@ -31,6 +31,10 @@ T["hl"]["setup creates highlight groups"] = function()
   -- GitladDiffAdd has explicit bg color for layered highlighting
   local diff_add_hl = vim.api.nvim_get_hl(0, { name = "GitladDiffAdd" })
   expect.equality(type(diff_add_hl.bg), "number") -- bg is a color number
+
+  -- GitladStatusLineBackground has explicit bg color for status line
+  local status_bg_hl = vim.api.nvim_get_hl(0, { name = "GitladStatusLineBackground" })
+  expect.equality(type(status_bg_hl.bg), "number") -- bg is a color number
 end
 
 T["hl"]["setup can be called multiple times safely"] = function()
