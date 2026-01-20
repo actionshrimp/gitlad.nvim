@@ -1492,7 +1492,18 @@ function StatusBuffer:render()
 
   local status = self.repo_state.status
   if not status then
-    vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, { "Loading..." })
+    -- Show spinner with full-buffer loading background during initial load
+    local loading_line = self.spinner:get_display()
+    vim.bo[self.bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, { loading_line })
+    vim.bo[self.bufnr].modifiable = false
+
+    -- Apply loading background to the whole buffer
+    local ns_status = vim.api.nvim_create_namespace("gitlad_status")
+    hl.clear(self.bufnr, ns_status)
+    hl.apply_status_line_highlight(self.bufnr, ns_status, 0, loading_line)
+
+    self.status_line_num = 1
     return
   end
 
@@ -1883,7 +1894,12 @@ function StatusBuffer:open()
   -- Set window-local options for clean status display
   utils.setup_view_window_options(self.winnr)
 
-  -- Initial render
+  -- Start spinner before initial render so we show "Refreshing..." not "Idle"
+  self.spinner:start(function()
+    self:_update_status_line()
+  end)
+
+  -- Initial render (will show spinner with loading background)
   self:render()
 
   -- Trigger refresh
