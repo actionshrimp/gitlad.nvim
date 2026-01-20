@@ -50,7 +50,7 @@ local highlight_groups = {
   GitladCommitBody = { link = "Normal" },
 
   -- Ref highlighting (branches, tags on commits)
-  GitladRefLocal = { link = "DiagnosticError" }, -- Red for local branches
+  GitladRefLocal = { link = "diffRemoved" }, -- Muted red for local branches
   GitladRefRemote = { link = "DiagnosticOk" }, -- Green for remote branches
   GitladRefCombined = { link = "diffRemoved" }, -- Muted red for local part of combined refs
   GitladRefTag = { link = "Type" }, -- Tags (typically yellow/gold)
