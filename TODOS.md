@@ -5,3 +5,8 @@ TODOs:
 - [ ] is git hook output definitely streaming?
 - [ ] pressing 'p' on a stash directly tries to pop it, should open the popup menu instead
 - [ ] When first opening, it would be cool to show the same refreshing icon as on the status buffer as the first line, also maybe move it to the first line on status too?
+- [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear
+- [ ] line numbers disabled globally by status buffer
+- [ ] diffing from refs view doesnt work
+- [ ] refs view cherry indent is still annoying
+- [ ] would be nice to have an easy 'diff this branch with x' ... that auto completed based on context under point
