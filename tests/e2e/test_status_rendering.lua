@@ -537,4 +537,41 @@ T["status indicator"]["appears at very top of buffer"] = function()
   assert_truthy(head_line_num > status_line_num, "Head line should be after status indicator")
 end
 
+-- =============================================================================
+-- :Gitlad Command Behavior Tests
+-- =============================================================================
+
+T["gitlad command"] = MiniTest.new_set()
+
+T["gitlad command"]["triggers refresh when re-running with status already open"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "file.txt", "original content")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial commit"')
+
+  -- Open gitlad
+  open_gitlad(child, repo)
+
+  -- Verify initial state shows no untracked files
+  local lines = get_buffer_lines(child)
+  local has_new_file = find_line_with(lines, "new_file.txt")
+  eq(has_new_file, nil, "Should not have new_file.txt initially")
+
+  -- Create a new untracked file while status buffer is open
+  create_file(child, repo, "new_file.txt", "new content")
+
+  -- Without calling :Gitlad again, the status buffer wouldn't know about the new file
+  -- Now run :Gitlad again to force refresh
+  child.cmd("Gitlad")
+  wait(child, 300) -- Wait for async refresh
+
+  -- After re-running :Gitlad, the new file should appear
+  lines = get_buffer_lines(child)
+  local new_file_line = find_line_with(lines, "new_file.txt")
+  assert_truthy(new_file_line, "Should show new_file.txt after re-running :Gitlad")
+end
+
 return T

@@ -1880,13 +1880,18 @@ function StatusBuffer:_place_signs()
 end
 
 --- Open the status buffer in a window
-function StatusBuffer:open()
+---@param force_refresh? boolean If true, always trigger a refresh (e.g., when user explicitly runs :Gitlad)
+function StatusBuffer:open(force_refresh)
   -- Check if already open in a window with the status buffer displayed
   if self.winnr and vim.api.nvim_win_is_valid(self.winnr) then
     local win_buf = vim.api.nvim_win_get_buf(self.winnr)
     if win_buf == self.bufnr then
       -- Status buffer is already displayed in this window, just focus it
       vim.api.nvim_set_current_win(self.winnr)
+      -- If force_refresh requested (e.g., explicit :Gitlad command), trigger refresh
+      if force_refresh then
+        self.repo_state:refresh_status(true)
+      end
       return
     end
   end
@@ -1950,7 +1955,9 @@ end
 
 --- Open status view for current repository
 ---@param repo_state_override? RepoState Optional repo state to use instead of detecting from cwd
-function M.open(repo_state_override)
+---@param opts? { force_refresh?: boolean } Options
+function M.open(repo_state_override, opts)
+  opts = opts or {}
   local repo_state = repo_state_override or state.get()
   if not repo_state then
     vim.notify("[gitlad] Not in a git repository", vim.log.levels.WARN)
@@ -1958,7 +1965,7 @@ function M.open(repo_state_override)
   end
 
   local buf = get_or_create_buffer(repo_state)
-  buf:open()
+  buf:open(opts.force_refresh)
 end
 
 --- Close status view

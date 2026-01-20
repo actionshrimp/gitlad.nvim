@@ -3,7 +3,8 @@ local M = {}
 
 local subcommands = {
   status = function()
-    require("gitlad.ui.views.status").open()
+    -- Always force refresh when user explicitly runs :Gitlad command
+    require("gitlad.ui.views.status").open(nil, { force_refresh = true })
   end,
   -- Future commands:
   -- log = function() ... end,
