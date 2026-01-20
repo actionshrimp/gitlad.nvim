@@ -49,6 +49,14 @@ local highlight_groups = {
   GitladCommitDate = { link = "Comment" },
   GitladCommitBody = { link = "Normal" },
 
+  -- Ref highlighting (branches, tags on commits)
+  GitladRefLocal = { link = "DiagnosticError" }, -- Red for local branches
+  GitladRefRemote = { link = "DiagnosticOk" }, -- Green for remote branches
+  GitladRefCombined = { link = "DiagnosticHint" }, -- Combined local+remote (special)
+  GitladRefTag = { link = "Type" }, -- Tags (typically yellow/gold)
+  GitladRefHead = { link = "DiagnosticWarn" }, -- HEAD indicator (orange)
+  GitladRefSeparator = { link = "Comment" }, -- Parentheses and commas
+
   -- Section headers - all use a single common style (like magit/neogit)
   -- GitladSectionHeader is the base, all others link to it
   GitladSectionHeader = { link = "Title" },

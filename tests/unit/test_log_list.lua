@@ -14,6 +14,17 @@ local function make_commit(hash, subject, opts)
     author = opts.author,
     date = opts.date,
     body = opts.body,
+    refs = opts.refs,
+  }
+end
+
+local function make_ref(name, type, opts)
+  opts = opts or {}
+  return {
+    name = name,
+    type = type or "local",
+    is_head = opts.is_head or false,
+    is_combined = opts.is_combined or false,
   }
 end
 
@@ -133,6 +144,95 @@ T["render()"]["shows both author and date"] = function()
 
   local result = log_list.render(commits, nil, { show_author = true, show_date = true })
   eq(result.lines[1], "  abc1234 Test (Jane) 1 hour ago")
+end
+
+-- =============================================================================
+-- render() with refs tests
+-- =============================================================================
+
+T["render() refs"] = MiniTest.new_set()
+
+T["render() refs"]["includes refs after hash when present"] = function()
+  local commits = {
+    make_commit("abc1234", "Fix bug", {
+      refs = { make_ref("origin/main", "remote", { is_combined = true, is_head = true }) },
+    }),
+  }
+
+  local result = log_list.render(commits, nil, nil)
+
+  eq(result.lines[1], "  abc1234 (HEAD -> origin/main) Fix bug")
+end
+
+T["render() refs"]["omits refs when show_refs is false"] = function()
+  local commits = {
+    make_commit("abc1234", "Fix bug", {
+      refs = { make_ref("main", "local") },
+    }),
+  }
+
+  local result = log_list.render(commits, nil, { show_refs = false })
+
+  eq(result.lines[1], "  abc1234 Fix bug")
+end
+
+T["render() refs"]["formats HEAD indicator correctly"] = function()
+  local commits = {
+    make_commit("abc1234", "Fix bug", {
+      refs = { make_ref("main", "local", { is_head = true }) },
+    }),
+  }
+
+  local result = log_list.render(commits, nil, nil)
+
+  eq(result.lines[1], "  abc1234 (HEAD -> main) Fix bug")
+end
+
+T["render() refs"]["formats multiple refs with commas"] = function()
+  local commits = {
+    make_commit("abc1234", "Fix bug", {
+      refs = {
+        make_ref("origin/main", "remote", { is_combined = true, is_head = true }),
+        make_ref("v1.0.0", "tag"),
+      },
+    }),
+  }
+
+  local result = log_list.render(commits, nil, nil)
+
+  eq(result.lines[1], "  abc1234 (HEAD -> origin/main, v1.0.0) Fix bug")
+end
+
+T["render() refs"]["formats tag correctly"] = function()
+  local commits = {
+    make_commit("abc1234", "Release", {
+      refs = { make_ref("v1.0.0", "tag") },
+    }),
+  }
+
+  local result = log_list.render(commits, nil, nil)
+
+  eq(result.lines[1], "  abc1234 (v1.0.0) Release")
+end
+
+T["render() refs"]["handles commit without refs (empty array)"] = function()
+  local commits = {
+    make_commit("abc1234", "Fix bug", { refs = {} }),
+  }
+
+  local result = log_list.render(commits, nil, nil)
+
+  eq(result.lines[1], "  abc1234 Fix bug")
+end
+
+T["render() refs"]["handles commit without refs field (nil)"] = function()
+  local commits = {
+    make_commit("abc1234", "Fix bug"),
+  }
+
+  local result = log_list.render(commits, nil, nil)
+
+  eq(result.lines[1], "  abc1234 Fix bug")
 end
 
 -- =============================================================================

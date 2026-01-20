@@ -513,7 +513,8 @@ end
 ---@param callback fun(commits: GitCommitInfo[]|nil, err: string|nil)
 function M.get_commits_between(base, target, opts, callback)
   -- git log base..target shows commits reachable from target but not from base
-  cli.run_async({ "log", "--oneline", base .. ".." .. target }, opts, function(result)
+  -- Use --decorate to get refs (branches, tags) on commits
+  cli.run_async({ "log", "--oneline", "--decorate", base .. ".." .. target }, opts, function(result)
     if result.code ~= 0 then
       callback(nil, table.concat(result.stderr, "\n"))
       return
@@ -603,7 +604,8 @@ end
 ---@param opts? GitCommandOptions
 ---@param callback fun(commits: GitCommitInfo[]|nil, err: string|nil)
 function M.log(args, opts, callback)
-  local log_args = { "log", "--oneline" }
+  -- Use --decorate to get refs (branches, tags) on commits
+  local log_args = { "log", "--oneline", "--decorate" }
   vim.list_extend(log_args, args)
 
   cli.run_async(log_args, opts, function(result)
