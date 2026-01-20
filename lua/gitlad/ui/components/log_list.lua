@@ -27,25 +27,25 @@ local M = {}
 ---@field line_info table<number, CommitLineInfo> Maps line index (1-based) to commit info
 ---@field commit_ranges table<string, {start: number, end_line: number}> Hash → line range (for expansion)
 
---- Format refs for display
+--- Format refs for display (no brackets, space-separated)
 ---@param refs CommitRef[] Array of refs
----@return string Formatted refs string (e.g., "(HEAD -> origin/main, v1.0.0) ")
+---@return string Formatted refs string (e.g., "HEAD origin/main v1.0.0 ")
 local function format_refs(refs)
   if not refs or #refs == 0 then
     return ""
   end
 
-  local parts = { "(" }
+  local parts = {}
   for i, ref in ipairs(refs) do
     if i > 1 then
-      table.insert(parts, ", ")
+      table.insert(parts, " ")
     end
     if ref.is_head then
-      table.insert(parts, "HEAD -> ")
+      table.insert(parts, "HEAD ")
     end
     table.insert(parts, ref.name)
   end
-  table.insert(parts, ") ")
+  table.insert(parts, " ")
 
   return table.concat(parts)
 end
@@ -158,13 +158,11 @@ function M.get_commits_in_range(line_info, start_line, end_line)
   return commits
 end
 
---- Get highlight group for a ref based on its type
+--- Get highlight group for a ref based on its type (non-combined refs only)
 ---@param ref CommitRef
 ---@return string highlight group name
 local function get_ref_highlight_group(ref)
-  if ref.is_combined then
-    return "GitladRefCombined"
-  elseif ref.type == "tag" then
+  if ref.type == "tag" then
     return "GitladRefTag"
   elseif ref.type == "remote" then
     return "GitladRefRemote"
@@ -196,57 +194,43 @@ function M.apply_highlights(bufnr, start_line, result)
         -- Highlight the hash
         hl.set(bufnr, ns, line_idx, hash_start - 1, hash_end, "GitladCommitHash")
 
-        -- Check if there's a refs section immediately after hash
-        -- Format after hash: " (refs) subject" or " subject"
-        local after_hash = hash_end + 1
-        local subject_start = after_hash + 1 -- default: right after hash + space
+        -- Track position after hash for refs highlighting
+        local pos = hash_end + 2 -- After hash and space
+        local subject_start = pos -- Default: right after hash + space
 
-        -- Check for refs: "(refs) " pattern immediately after hash
-        local refs_start, refs_end = line:find("%s%(", hash_end)
-        if
-          refs_start
-          and refs_start == hash_end + 1
-          and info.commit.refs
-          and #info.commit.refs > 0
-        then
-          -- Found refs section - find the closing paren
-          local close_paren = line:find("%)", refs_start)
-          if close_paren then
-            -- Highlight opening paren
-            hl.set(bufnr, ns, line_idx, refs_start, refs_start + 1, "GitladRefSeparator")
+        -- Highlight refs if present
+        if info.commit.refs and #info.commit.refs > 0 then
+          for j, ref in ipairs(info.commit.refs) do
+            -- Handle "HEAD " prefix
+            if ref.is_head then
+              hl.set(bufnr, ns, line_idx, pos - 1, pos + 4, "GitladRefHead") -- "HEAD " is 5 chars
+              pos = pos + 5
+            end
 
-            -- Highlight each ref and separators
-            local pos = refs_start + 2 -- After "("
-            for j, ref in ipairs(info.commit.refs) do
-              if j > 1 then
-                -- Highlight ", " separator
-                local sep_pos = line:find(", ", pos, true)
-                if sep_pos then
-                  hl.set(bufnr, ns, line_idx, sep_pos - 1, sep_pos + 1, "GitladRefSeparator")
-                  pos = sep_pos + 2
-                end
-              end
+            -- For combined refs, highlight prefix and name separately
+            if ref.is_combined and ref.remote_prefix then
+              -- Highlight remote prefix (e.g., "origin/")
+              local prefix_len = #ref.remote_prefix
+              hl.set(bufnr, ns, line_idx, pos - 1, pos - 1 + prefix_len, "GitladRefRemote")
+              pos = pos + prefix_len
 
-              -- Handle "HEAD -> " prefix
-              if ref.is_head then
-                local head_end = pos + 7 -- "HEAD -> " is 8 chars
-                hl.set(bufnr, ns, line_idx, pos - 1, head_end, "GitladRefHead")
-                pos = head_end + 1
-              end
-
-              -- Highlight the ref name
+              -- Highlight branch name with combined color
+              local branch_name = ref.name:sub(prefix_len + 1) -- Remove prefix from name
+              local branch_len = #branch_name
+              hl.set(bufnr, ns, line_idx, pos - 1, pos - 1 + branch_len, "GitladRefCombined")
+              pos = pos + branch_len
+            else
+              -- Regular ref - highlight entire name
               local ref_len = #ref.name
               local ref_hl = get_ref_highlight_group(ref)
               hl.set(bufnr, ns, line_idx, pos - 1, pos - 1 + ref_len, ref_hl)
               pos = pos + ref_len
             end
 
-            -- Highlight closing paren
-            hl.set(bufnr, ns, line_idx, close_paren - 1, close_paren, "GitladRefSeparator")
-
-            -- Subject starts after ") "
-            subject_start = close_paren + 2
+            -- Space after ref (last ref has trailing space before subject)
+            pos = pos + 1
           end
+          subject_start = pos
         end
 
         -- Highlight subject

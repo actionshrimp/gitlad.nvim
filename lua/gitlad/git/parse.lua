@@ -198,6 +198,7 @@ end
 ---@field type "local"|"remote"|"tag" Ref type
 ---@field is_head boolean Whether this ref has HEAD pointing to it
 ---@field is_combined boolean Whether this combines local+remote at same commit
+---@field remote_prefix string|nil For combined refs, the remote prefix (e.g., "origin/") to highlight separately
 
 ---@class GitCommitInfo
 ---@field hash string Short commit hash
@@ -342,10 +343,11 @@ function M.parse_decorations(decorate_str)
     -- Look for matching remote refs
     for remote_name, remote_idx in pairs(remote_branch_indices) do
       -- Extract branch name from remote (e.g., "main" from "origin/main")
-      local remote_branch = remote_name:match("^[^/]+/(.+)$")
+      local remote_prefix, remote_branch = remote_name:match("^([^/]+/)(.+)$")
       if remote_branch == local_name then
         -- Found a match! Mark remote as combined, mark local for removal
         parsed[remote_idx].is_combined = true
+        parsed[remote_idx].remote_prefix = remote_prefix -- Store prefix for separate highlighting
         -- Transfer is_head from local to remote if HEAD points to the local branch
         if parsed[local_idx].is_head then
           parsed[remote_idx].is_head = true

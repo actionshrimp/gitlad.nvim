@@ -161,7 +161,7 @@ T["render() refs"]["includes refs after hash when present"] = function()
 
   local result = log_list.render(commits, nil, nil)
 
-  eq(result.lines[1], "  abc1234 (HEAD -> origin/main) Fix bug")
+  eq(result.lines[1], "  abc1234 HEAD origin/main Fix bug")
 end
 
 T["render() refs"]["omits refs when show_refs is false"] = function()
@@ -185,10 +185,10 @@ T["render() refs"]["formats HEAD indicator correctly"] = function()
 
   local result = log_list.render(commits, nil, nil)
 
-  eq(result.lines[1], "  abc1234 (HEAD -> main) Fix bug")
+  eq(result.lines[1], "  abc1234 HEAD main Fix bug")
 end
 
-T["render() refs"]["formats multiple refs with commas"] = function()
+T["render() refs"]["formats multiple refs with spaces"] = function()
   local commits = {
     make_commit("abc1234", "Fix bug", {
       refs = {
@@ -200,7 +200,7 @@ T["render() refs"]["formats multiple refs with commas"] = function()
 
   local result = log_list.render(commits, nil, nil)
 
-  eq(result.lines[1], "  abc1234 (HEAD -> origin/main, v1.0.0) Fix bug")
+  eq(result.lines[1], "  abc1234 HEAD origin/main v1.0.0 Fix bug")
 end
 
 T["render() refs"]["formats tag correctly"] = function()
@@ -212,7 +212,7 @@ T["render() refs"]["formats tag correctly"] = function()
 
   local result = log_list.render(commits, nil, nil)
 
-  eq(result.lines[1], "  abc1234 (v1.0.0) Release")
+  eq(result.lines[1], "  abc1234 v1.0.0 Release")
 end
 
 T["render() refs"]["handles commit without refs (empty array)"] = function()
