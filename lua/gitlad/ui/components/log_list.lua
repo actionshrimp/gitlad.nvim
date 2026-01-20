@@ -12,6 +12,7 @@ local M = {}
 ---@field show_author boolean|nil Show author column (default: false)
 ---@field show_date boolean|nil Show relative date (default: false)
 ---@field show_refs boolean|nil Show refs on commits (default: true)
+---@field show_tags boolean|nil Show tags in refs (default: false)
 ---@field hash_length number|nil Characters of hash to show (default: 7)
 ---@field max_subject_len number|nil Truncate subject at this length (default: nil, no truncation)
 
@@ -30,10 +31,12 @@ local M = {}
 
 --- Format refs for display (no brackets, space-separated)
 --- Skips the current branch (is_head) and remote HEAD refs since they're obvious from context
+--- Also skips tags unless show_tags is true
 ---@param refs CommitRef[] Array of refs
+---@param show_tags boolean Whether to include tags
 ---@return string Formatted refs string (e.g., "origin/main v1.0.0 ")
 ---@return CommitRef[] filtered_refs The refs that were actually included
-local function format_refs(refs)
+local function format_refs(refs, show_tags)
   if not refs or #refs == 0 then
     return "", {}
   end
@@ -44,8 +47,10 @@ local function format_refs(refs)
   for _, ref in ipairs(refs) do
     -- Skip the current branch (HEAD) - it's obvious from context
     -- Also skip remote HEAD refs like "origin/HEAD"
+    -- Also skip tags unless show_tags is true
     local is_remote_head = ref.name:match("/HEAD$")
-    if not ref.is_head and not is_remote_head then
+    local is_tag = ref.type == "tag"
+    if not ref.is_head and not is_remote_head and (not is_tag or show_tags) then
       if not first then
         table.insert(parts, " ")
       end
@@ -76,6 +81,7 @@ function M.render(commits, expanded_hashes, opts)
   local section = opts.section or "log"
   local max_subject = opts.max_subject_len
   local show_refs = opts.show_refs ~= false -- Default to true
+  local show_tags = opts.show_tags or false -- Default to false
 
   local result = {
     lines = {},
@@ -100,7 +106,7 @@ function M.render(commits, expanded_hashes, opts)
     local displayed_refs = {}
     if show_refs and commit.refs and #commit.refs > 0 then
       local refs_str
-      refs_str, displayed_refs = format_refs(commit.refs)
+      refs_str, displayed_refs = format_refs(commit.refs, show_tags)
       if #displayed_refs > 0 then
         table.insert(parts, refs_str)
       end

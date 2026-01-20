@@ -1324,4 +1324,57 @@ function M.submodule_list(opts, callback)
   )
 end
 
+--- Get a git config value synchronously
+---@param key string Config key (e.g., "gitlad.showTagsInRefs")
+---@param opts? GitCommandOptions
+---@return string|nil value The config value or nil if not set
+function M.config_get(key, opts)
+  local result = cli.run_sync({ "config", "--get", key }, opts)
+  if result.code ~= 0 then
+    return nil
+  end
+  local value = result.stdout[1]
+  if value then
+    return value:match("^%s*(.-)%s*$") -- trim whitespace
+  end
+  return nil
+end
+
+--- Set a git config value
+---@param key string Config key
+---@param value string Config value
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.config_set(key, value, opts, callback)
+  cli.run_async({ "config", key, value }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Get a git config boolean value synchronously
+--- Returns true if value is "true", false if "false" or unset
+---@param key string Config key
+---@param opts? GitCommandOptions
+---@return boolean
+function M.config_get_bool(key, opts)
+  local value = M.config_get(key, opts)
+  return value == "true"
+end
+
+--- Toggle a git config boolean value
+---@param key string Config key
+---@param opts? GitCommandOptions
+---@param callback fun(new_value: boolean, err: string|nil)
+function M.config_toggle(key, opts, callback)
+  local current = M.config_get_bool(key, opts)
+  local new_value = not current
+  M.config_set(key, tostring(new_value), opts, function(success, err)
+    if success then
+      callback(new_value, nil)
+    else
+      callback(false, err)
+    end
+  end)
+end
+
 return M

@@ -301,6 +301,8 @@ function LogBuffer:render()
     return
   end
 
+  local show_tags =
+    git.config_get_bool("gitlad.showTagsInRefs", { cwd = self.repo_state.repo_root })
   local lines = {}
   self.line_map = {}
   self.commit_ranges = {}
@@ -328,6 +330,7 @@ function LogBuffer:render()
       section = "log",
       show_author = true,
       show_date = true,
+      show_tags = show_tags,
     })
 
     -- Add rendered lines and update line_map with correct offsets
@@ -358,7 +361,7 @@ function LogBuffer:render()
   vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, lines)
 
   -- Apply syntax highlighting
-  self:_apply_highlights(header_lines)
+  self:_apply_highlights(header_lines, show_tags)
 
   -- Place expand/collapse signs
   self:_place_signs()
@@ -369,7 +372,8 @@ end
 
 --- Apply syntax highlighting
 ---@param header_lines number Number of header lines before commits
-function LogBuffer:_apply_highlights(header_lines)
+---@param show_tags boolean Whether to show tags in refs
+function LogBuffer:_apply_highlights(header_lines, show_tags)
   local ns = hl.get_namespaces().status
 
   -- Clear existing highlights
@@ -385,6 +389,7 @@ function LogBuffer:_apply_highlights(header_lines)
       section = "log",
       show_author = true,
       show_date = true,
+      show_tags = show_tags,
     })
     log_list.apply_highlights(self.bufnr, header_lines, result)
   end
