@@ -504,7 +504,7 @@ T["status indicator"]["shows placeholder dot when idle"] = function()
   assert_truthy(found_placeholder, "Should show '· Idle' when idle")
 end
 
-T["status indicator"]["appears after Head line"] = function()
+T["status indicator"]["appears at very top of buffer"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -531,7 +531,10 @@ T["status indicator"]["appears after Head line"] = function()
 
   assert_truthy(head_line_num, "Should have Head line")
   assert_truthy(status_line_num, "Should have status indicator line")
-  assert_truthy(status_line_num > head_line_num, "Status indicator should be after Head line")
+  -- Status indicator should be on line 1 (very top)
+  eq(status_line_num, 1)
+  -- Head line should come after status indicator
+  assert_truthy(head_line_num > status_line_num, "Head line should be after status indicator")
 end
 
 return T
