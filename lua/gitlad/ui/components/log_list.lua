@@ -21,6 +21,7 @@ local M = {}
 ---@field commit GitCommitInfo Full commit info
 ---@field section string Which section this belongs to
 ---@field expanded boolean|nil Whether details are expanded
+---@field displayed_refs CommitRef[]|nil Filtered refs actually displayed on this line
 
 ---@class LogListResult
 ---@field lines string[] Formatted lines
@@ -28,26 +29,36 @@ local M = {}
 ---@field commit_ranges table<string, {start: number, end_line: number}> Hash → line range (for expansion)
 
 --- Format refs for display (no brackets, space-separated)
+--- Skips the current branch (is_head) since it's obvious from context
 ---@param refs CommitRef[] Array of refs
----@return string Formatted refs string (e.g., "HEAD origin/main v1.0.0 ")
+---@return string Formatted refs string (e.g., "origin/main v1.0.0 ")
+---@return CommitRef[] filtered_refs The refs that were actually included
 local function format_refs(refs)
   if not refs or #refs == 0 then
-    return ""
+    return "", {}
   end
 
   local parts = {}
-  for i, ref in ipairs(refs) do
-    if i > 1 then
-      table.insert(parts, " ")
+  local filtered = {}
+  local first = true
+  for _, ref in ipairs(refs) do
+    -- Skip the current branch (HEAD) - it's obvious from context
+    if not ref.is_head then
+      if not first then
+        table.insert(parts, " ")
+      end
+      first = false
+      table.insert(parts, ref.name)
+      table.insert(filtered, ref)
     end
-    if ref.is_head then
-      table.insert(parts, "HEAD ")
-    end
-    table.insert(parts, ref.name)
   end
-  table.insert(parts, " ")
 
-  return table.concat(parts)
+  if #filtered == 0 then
+    return "", {}
+  end
+
+  table.insert(parts, " ")
+  return table.concat(parts), filtered
 end
 
 --- Render a list of commits into formatted lines with metadata
@@ -83,9 +94,14 @@ function M.render(commits, expanded_hashes, opts)
 
     local parts = { indent_str, hash, " " }
 
-    -- Add refs if present and show_refs is true
+    -- Add refs if present and show_refs is true (filtered to exclude current branch)
+    local displayed_refs = {}
     if show_refs and commit.refs and #commit.refs > 0 then
-      table.insert(parts, format_refs(commit.refs))
+      local refs_str
+      refs_str, displayed_refs = format_refs(commit.refs)
+      if #displayed_refs > 0 then
+        table.insert(parts, refs_str)
+      end
     end
 
     table.insert(parts, subject)
@@ -111,6 +127,7 @@ function M.render(commits, expanded_hashes, opts)
       commit = commit,
       section = section,
       expanded = is_expanded or false,
+      displayed_refs = displayed_refs, -- Filtered refs actually shown on this line
     }
 
     -- If expanded, add detail lines (body)
@@ -198,15 +215,10 @@ function M.apply_highlights(bufnr, start_line, result)
         local pos = hash_end + 2 -- After hash and space
         local subject_start = pos -- Default: right after hash + space
 
-        -- Highlight refs if present
-        if info.commit.refs and #info.commit.refs > 0 then
-          for j, ref in ipairs(info.commit.refs) do
-            -- Handle "HEAD " prefix
-            if ref.is_head then
-              hl.set(bufnr, ns, line_idx, pos - 1, pos + 4, "GitladRefHead") -- "HEAD " is 5 chars
-              pos = pos + 5
-            end
-
+        -- Highlight refs if present (use displayed_refs which excludes current branch)
+        local refs = info.displayed_refs or {}
+        if #refs > 0 then
+          for _, ref in ipairs(refs) do
             -- For combined refs, highlight prefix and name separately
             if ref.is_combined and ref.remote_prefix then
               -- Highlight remote prefix (e.g., "origin/")
@@ -214,7 +226,7 @@ function M.apply_highlights(bufnr, start_line, result)
               hl.set(bufnr, ns, line_idx, pos - 1, pos - 1 + prefix_len, "GitladRefRemote")
               pos = pos + prefix_len
 
-              -- Highlight branch name with combined color
+              -- Highlight branch name with combined color (muted red)
               local branch_name = ref.name:sub(prefix_len + 1) -- Remove prefix from name
               local branch_len = #branch_name
               hl.set(bufnr, ns, line_idx, pos - 1, pos - 1 + branch_len, "GitladRefCombined")
