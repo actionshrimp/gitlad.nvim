@@ -7,11 +7,11 @@ Done:
 - [x] Fix line numbers being disabled globally instead of just locally for gitlad buffers
 
 Now:
+- [x] if you've explicitly run the :Gitlad command, we should trigger a refresh, even if we already have some state present
+- [x] pressing 'p' on a stash opens the stash popup menu instead of directly popping
+- [x] on the refs view, the individual commits under a particular ref (for cherries etc) are not indented
 
 Upcoming:
-- [ ] pressing 'p' on a stash directly tries to pop it, should open the popup menu instead
-- [ ] is git hook output definitely streaming?
-- [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear
 - [ ] diffing from refs view doesnt work
-- [ ] refs view cherry indent is still annoying
+- [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear
 - [ ] would be nice to have an easy 'diff this branch with x' ... that auto completed based on context under point
