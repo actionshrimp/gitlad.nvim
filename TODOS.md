@@ -14,3 +14,6 @@ Now:
 
 Upcoming:
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear
+- [ ] Reflog HEAD on log view
+- [ ] The Diffview conflict resolution screen definitely has 3 splits! can we use that for a better view on original/unstaged/index?
+- [ ] as we get the notification for lint failures, i think we can just make the commit hook popup dispapear after a slightly longer delay in the error case. users can look in their notification history to see the failure
