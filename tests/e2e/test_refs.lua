@@ -361,7 +361,7 @@ T["refs view"]["buffer is not modifiable"] = function()
   cleanup_test_repo(child, repo)
 end
 
-T["refs view"]["has popup keymaps (b, A, X)"] = function()
+T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
   local repo = create_test_repo(child)
   cd(child, repo)
 
@@ -384,16 +384,19 @@ T["refs view"]["has popup keymaps (b, A, X)"] = function()
       if km.lhs == "b" then _G.popup_keymaps.branch = true end
       if km.lhs == "A" then _G.popup_keymaps.cherrypick = true end
       if km.lhs == "X" then _G.popup_keymaps.reset = true end
+      if km.lhs == "d" then _G.popup_keymaps.diff = true end
     end
   ]])
 
   local has_branch = child.lua_get("_G.popup_keymaps.branch")
   local has_cherrypick = child.lua_get("_G.popup_keymaps.cherrypick")
   local has_reset = child.lua_get("_G.popup_keymaps.reset")
+  local has_diff = child.lua_get("_G.popup_keymaps.diff")
 
   eq(has_branch, true)
   eq(has_cherrypick, true)
   eq(has_reset, true)
+  eq(has_diff, true)
 
   cleanup_test_repo(child, repo)
 end
@@ -602,6 +605,71 @@ T["refs view"]["cherry commits are displayed without indentation"] = function()
 
   eq(found_cherry, true)
   eq(cherry_has_no_indent, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["diff popup on cherry commit shows commit context"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit on main
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create feature branch with unique commits (cherries)
+  git(child, repo, "checkout -b feature-branch")
+  create_file(child, repo, "feature.txt", "feature content")
+  git(child, repo, "add feature.txt")
+  git(child, repo, "commit -m 'Add feature file'")
+
+  -- Go back to main
+  git(child, repo, "checkout -")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open refs view at HEAD (main)
+  child.type_keys("yry")
+  child.lua("vim.wait(1500, function() end)") -- Wait for refs and cherry prefetch
+
+  -- Navigate to feature-branch and expand it
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("feature%-branch") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Press Tab to expand cherry commits
+  child.type_keys("<Tab>")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Navigate to the cherry commit line
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("^[%+%-] %x%x%x%x%x%x%x ") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Open diff popup on cherry commit line
+  child.type_keys("d")
+  child.lua("vim.wait(200, function() end)")
+
+  -- Get popup buffer lines
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Check that the diff popup shows "Show commit" action (indicates commit context)
+  eq(content:match("Show commit") ~= nil, true)
 
   cleanup_test_repo(child, repo)
 end
