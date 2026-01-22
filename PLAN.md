@@ -328,29 +328,31 @@ Transient-style popup system inspired by neogit/magit:
 
 This feature is implemented in **3 PRs** for incremental delivery:
 
-#### PR 1: Merge State Detection & Basic Popup
+#### PR 1: Merge State Detection & Basic Popup - COMPLETE
 
 **Scope:** Detect merge-in-progress state, show in status header, create basic merge popup.
 
-- [ ] Merge state detection via `.git/MERGE_HEAD` file
-- [ ] Status header shows "Merging: <hash> <subject>" when merge in progress
-- [ ] `m` opens merge popup (matches magit/evil-collection)
-- [ ] Normal state switches: `-f` (`--ff-only`), `-n` (`--no-ff`)
-- [ ] Normal state actions: `m` (Merge), `e` (Merge, edit message), `n` (Merge, don't commit), `s` (Squash merge)
-- [ ] In-progress state actions: `m` (Commit merge), `a` (Abort merge)
-- [ ] Help popup updated with `m` entry
+- [x] Merge state detection via `.git/MERGE_HEAD` file
+- [x] Status header shows "Merging: <hash> <subject>" when merge in progress
+- [x] `m` opens merge popup (matches magit/evil-collection)
+- [x] Normal state switches: `-f` (`--ff-only`), `-n` (`--no-ff`)
+- [x] Normal state actions: `m` (Merge), `e` (Merge, edit message), `n` (Merge, don't commit), `s` (Squash merge)
+- [x] In-progress state actions: `m` (Commit merge), `a` (Abort merge)
+- [x] Help popup updated with `m` entry
+- [x] `s` on conflicted file stages it (marks as resolved)
+- [x] `s` on Conflicted section header stages all conflicted files
 
-**Files to create:**
+**Files created:**
 - `lua/gitlad/popups/merge.lua` - Merge popup with switches and actions
 - `tests/unit/test_merge_popup.lua` - Unit tests for popup structure
 - `tests/e2e/test_merge.lua` - E2E tests for merge operations
 
-**Files to modify:**
+**Files modified:**
 - `lua/gitlad/git/init.lua` - Add `get_merge_state()`, `merge()`, `merge_continue()`, `merge_abort()`
 - `lua/gitlad/git/parse.lua` - Extend `GitStatusResult` with `merge_in_progress`, `merge_head_oid`, `merge_head_subject`
 - `lua/gitlad/state/init.lua` - Fetch merge state during refresh
 - `lua/gitlad/state/reducer.lua` - Copy merge fields in reducer
-- `lua/gitlad/ui/views/status.lua` - Header display, `m` keybinding
+- `lua/gitlad/ui/views/status.lua` - Header display, `m` keybinding, staging conflicted files
 - `lua/gitlad/popups/help.lua` - Add `m` (Merge) entry
 
 #### PR 2: Full Merge Popup Options
@@ -369,7 +371,6 @@ This feature is implemented in **3 PRs** for incremental delivery:
 
 - [ ] `e` or `RET` on conflicted file opens diffview.nvim merge tool
 - [ ] Graceful fallback if diffview.nvim not installed (opens file with conflict markers)
-- [ ] `s` on conflicted file stages it (marks as resolved) - already works
 
 **Magit parity notes:**
 - Magit's "absorb", "preview", and "dissolve" actions are advanced features that even neogit hasn't implemented - skipped initially

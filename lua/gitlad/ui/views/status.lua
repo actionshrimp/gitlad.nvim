@@ -757,6 +757,10 @@ local function collect_section_files(status, section_type)
     for _, entry in ipairs(status.staged) do
       table.insert(files, { path = entry.path, section = "staged" })
     end
+  elseif section_type == "conflicted" and status.conflicted then
+    for _, entry in ipairs(status.conflicted) do
+      table.insert(files, { path = entry.path, section = "conflicted" })
+    end
   end
 
   return files
@@ -767,7 +771,7 @@ function StatusBuffer:_stage_visual()
   local start_line, end_line = get_visual_selection_range()
 
   -- Collect all file entries and diff lines in the selection
-  local allowed_sections = { unstaged = true, untracked = true }
+  local allowed_sections = { unstaged = true, untracked = true, conflicted = true }
   local files, first_diff =
     collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
 
@@ -931,7 +935,11 @@ function StatusBuffer:_stage_current()
   if section_info then
     -- We're on a section header - stage all files in this section
     local section_type = section_info.section
-    if section_type == "unstaged" or section_type == "untracked" then
+    if
+      section_type == "unstaged"
+      or section_type == "untracked"
+      or section_type == "conflicted"
+    then
       local files = collect_section_files(self.repo_state.status, section_type)
       if #files > 0 then
         self.repo_state:stage_files(files)
@@ -977,6 +985,9 @@ function StatusBuffer:_stage_current()
     -- Stage the whole file
     self.repo_state:stage(path, section)
   elseif section == "untracked" then
+    self.repo_state:stage(path, section)
+  elseif section == "conflicted" then
+    -- Stage conflicted file (marks as resolved)
     self.repo_state:stage(path, section)
   end
 end

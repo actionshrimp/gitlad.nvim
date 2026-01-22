@@ -754,4 +754,166 @@ T["status header"]["shows Merging line during merge conflict"] = function()
   cleanup_repo(child, repo)
 end
 
+-- Staging conflicted files tests
+T["staging conflicted files"] = MiniTest.new_set()
+
+T["staging conflicted files"]["s on conflicted file stages it (marks as resolved)"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit on main
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create feature branch with conflicting change
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature change"')
+
+  -- Go back to main and make conflicting change
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main change"')
+
+  -- Start merge with conflict
+  git(child, repo, "merge feature --no-edit || true")
+
+  -- Resolve conflict manually
+  create_file(child, repo, "test.txt", "line1\nresolved")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+
+  -- Wait for status to load
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Verify file is in Conflicted section
+  child.lua([[
+    status_buf = vim.api.nvim_get_current_buf()
+    status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[status_lines]])
+
+  local found_conflicted_section = false
+  local conflicted_line = nil
+  for i, line in ipairs(lines) do
+    if line:match("^Conflicted") then
+      found_conflicted_section = true
+    end
+    if found_conflicted_section and line:match("test%.txt") then
+      conflicted_line = i
+      break
+    end
+  end
+
+  eq(found_conflicted_section, true)
+  eq(conflicted_line ~= nil, true)
+
+  -- Navigate to the conflicted file and press s to stage
+  child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
+  child.type_keys("s")
+
+  -- Wait for staging to complete
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Verify file is now staged (in git status)
+  local staged_status = git(child, repo, "diff --cached --name-only")
+  eq(staged_status:match("test%.txt") ~= nil, true)
+
+  -- Verify merge can now be completed
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    git.merge_continue({ cwd = %q }, function(success, err)
+      _G.continue_result = { success = success, err = err }
+    end)
+  ]],
+    repo
+  ))
+
+  child.lua([[vim.wait(2000, function() return _G.continue_result ~= nil end)]])
+  local continue_result = child.lua_get([[_G.continue_result]])
+
+  eq(continue_result.success, true)
+
+  -- Verify merge is complete
+  local in_progress =
+    child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
+  eq(in_progress, false)
+
+  cleanup_repo(child, repo)
+end
+
+T["staging conflicted files"]["s on Conflicted section header stages all conflicted files"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit on main with two files
+  create_file(child, repo, "file1.txt", "content1")
+  create_file(child, repo, "file2.txt", "content2")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create feature branch with conflicting changes
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "file1.txt", "feature1")
+  create_file(child, repo, "file2.txt", "feature2")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Feature changes"')
+
+  -- Go back to main and make conflicting changes
+  git(child, repo, "checkout main")
+  create_file(child, repo, "file1.txt", "main1")
+  create_file(child, repo, "file2.txt", "main2")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Main changes"')
+
+  -- Start merge with conflict
+  git(child, repo, "merge feature --no-edit || true")
+
+  -- Resolve conflicts manually
+  create_file(child, repo, "file1.txt", "resolved1")
+  create_file(child, repo, "file2.txt", "resolved2")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+
+  -- Wait for status to load
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Find Conflicted section header
+  child.lua([[
+    status_buf = vim.api.nvim_get_current_buf()
+    status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[status_lines]])
+
+  local conflicted_header_line = nil
+  for i, line in ipairs(lines) do
+    if line:match("^Conflicted") then
+      conflicted_header_line = i
+      break
+    end
+  end
+
+  eq(conflicted_header_line ~= nil, true)
+
+  -- Navigate to section header and press s
+  child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_header_line))
+  child.type_keys("s")
+
+  -- Wait for staging to complete
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Verify both files are now staged
+  local staged_status = git(child, repo, "diff --cached --name-only")
+  eq(staged_status:match("file1%.txt") ~= nil, true)
+  eq(staged_status:match("file2%.txt") ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
 return T
