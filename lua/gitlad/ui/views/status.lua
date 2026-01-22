@@ -214,10 +214,15 @@ function StatusBuffer:_setup_keymaps()
     self:_goto_prev_section()
   end, "Previous section")
 
-  -- Visit file
+  -- Visit file (RET opens file, or diffview for conflicts)
   keymap.set(bufnr, "n", "<CR>", function()
     self:_visit_file()
   end, "Visit file")
+
+  -- Edit file (same as RET - matches magit's 'e' keybinding)
+  keymap.set(bufnr, "n", "e", function()
+    self:_visit_file()
+  end, "Edit file")
 
   -- Diff toggle
   keymap.set(bufnr, "n", "<Tab>", function()
@@ -340,6 +345,12 @@ function StatusBuffer:_setup_keymaps()
     local rebase_popup = require("gitlad.popups.rebase")
     rebase_popup.open(self.repo_state)
   end, "Rebase popup")
+
+  -- Merge popup
+  keymap.set(bufnr, "n", "m", function()
+    local merge_popup = require("gitlad.popups.merge")
+    merge_popup.open(self.repo_state)
+  end, "Merge popup")
 
   -- Submodule popup (evil-collection-magit style: ' for submodule)
   keymap.set(bufnr, "n", "'", function()
@@ -538,6 +549,103 @@ function StatusBuffer:_yank_section_value()
   end
 
   vim.notify("[gitlad] Nothing to yank at cursor", vim.log.levels.INFO)
+end
+
+--- Check if a file contains conflict markers
+---@param file_path string Absolute path to the file
+---@return boolean has_markers True if conflict markers found
+local function has_conflict_markers(file_path)
+  -- Use vim.fn.readfile which handles paths better than io.open
+  local ok, lines = pcall(vim.fn.readfile, file_path)
+  if not ok or not lines then
+    return false
+  end
+
+  for _, line in ipairs(lines) do
+    -- Check for conflict marker start (7 '<' characters at line start)
+    if line:match("^<<<<<<<") then
+      return true
+    end
+  end
+
+  return false
+end
+
+--- Open diffview for merge conflict resolution
+---@param repo_root string Repository root path
+---@param file_path? string Optional specific file to focus on
+---@param repo_state? RepoState Repository state to refresh when diffview closes
+local function open_diffview_merge(repo_root, file_path, repo_state)
+  local ok, diffview = pcall(require, "diffview")
+  if ok then
+    -- Capture list of conflicted files before opening diffview
+    local conflicted_files = {}
+    if repo_state and repo_state.status and repo_state.status.conflicted then
+      for _, entry in ipairs(repo_state.status.conflicted) do
+        table.insert(conflicted_files, entry.path)
+      end
+    end
+
+    -- Set up autocommand to check resolved files when diffview closes
+    if repo_state then
+      local group = vim.api.nvim_create_augroup("GitladDiffviewRefresh", { clear = true })
+      vim.api.nvim_create_autocmd("User", {
+        group = group,
+        pattern = "DiffviewViewClosed",
+        once = true,
+        callback = function()
+          vim.schedule(function()
+            -- Check each previously conflicted file for resolution
+            local resolved_files = {}
+            for _, path in ipairs(conflicted_files) do
+              local full_path = repo_root .. path
+              if not has_conflict_markers(full_path) then
+                table.insert(resolved_files, { path = path, section = "conflicted" })
+              end
+            end
+
+            -- Auto-stage resolved files
+            if #resolved_files > 0 then
+              repo_state:stage_files(resolved_files, function(success)
+                if success then
+                  local msg = #resolved_files == 1
+                      and string.format("Staged resolved file: %s", resolved_files[1].path)
+                    or string.format("Staged %d resolved files", #resolved_files)
+                  vim.notify("[gitlad] " .. msg, vim.log.levels.INFO)
+                end
+                -- Re-open status view (refresh happens via stage_files)
+                local status_view = require("gitlad.ui.views.status")
+                status_view.open()
+              end)
+            else
+              -- No files resolved, just refresh and re-open
+              repo_state:refresh_status(true)
+              local status_view = require("gitlad.ui.views.status")
+              status_view.open()
+            end
+          end)
+        end,
+      })
+    end
+
+    -- Open diffview which shows merge view when in merge state
+    diffview.open({})
+  else
+    -- Fallback: just open the file with conflict markers
+    if file_path then
+      local full_path = repo_root .. file_path
+      vim.cmd("edit " .. vim.fn.fnameescape(full_path))
+      vim.notify(
+        "[gitlad] diffview.nvim not installed. Opening file with conflict markers.",
+        vim.log.levels.INFO
+      )
+    else
+      vim.notify(
+        "[gitlad] diffview.nvim not installed. Install with: { 'sindrets/diffview.nvim' }",
+        vim.log.levels.WARN
+      )
+    end
+  end
 end
 
 --- Get the cache key for a file's diff
@@ -751,6 +859,10 @@ local function collect_section_files(status, section_type)
     for _, entry in ipairs(status.staged) do
       table.insert(files, { path = entry.path, section = "staged" })
     end
+  elseif section_type == "conflicted" and status.conflicted then
+    for _, entry in ipairs(status.conflicted) do
+      table.insert(files, { path = entry.path, section = "conflicted" })
+    end
   end
 
   return files
@@ -761,7 +873,7 @@ function StatusBuffer:_stage_visual()
   local start_line, end_line = get_visual_selection_range()
 
   -- Collect all file entries and diff lines in the selection
-  local allowed_sections = { unstaged = true, untracked = true }
+  local allowed_sections = { unstaged = true, untracked = true, conflicted = true }
   local files, first_diff =
     collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
 
@@ -930,6 +1042,35 @@ function StatusBuffer:_stage_current()
       if #files > 0 then
         self.repo_state:stage_files(files)
       end
+    elseif section_type == "conflicted" then
+      -- Check for conflict markers in any conflicted file
+      local files = collect_section_files(self.repo_state.status, section_type)
+      if #files > 0 then
+        local files_with_markers = {}
+        for _, file in ipairs(files) do
+          local full_path = self.repo_state.repo_root .. file.path
+          if has_conflict_markers(full_path) then
+            table.insert(files_with_markers, file.path)
+          end
+        end
+
+        if #files_with_markers > 0 then
+          local msg = string.format(
+            "%d file(s) still contain conflict markers. Stage all anyway?",
+            #files_with_markers
+          )
+          vim.ui.select({ "No", "Yes" }, {
+            prompt = msg,
+          }, function(choice)
+            if choice == "Yes" then
+              self.repo_state:stage_files(files)
+            end
+          end)
+        else
+          -- No conflict markers - safe to stage all
+          self.repo_state:stage_files(files)
+        end
+      end
     end
     -- Do nothing if on staged section (already staged)
     return
@@ -972,6 +1113,22 @@ function StatusBuffer:_stage_current()
     self.repo_state:stage(path, section)
   elseif section == "untracked" then
     self.repo_state:stage(path, section)
+  elseif section == "conflicted" then
+    -- Check for conflict markers before staging
+    local full_path = self.repo_state.repo_root .. path
+    if has_conflict_markers(full_path) then
+      -- Warn user and ask for confirmation
+      vim.ui.select({ "No", "Yes" }, {
+        prompt = "File still contains conflict markers. Stage anyway?",
+      }, function(choice)
+        if choice == "Yes" then
+          self.repo_state:stage(path, section)
+        end
+      end)
+    else
+      -- No conflict markers - safe to stage
+      self.repo_state:stage(path, section)
+    end
   end
 end
 
@@ -1292,8 +1449,15 @@ function StatusBuffer:_visit_file()
     return
   end
 
-  local path = self:_get_current_file()
+  local path, section = self:_get_current_file()
   if path then
+    -- For conflicted files, open diffview merge tool instead of the raw file
+    if section == "conflicted" then
+      self:close()
+      open_diffview_merge(self.repo_state.repo_root, path, self.repo_state)
+      return
+    end
+
     local full_path = self.repo_state.repo_root .. path
     -- Close status and open file
     self:close()
@@ -1655,7 +1819,7 @@ function StatusBuffer:render()
     table.insert(lines, push_line)
   end
 
-  -- Sequencer state (cherry-pick/revert/rebase in progress)
+  -- Sequencer state (cherry-pick/revert/rebase/merge in progress)
   if status.cherry_pick_in_progress then
     local short_oid = status.sequencer_head_oid and status.sequencer_head_oid:sub(1, 7) or "unknown"
     local seq_line = "Cherry-picking: " .. short_oid
@@ -1672,6 +1836,13 @@ function StatusBuffer:render()
     table.insert(lines, seq_line)
   elseif status.rebase_in_progress then
     table.insert(lines, "Rebasing: resolve conflicts and press 'r' to continue")
+  elseif status.merge_in_progress then
+    local short_oid = status.merge_head_oid and status.merge_head_oid:sub(1, 7) or "unknown"
+    local merge_line = "Merging: " .. short_oid
+    if status.merge_head_subject then
+      merge_line = merge_line .. " " .. status.merge_head_subject
+    end
+    table.insert(lines, merge_line)
   end
 
   table.insert(lines, "")

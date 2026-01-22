@@ -210,7 +210,25 @@ function RepoState:_fetch_extended_status(result, callback)
     complete_one()
   end)
 
-  -- 5. Fetch recent stashes
+  -- 5. Fetch merge state (merge in progress)
+  start_op()
+  git.get_merge_state(opts, function(merge_state)
+    result.merge_in_progress = merge_state.merge_in_progress
+    result.merge_head_oid = merge_state.merge_head_oid
+
+    -- If a merge is in progress, fetch the commit subject
+    if merge_state.merge_head_oid then
+      start_op()
+      git.get_commit_subject(merge_state.merge_head_oid, opts, function(subject, _err)
+        result.merge_head_subject = subject
+        complete_one()
+      end)
+    end
+
+    complete_one()
+  end)
+
+  -- 6. Fetch recent stashes
   start_op()
   git.stash_list(opts, function(stashes, _err)
     -- Limit to 10 stashes to avoid cluttering the status view
@@ -218,14 +236,14 @@ function RepoState:_fetch_extended_status(result, callback)
     complete_one()
   end)
 
-  -- 6. Fetch submodule status
+  -- 7. Fetch submodule status
   start_op()
   git.submodule_status(opts, function(submodules, _err)
     result.submodules = submodules or {}
     complete_one()
   end)
 
-  -- 7. Determine push destination
+  -- 8. Determine push destination
   -- Push goes to <push-remote>/<branch-name> where push-remote is:
   --   1. branch.<name>.pushRemote (explicit config)
   --   2. remote.pushDefault (global default)

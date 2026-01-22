@@ -773,6 +773,89 @@ git -C "$LIB_DIR" commit -m "Add modulo function"
 git -C lib fetch
 git -C lib checkout origin/HEAD 2>/dev/null || git -C lib pull
 
+# =============================================================================
+# Create branches for merge testing
+# =============================================================================
+
+# Create a clean-merge branch (can be fast-forwarded or merged cleanly)
+git stash -q  # Stash current changes temporarily
+git checkout -b feature/clean-merge
+cat > src/utils/math.js << 'EOF'
+function add(a, b) {
+  return a + b;
+}
+
+function subtract(a, b) {
+  return a - b;
+}
+
+function multiply(a, b) {
+  return a * b;
+}
+
+function divide(a, b) {
+  if (b === 0) throw new Error('Division by zero');
+  return a / b;
+}
+
+module.exports = { add, subtract, multiply, divide };
+EOF
+git add src/utils/math.js
+git commit -m "Add math utility functions"
+
+# Create a conflict-merge branch (will conflict with main)
+git checkout main
+git checkout -b feature/conflict-merge
+
+cat > src/components/App.js << 'EOF'
+class App {
+  constructor() {
+    this.name = 'ConflictApp';  // This will conflict
+    this.version = '2.0.0';
+  }
+
+  run() {
+    console.log(`Running ${this.name} v${this.version}`);
+    this.initialize();
+  }
+
+  initialize() {
+    console.log('Conflict branch initialization...');
+  }
+}
+
+module.exports = App;
+EOF
+git add src/components/App.js
+git commit -m "Update App component (will conflict)"
+
+# Go back to main and modify App.js to create conflict scenario
+git checkout main
+
+cat > src/components/App.js << 'EOF'
+class App {
+  constructor() {
+    this.name = 'MainApp';  // This will conflict with feature/conflict-merge
+    this.version = '1.5.0';
+  }
+
+  run() {
+    console.log(`Starting ${this.name} v${this.version}`);
+    this.initialize();
+  }
+
+  initialize() {
+    console.log('Main branch initialization...');
+  }
+}
+
+module.exports = App;
+EOF
+git add src/components/App.js
+git commit -m "Update App component on main"
+
+git stash pop -q 2>/dev/null || true  # Restore stashed changes
+
 echo ""
 echo "=========================================="
 echo "Test repository created at: $REPO_DIR"
@@ -783,6 +866,10 @@ git status --short
 echo ""
 echo "Submodule status:"
 git submodule status
+echo ""
+echo "Branches for merge testing:"
+echo "  - feature/clean-merge: Can be merged cleanly (adds math.js)"
+echo "  - feature/conflict-merge: Will conflict with main (both modified App.js)"
 echo ""
 echo "The 'lib' submodule has new commits - it will appear in Unstaged changes."
 echo "Use this to test submodule popup context from file entries."

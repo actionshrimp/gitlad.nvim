@@ -91,6 +91,24 @@ T["apply"]["stage_file nonexistent file is no-op"] = function()
   eq(#new_status.staged, 0)
 end
 
+T["apply"]["stage_file from conflicted"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    conflicted = { { path = "conflict.txt", index_status = "U", worktree_status = "U" } },
+  })
+
+  local cmd = commands.stage_file("conflict.txt", "conflicted")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.conflicted, 0)
+  eq(#new_status.staged, 1)
+  eq(new_status.staged[1].path, "conflict.txt")
+  eq(new_status.staged[1].index_status, "M")
+  eq(new_status.staged[1].worktree_status, ".")
+end
+
 T["apply"]["unstage_file added file becomes untracked"] = function()
   local reducer = require("gitlad.state.reducer")
   local commands = require("gitlad.state.commands")

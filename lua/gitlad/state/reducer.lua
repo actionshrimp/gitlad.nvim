@@ -88,13 +88,17 @@ local function copy_status(status)
     rebase_in_progress = status.rebase_in_progress,
     sequencer_head_oid = status.sequencer_head_oid,
     sequencer_head_subject = status.sequencer_head_subject,
+    -- Merge state fields
+    merge_in_progress = status.merge_in_progress,
+    merge_head_oid = status.merge_head_oid,
+    merge_head_subject = status.merge_head_subject,
   }
 end
 
 --- Apply stage_file command
 ---@param status GitStatusResult (already copied)
 ---@param path string
----@param from_section "unstaged"|"untracked"
+---@param from_section "unstaged"|"untracked"|"conflicted"
 ---@return GitStatusResult
 function M._apply_stage_file(status, path, from_section)
   if from_section == "untracked" then
@@ -127,6 +131,17 @@ function M._apply_stage_file(status, path, from_section)
           submodule = unstaged_entry.submodule,
         })
       end
+    end
+  elseif from_section == "conflicted" then
+    -- Staging a conflicted file marks it as resolved
+    local new_conflicted, removed = remove_entry(status.conflicted, path)
+    if removed then
+      status.conflicted = new_conflicted
+      insert_sorted(status.staged, {
+        path = removed.path,
+        index_status = "M", -- Modified (resolved conflict)
+        worktree_status = ".",
+      })
     end
   end
 

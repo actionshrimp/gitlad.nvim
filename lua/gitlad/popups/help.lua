@@ -31,7 +31,10 @@ function M.open(status_buffer)
     :action("<Tab>", "Toggle inline diff", function()
       -- Context-dependent, just close
     end)
-    :action("<CR>", "Visit file at point", function()
+    :action("<CR>", "Visit file (diffview for conflicts)", function()
+      -- Context-dependent, just close
+    end)
+    :action("e", "Edit file (diffview for conflicts)", function()
       -- Context-dependent, just close
     end)
     -- Staging
@@ -100,6 +103,10 @@ function M.open(status_buffer)
     :action("r", "Rebase", function()
       local rebase_popup = require("gitlad.popups.rebase")
       rebase_popup.open(repo_state)
+    end)
+    :action("m", "Merge", function()
+      local merge_popup = require("gitlad.popups.merge")
+      merge_popup.open(repo_state)
     end)
     :action("'", "Submodule", function()
       local submodule_popup = require("gitlad.popups.submodule")
