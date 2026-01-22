@@ -112,6 +112,30 @@ function M._diff_ref_against_prompt(repo_state, ref)
   end)
 end
 
+--- Diff changes on a ref since it diverged from base (three-dot range)
+--- Shows commits reachable from ref but not from the common ancestor of base and ref.
+--- This is useful to see "what's on this branch that's not on main".
+---@param repo_state RepoState
+---@param ref string The ref to show changes for
+---@param base string The base ref to compare against
+function M._diff_ref_changes(repo_state, ref, base)
+  local range = base .. "..." .. ref
+  open_diffview({ range }, "git diff " .. range)
+end
+
+--- Diff changes on a ref since it diverged from another branch (prompt for base)
+--- Uses three-dot syntax to show only changes unique to the ref.
+---@param repo_state RepoState
+---@param ref string The ref to show changes for
+function M._diff_ref_changes_prompt(repo_state, ref)
+  vim.ui.input({ prompt = "Show " .. ref .. " changes vs: ", default = "main" }, function(base)
+    if not base or base == "" then
+      return
+    end
+    M._diff_ref_changes(repo_state, ref, base)
+  end)
+end
+
 --- 3-way staging view (HEAD/index/working tree)
 --- Opens diffview with both "Changes" (unstaged) and "Staged changes" sections.
 --- Index buffers are editable - writing to them updates the git index.
@@ -206,6 +230,9 @@ function M.open(repo_state, context)
     end)
     builder:action("o", "Diff " .. ref .. " against...", function()
       M._diff_ref_against_prompt(repo_state, ref)
+    end)
+    builder:action("m", "Changes on " .. ref .. " vs...", function()
+      M._diff_ref_changes_prompt(repo_state, ref)
     end)
   end
 

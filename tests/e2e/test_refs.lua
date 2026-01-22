@@ -674,4 +674,54 @@ T["refs view"]["diff popup on cherry commit shows commit context"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["refs view"]["diff popup on ref shows three-dot range action"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit on main
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create feature branch
+  git(child, repo, "checkout -b feature-branch")
+  create_file(child, repo, "feature.txt", "feature content")
+  git(child, repo, "add feature.txt")
+  git(child, repo, "commit -m 'Add feature file'")
+
+  -- Go back to main
+  git(child, repo, "checkout -")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open refs view at HEAD (main)
+  child.type_keys("yry")
+  child.lua("vim.wait(1500, function() end)") -- Wait for refs and cherry prefetch
+
+  -- Navigate to feature-branch ref line
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("feature%-branch") and not line:match("^[%+%-]") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Open diff popup on ref line
+  child.type_keys("d")
+  child.lua("vim.wait(200, function() end)")
+
+  -- Get popup buffer lines
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Check that the diff popup shows the three-dot range action
+  eq(content:match("Changes on feature%-branch vs") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 return T

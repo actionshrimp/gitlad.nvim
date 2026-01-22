@@ -204,4 +204,48 @@ T["diffview args"]["range uses ref1..ref2 format"] = function()
   eq(expected_args[1], "main..HEAD")
 end
 
+T["diffview args"]["three-dot range uses ref1...ref2 format"] = function()
+  local base = "main"
+  local ref = "feature-branch"
+  local range = base .. "..." .. ref
+  local expected_args = { range }
+  eq(expected_args[1], "main...feature-branch")
+end
+
+-- =============================================================================
+-- Ref context tests
+-- =============================================================================
+
+T["ref context"] = MiniTest.new_set()
+
+T["ref context"]["adds ref-specific actions when ref present"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  -- Build popup with ref-specific actions (simulating context.ref being present)
+  local ref = "feature-branch"
+  local base = "HEAD"
+  local data = popup
+    .builder()
+    :name("Diff")
+    :group_heading("Diffing")
+    :action("d", "Diff (dwim)", function() end)
+    :action("s", "Diff staged", function() end)
+    :action("u", "Diff unstaged", function() end)
+    :action("w", "Diff worktree", function() end)
+    :action("r", "Diff range...", function() end)
+    :action("b", "Diff " .. ref .. ".." .. base, function() end)
+    :action("o", "Diff " .. ref .. " against...", function() end)
+    :action("m", "Changes on " .. ref .. " vs...", function() end)
+    :build()
+
+  -- 1 heading + 8 actions = 9
+  eq(#data.actions, 9)
+  eq(data.actions[7].key, "b")
+  eq(data.actions[7].description, "Diff feature-branch..HEAD")
+  eq(data.actions[8].key, "o")
+  eq(data.actions[8].description, "Diff feature-branch against...")
+  eq(data.actions[9].key, "m")
+  eq(data.actions[9].description, "Changes on feature-branch vs...")
+end
+
 return T
