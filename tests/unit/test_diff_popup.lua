@@ -222,6 +222,7 @@ T["ref context"]["adds ref-specific actions when ref present"] = function()
   local popup = require("gitlad.ui.popup")
 
   -- Build popup with ref-specific actions (simulating context.ref being present)
+  -- When ref is present: r becomes context-aware, b is the quick diff action
   local ref = "feature-branch"
   local base = "HEAD"
   local data = popup
@@ -232,20 +233,39 @@ T["ref context"]["adds ref-specific actions when ref present"] = function()
     :action("s", "Diff staged", function() end)
     :action("u", "Diff unstaged", function() end)
     :action("w", "Diff worktree", function() end)
-    :action("r", "Diff range...", function() end)
-    :action("b", "Diff " .. ref .. ".." .. base, function() end)
-    :action("o", "Diff " .. ref .. " against...", function() end)
-    :action("m", "Changes on " .. ref .. " vs...", function() end)
+    :action("r", "Diff " .. ref .. " against...", function() end) -- context-aware r
+    :action("b", "Diff " .. ref .. ".." .. base, function() end) -- quick action
     :build()
 
-  -- 1 heading + 8 actions = 9
-  eq(#data.actions, 9)
+  -- 1 heading + 6 actions = 7
+  eq(#data.actions, 7)
+  -- r is now context-aware
+  eq(data.actions[6].key, "r")
+  eq(data.actions[6].description, "Diff feature-branch against...")
+  -- b is the quick diff using context's base_ref
   eq(data.actions[7].key, "b")
   eq(data.actions[7].description, "Diff feature-branch..HEAD")
-  eq(data.actions[8].key, "o")
-  eq(data.actions[8].description, "Diff feature-branch against...")
-  eq(data.actions[9].key, "m")
-  eq(data.actions[9].description, "Changes on feature-branch vs...")
+end
+
+T["ref context"]["r action shows generic range prompt without ref context"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  -- Build popup without ref context - r should be generic "Diff range..."
+  local data = popup
+    .builder()
+    :name("Diff")
+    :group_heading("Diffing")
+    :action("d", "Diff (dwim)", function() end)
+    :action("s", "Diff staged", function() end)
+    :action("u", "Diff unstaged", function() end)
+    :action("w", "Diff worktree", function() end)
+    :action("r", "Diff range...", function() end)
+    :build()
+
+  -- 1 heading + 5 actions = 6
+  eq(#data.actions, 6)
+  eq(data.actions[6].key, "r")
+  eq(data.actions[6].description, "Diff range...")
 end
 
 return T

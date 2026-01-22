@@ -100,39 +100,44 @@ function M._diff_ref_against(repo_state, ref, base)
   open_diffview({ range }, "git diff " .. range)
 end
 
---- Diff a ref against another ref (prompt for base)
+--- Diff range with ref context - multi-step picker workflow
+--- Step 1: Ask what to diff against
+--- Step 2: Ask for range type (.. or ...)
 ---@param repo_state RepoState
 ---@param ref string The ref to diff
-function M._diff_ref_against_prompt(repo_state, ref)
-  vim.ui.input({ prompt = "Diff " .. ref .. " against: ", default = "HEAD" }, function(base)
+function M._diff_range_with_context(repo_state, ref)
+  -- Step 1: Ask what to diff against
+  vim.ui.input({ prompt = "Diff " .. ref .. " against: ", default = "main" }, function(base)
     if not base or base == "" then
       return
     end
-    M._diff_ref_against(repo_state, ref, base)
-  end)
-end
 
---- Diff changes on a ref since it diverged from base (three-dot range)
---- Shows commits reachable from ref but not from the common ancestor of base and ref.
---- This is useful to see "what's on this branch that's not on main".
----@param repo_state RepoState
----@param ref string The ref to show changes for
----@param base string The base ref to compare against
-function M._diff_ref_changes(repo_state, ref, base)
-  local range = base .. "..." .. ref
-  open_diffview({ range }, "git diff " .. range)
-end
+    -- Step 2: Ask for range type with descriptive text
+    local range_options = {
+      {
+        value = "..",
+        label = ".. (two-dot)",
+        desc = "Shows all differences between " .. base .. " and " .. ref,
+      },
+      {
+        value = "...",
+        label = "... (three-dot)",
+        desc = "Shows changes on " .. ref .. " since it diverged from " .. base,
+      },
+    }
 
---- Diff changes on a ref since it diverged from another branch (prompt for base)
---- Uses three-dot syntax to show only changes unique to the ref.
----@param repo_state RepoState
----@param ref string The ref to show changes for
-function M._diff_ref_changes_prompt(repo_state, ref)
-  vim.ui.input({ prompt = "Show " .. ref .. " changes vs: ", default = "main" }, function(base)
-    if not base or base == "" then
-      return
-    end
-    M._diff_ref_changes(repo_state, ref, base)
+    vim.ui.select(range_options, {
+      prompt = "Range type:",
+      format_item = function(item)
+        return item.label .. " - " .. item.desc
+      end,
+    }, function(choice)
+      if not choice then
+        return
+      end
+      local range = base .. choice.value .. ref
+      open_diffview({ range }, "git diff " .. range)
+    end)
   end)
 end
 
@@ -210,9 +215,17 @@ function M.open(repo_state, context)
     :action("w", "Diff worktree", function()
       M._diff_worktree(repo_state)
     end)
-    :action("r", "Diff range...", function()
+  -- Context-aware range action
+  if context.ref then
+    local ref = context.ref
+    builder:action("r", "Diff " .. ref .. " against...", function()
+      M._diff_range_with_context(repo_state, ref)
+    end)
+  else
+    builder:action("r", "Diff range...", function()
       M._diff_range(repo_state)
     end)
+  end
 
   -- Add commit action only if we have a commit in context
   if context.commit then
@@ -221,18 +234,12 @@ function M.open(repo_state, context)
     end)
   end
 
-  -- Add ref-specific actions
+  -- Add quick ref diff using context's base_ref
   if context.ref then
     local base = context.base_ref or "HEAD"
     local ref = context.ref
     builder:action("b", "Diff " .. ref .. ".." .. base, function()
       M._diff_ref_against(repo_state, ref, base)
-    end)
-    builder:action("o", "Diff " .. ref .. " against...", function()
-      M._diff_ref_against_prompt(repo_state, ref)
-    end)
-    builder:action("m", "Changes on " .. ref .. " vs...", function()
-      M._diff_ref_changes_prompt(repo_state, ref)
     end)
   end
 

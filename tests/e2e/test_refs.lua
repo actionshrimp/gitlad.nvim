@@ -674,7 +674,7 @@ T["refs view"]["diff popup on cherry commit shows commit context"] = function()
   cleanup_test_repo(child, repo)
 end
 
-T["refs view"]["diff popup on ref shows three-dot range action"] = function()
+T["refs view"]["diff popup on ref shows context-aware range action"] = function()
   local repo = create_test_repo(child)
   cd(child, repo)
 
@@ -718,8 +718,10 @@ T["refs view"]["diff popup on ref shows three-dot range action"] = function()
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
 
-  -- Check that the diff popup shows the three-dot range action
-  eq(content:match("Changes on feature%-branch vs") ~= nil, true)
+  -- Check that the diff popup shows context-aware 'r' action with ref name
+  -- and quick 'b' action for diffing against base_ref
+  eq(content:match("Diff feature%-branch against") ~= nil, true)
+  eq(content:match("Diff feature%-branch%.%.HEAD") ~= nil, true)
 
   cleanup_test_repo(child, repo)
 end
