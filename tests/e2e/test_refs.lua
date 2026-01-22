@@ -538,4 +538,72 @@ T["refs view"]["shows header with base ref"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["refs view"]["cherry commits are displayed without indentation"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit on main
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add file.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create feature branch with unique commits (cherries)
+  git(child, repo, "checkout -b feature-branch")
+  create_file(child, repo, "feature.txt", "feature content")
+  git(child, repo, "add feature.txt")
+  git(child, repo, "commit -m 'Add feature file'")
+
+  -- Go back to main
+  git(child, repo, "checkout -")
+
+  child.cmd("Gitlad")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Open refs view at HEAD (main)
+  child.type_keys("yry")
+  child.lua("vim.wait(1500, function() end)") -- Wait for refs and cherry prefetch
+
+  -- Navigate to feature-branch and expand it
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("feature%-branch") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Press Tab to expand cherry commits
+  child.type_keys("<Tab>")
+  child.lua("vim.wait(500, function() end)")
+
+  -- Get buffer lines and check for cherry commits
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+
+  -- Cherry commits should start with + or - (no leading spaces/indentation)
+  -- The format should be: +/- <hash> <subject>
+  local found_cherry = false
+  local cherry_has_no_indent = false
+  for _, line in ipairs(lines) do
+    -- Look for lines that look like cherry commits (+ or - followed by hash)
+    if line:match("^[%+%-] %x%x%x%x%x%x%x ") then
+      found_cherry = true
+      cherry_has_no_indent = true
+      break
+    end
+    -- Also check if there's a cherry with indentation (which would be wrong)
+    if line:match("^%s+[%+%-] %x%x%x%x%x%x%x ") then
+      found_cherry = true
+      cherry_has_no_indent = false
+      break
+    end
+  end
+
+  eq(found_cherry, true)
+  eq(cherry_has_no_indent, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 return T
