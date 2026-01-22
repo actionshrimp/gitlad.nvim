@@ -35,6 +35,10 @@ local M = {}
 ---@field unpushed_push GitCommitInfo[] Commits to push to push remote
 ---@field cherry_pick_in_progress? boolean Whether a cherry-pick is in progress
 ---@field revert_in_progress? boolean Whether a revert is in progress
+---@field rebase_in_progress? boolean Whether a rebase is in progress
+---@field merge_in_progress? boolean Whether a merge is in progress
+---@field merge_head_oid? string OID of the commit being merged
+---@field merge_head_subject? string Subject of the commit being merged
 ---@field sequencer_head_oid? string OID of the commit being cherry-picked/reverted
 ---@field sequencer_head_subject? string Subject of the commit being cherry-picked/reverted
 ---@field stashes StashEntry[] Recent stashes (populated by refresh_status)

@@ -1377,4 +1377,96 @@ function M.config_toggle(key, opts, callback)
   end)
 end
 
+-- =============================================================================
+-- Merge Operations
+-- =============================================================================
+
+---@class MergeState
+---@field merge_in_progress boolean Whether a merge is in progress
+---@field merge_head_oid string|nil The commit OID being merged (from MERGE_HEAD)
+
+--- Check if a merge is in progress
+---@param opts? GitCommandOptions
+---@param callback fun(state: MergeState)
+function M.get_merge_state(opts, callback)
+  local git_dir = cli.find_git_dir(opts and opts.cwd or nil)
+  if not git_dir then
+    callback({
+      merge_in_progress = false,
+      merge_head_oid = nil,
+    })
+    return
+  end
+
+  local state = {
+    merge_in_progress = false,
+    merge_head_oid = nil,
+  }
+
+  -- Check for MERGE_HEAD
+  local merge_head = git_dir .. "/MERGE_HEAD"
+  if vim.fn.filereadable(merge_head) == 1 then
+    state.merge_in_progress = true
+    local content = vim.fn.readfile(merge_head)
+    if content[1] then
+      state.merge_head_oid = content[1]:match("^(%x+)")
+    end
+  end
+
+  callback(state)
+end
+
+--- Check if a merge is in progress (synchronous)
+---@param opts? GitCommandOptions
+---@return boolean
+function M.merge_in_progress(opts)
+  local git_dir = cli.find_git_dir(opts and opts.cwd or nil)
+  if not git_dir then
+    return false
+  end
+
+  local merge_head = git_dir .. "/MERGE_HEAD"
+  return vim.fn.filereadable(merge_head) == 1
+end
+
+--- Merge a branch into the current branch
+---@param branch string Branch name to merge
+---@param args string[] Extra arguments (e.g., {"--ff-only", "--no-edit"})
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.merge(branch, args, opts, callback)
+  local merge_args = { "merge" }
+  vim.list_extend(merge_args, args)
+  table.insert(merge_args, branch)
+
+  cli.run_async(merge_args, opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    -- On conflict, git outputs conflict info to stdout, so use that if stderr is empty
+    local err_output = stderr ~= "" and stderr or stdout
+    callback(result.code == 0, output, result.code ~= 0 and err_output or nil)
+  end)
+end
+
+--- Continue/finish a merge by committing (used after conflict resolution)
+--- This simply creates a commit to finalize the merge
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.merge_continue(opts, callback)
+  -- git commit with no message flag - git uses the prepared merge message
+  cli.run_async({ "commit", "--no-edit" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
+--- Abort an in-progress merge
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.merge_abort(opts, callback)
+  cli.run_async({ "merge", "--abort" }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
 return M

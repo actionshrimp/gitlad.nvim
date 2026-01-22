@@ -88,6 +88,10 @@ local function copy_status(status)
     rebase_in_progress = status.rebase_in_progress,
     sequencer_head_oid = status.sequencer_head_oid,
     sequencer_head_subject = status.sequencer_head_subject,
+    -- Merge state fields
+    merge_in_progress = status.merge_in_progress,
+    merge_head_oid = status.merge_head_oid,
+    merge_head_subject = status.merge_head_subject,
   }
 end
 

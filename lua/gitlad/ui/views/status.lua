@@ -341,6 +341,12 @@ function StatusBuffer:_setup_keymaps()
     rebase_popup.open(self.repo_state)
   end, "Rebase popup")
 
+  -- Merge popup
+  keymap.set(bufnr, "n", "m", function()
+    local merge_popup = require("gitlad.popups.merge")
+    merge_popup.open(self.repo_state)
+  end, "Merge popup")
+
   -- Submodule popup (evil-collection-magit style: ' for submodule)
   keymap.set(bufnr, "n", "'", function()
     local submodule_popup = require("gitlad.popups.submodule")
@@ -1655,7 +1661,7 @@ function StatusBuffer:render()
     table.insert(lines, push_line)
   end
 
-  -- Sequencer state (cherry-pick/revert/rebase in progress)
+  -- Sequencer state (cherry-pick/revert/rebase/merge in progress)
   if status.cherry_pick_in_progress then
     local short_oid = status.sequencer_head_oid and status.sequencer_head_oid:sub(1, 7) or "unknown"
     local seq_line = "Cherry-picking: " .. short_oid
@@ -1672,6 +1678,13 @@ function StatusBuffer:render()
     table.insert(lines, seq_line)
   elseif status.rebase_in_progress then
     table.insert(lines, "Rebasing: resolve conflicts and press 'r' to continue")
+  elseif status.merge_in_progress then
+    local short_oid = status.merge_head_oid and status.merge_head_oid:sub(1, 7) or "unknown"
+    local merge_line = "Merging: " .. short_oid
+    if status.merge_head_subject then
+      merge_line = merge_line .. " " .. status.merge_head_subject
+    end
+    table.insert(lines, merge_line)
   end
 
   table.insert(lines, "")
