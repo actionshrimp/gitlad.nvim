@@ -326,11 +326,53 @@ Transient-style popup system inspired by neogit/magit:
 
 **Note:** 3-way merge views delegate to `diffview.nvim` - see "Leverage diffview.nvim" section above.
 
-- [ ] `m` opens merge popup
-- [ ] Show merge conflicts in status buffer
-- [ ] `e` on conflicted file opens diffview.nvim's merge tool (`:DiffviewOpen` with merge conflict handling)
-- [ ] Mark resolved with `s` (stage)
-- [ ] Abort/continue merge actions
+This feature is implemented in **3 PRs** for incremental delivery:
+
+#### PR 1: Merge State Detection & Basic Popup
+
+**Scope:** Detect merge-in-progress state, show in status header, create basic merge popup.
+
+- [ ] Merge state detection via `.git/MERGE_HEAD` file
+- [ ] Status header shows "Merging: <hash> <subject>" when merge in progress
+- [ ] `m` opens merge popup (matches magit/evil-collection)
+- [ ] Normal state switches: `-f` (`--ff-only`), `-n` (`--no-ff`)
+- [ ] Normal state actions: `m` (Merge), `e` (Merge, edit message), `n` (Merge, don't commit), `s` (Squash merge)
+- [ ] In-progress state actions: `m` (Commit merge), `a` (Abort merge)
+- [ ] Help popup updated with `m` entry
+
+**Files to create:**
+- `lua/gitlad/popups/merge.lua` - Merge popup with switches and actions
+- `tests/unit/test_merge_popup.lua` - Unit tests for popup structure
+- `tests/e2e/test_merge.lua` - E2E tests for merge operations
+
+**Files to modify:**
+- `lua/gitlad/git/init.lua` - Add `get_merge_state()`, `merge()`, `merge_continue()`, `merge_abort()`
+- `lua/gitlad/git/parse.lua` - Extend `GitStatusResult` with `merge_in_progress`, `merge_head_oid`, `merge_head_subject`
+- `lua/gitlad/state/init.lua` - Fetch merge state during refresh
+- `lua/gitlad/state/reducer.lua` - Copy merge fields in reducer
+- `lua/gitlad/ui/views/status.lua` - Header display, `m` keybinding
+- `lua/gitlad/popups/help.lua` - Add `m` (Merge) entry
+
+#### PR 2: Full Merge Popup Options
+
+**Scope:** Add all magit-style switches and options.
+
+- [ ] Additional switches: `-b` (`-Xignore-space-change`), `-w` (`-Xignore-all-space`), `-S` (`--gpg-sign`)
+- [ ] Strategy option (`--strategy=`): resolve, recursive, octopus, ours, subtree
+- [ ] Strategy-option (`--strategy-option=`): ours, theirs, patience
+- [ ] Diff algorithm (`-Xdiff-algorithm=`): default, minimal, patience, histogram
+- [ ] Mark `--ff-only` and `--no-ff` as mutually exclusive
+
+#### PR 3: Conflict Resolution Workflow
+
+**Scope:** Enhance conflict resolution with diffview.nvim integration.
+
+- [ ] `e` or `RET` on conflicted file opens diffview.nvim merge tool
+- [ ] Graceful fallback if diffview.nvim not installed (opens file with conflict markers)
+- [ ] `s` on conflicted file stages it (marks as resolved) - already works
+
+**Magit parity notes:**
+- Magit's "absorb", "preview", and "dissolve" actions are advanced features that even neogit hasn't implemented - skipped initially
 
 ### 4.3 Blame View
 - [ ] `:Gitlad blame` or `B` from file
