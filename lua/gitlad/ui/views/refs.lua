@@ -148,11 +148,25 @@ function RefsBuffer:_setup_keymaps()
     branch_popup.open(self.repo_state, context)
   end, "Branch popup")
 
-  -- Diff popup (with ref context)
+  -- Diff popup (with ref or cherry context)
   keymap.set(bufnr, "n", "d", function()
     local diff_popup = require("gitlad.popups.diff")
-    local ref = self:_get_current_ref()
-    local context = ref and { ref = ref.name, base_ref = self.base_ref } or {}
+    local context = {}
+
+    -- Check for cherry commit first (individual commits under expanded refs)
+    local cherry = self:_get_current_cherry()
+    if cherry then
+      -- Convert CherryCommit to GitCommitInfo-like structure for diff popup
+      context.commit = { hash = cherry.hash, subject = cherry.subject }
+    else
+      -- Check for ref
+      local ref = self:_get_current_ref()
+      if ref then
+        context.ref = ref.name
+        context.base_ref = self.base_ref
+      end
+    end
+
     diff_popup.open(self.repo_state, context)
   end, "Diff popup")
 
