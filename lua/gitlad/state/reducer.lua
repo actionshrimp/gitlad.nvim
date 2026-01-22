@@ -98,7 +98,7 @@ end
 --- Apply stage_file command
 ---@param status GitStatusResult (already copied)
 ---@param path string
----@param from_section "unstaged"|"untracked"
+---@param from_section "unstaged"|"untracked"|"conflicted"
 ---@return GitStatusResult
 function M._apply_stage_file(status, path, from_section)
   if from_section == "untracked" then
@@ -131,6 +131,17 @@ function M._apply_stage_file(status, path, from_section)
           submodule = unstaged_entry.submodule,
         })
       end
+    end
+  elseif from_section == "conflicted" then
+    -- Staging a conflicted file marks it as resolved
+    local new_conflicted, removed = remove_entry(status.conflicted, path)
+    if removed then
+      status.conflicted = new_conflicted
+      insert_sorted(status.staged, {
+        path = removed.path,
+        index_status = "M", -- Modified (resolved conflict)
+        worktree_status = ".",
+      })
     end
   end
 

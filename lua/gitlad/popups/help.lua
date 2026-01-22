@@ -31,7 +31,10 @@ function M.open(status_buffer)
     :action("<Tab>", "Toggle inline diff", function()
       -- Context-dependent, just close
     end)
-    :action("<CR>", "Visit file at point", function()
+    :action("<CR>", "Visit file (diffview for conflicts)", function()
+      -- Context-dependent, just close
+    end)
+    :action("e", "Edit file (diffview for conflicts)", function()
       -- Context-dependent, just close
     end)
     -- Staging

@@ -916,4 +916,226 @@ T["staging conflicted files"]["s on Conflicted section header stages all conflic
   cleanup_repo(child, repo)
 end
 
+-- Conflict marker safeguard tests
+T["conflict marker safeguard"] = MiniTest.new_set()
+
+T["conflict marker safeguard"]["s on file with conflict markers shows confirmation prompt"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit on main
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create feature branch with conflicting change
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature change"')
+
+  -- Go back to main and make conflicting change
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main change"')
+
+  -- Start merge with conflict (file will have conflict markers)
+  git(child, repo, "merge feature --no-edit || true")
+
+  -- Verify the file has conflict markers
+  local file_content = git(child, repo, "cat test.txt || cat " .. repo .. "/test.txt")
+  eq(file_content:match("<<<<<<<") ~= nil, true)
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Find the conflicted file line
+  child.lua([[
+    status_buf = vim.api.nvim_get_current_buf()
+    status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[status_lines]])
+
+  local found_conflicted_section = false
+  local conflicted_line = nil
+  for i, line in ipairs(lines) do
+    if line:match("^Conflicted") then
+      found_conflicted_section = true
+    end
+    if found_conflicted_section and line:match("test%.txt") then
+      conflicted_line = i
+      break
+    end
+  end
+
+  eq(found_conflicted_section, true)
+  eq(conflicted_line ~= nil, true)
+
+  -- Mock vim.ui.select to track calls and auto-cancel
+  child.lua([[
+    _G.ui_select_called = false
+    _G.original_ui_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      _G.ui_select_called = true
+      on_choice(nil)  -- Cancel
+    end
+  ]])
+
+  -- Navigate to conflicted file and press s
+  child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
+  child.type_keys("s")
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Check if vim.ui.select was called
+  local ui_select_called = child.lua_get([[_G.ui_select_called]])
+  eq(ui_select_called, true)
+
+  -- Restore
+  child.lua([[vim.ui.select = _G.original_ui_select]])
+  cleanup_repo(child, repo)
+end
+
+T["conflict marker safeguard"]["s on resolved file without markers stages immediately"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit on main
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create feature branch with conflicting change
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature change"')
+
+  -- Go back to main and make conflicting change
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main change"')
+
+  -- Start merge with conflict
+  git(child, repo, "merge feature --no-edit || true")
+
+  -- Resolve conflict by writing clean content (no conflict markers)
+  create_file(child, repo, "test.txt", "resolved content")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+
+  -- Wait for status to load
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Find the conflicted file line
+  child.lua([[
+    status_buf = vim.api.nvim_get_current_buf()
+    status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[status_lines]])
+
+  local found_conflicted_section = false
+  local conflicted_line = nil
+  for i, line in ipairs(lines) do
+    if line:match("^Conflicted") then
+      found_conflicted_section = true
+    end
+    if found_conflicted_section and line:match("test%.txt") then
+      conflicted_line = i
+      break
+    end
+  end
+
+  eq(conflicted_line ~= nil, true)
+
+  -- Navigate to the conflicted file and press s
+  child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
+  child.type_keys("s")
+
+  -- Wait for staging to complete (no prompt expected)
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- File should be staged since there were no conflict markers
+  local staged_status = git(child, repo, "diff --cached --name-only")
+  eq(staged_status:match("test%.txt") ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+-- Diffview integration tests
+T["diffview integration"] = MiniTest.new_set()
+
+T["diffview integration"]["e keybinding is mapped in status buffer"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+
+  -- Wait for status to load
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Check that 'e' keybinding exists using a helper function
+  child.lua([[
+    _G.has_e_keymap = false
+    local maps = vim.api.nvim_buf_get_keymap(0, 'n')
+    for _, map in ipairs(maps) do
+      if map.lhs == 'e' then
+        _G.has_e_keymap = true
+        break
+      end
+    end
+  ]])
+
+  local has_e_map = child.lua_get([[_G.has_e_keymap]])
+  eq(has_e_map, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["diffview integration"]["e keybinding appears in help"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open help with ?
+  child.type_keys("?")
+  child.lua([[vim.wait(300, function() return false end)]])
+
+  -- Check for 'e' in help
+  child.lua([[
+    help_buf = vim.api.nvim_get_current_buf()
+    help_lines = vim.api.nvim_buf_get_lines(help_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[help_lines]])
+
+  local found_e = false
+  for _, line in ipairs(lines) do
+    if line:match("e%s+Edit file") then
+      found_e = true
+    end
+  end
+
+  eq(found_e, true)
+
+  child.type_keys("q")
+  cleanup_repo(child, repo)
+end
+
 return T

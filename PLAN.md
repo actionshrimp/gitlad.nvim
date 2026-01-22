@@ -341,6 +341,9 @@ This feature is implemented in **3 PRs** for incremental delivery:
 - [x] Help popup updated with `m` entry
 - [x] `s` on conflicted file stages it (marks as resolved)
 - [x] `s` on Conflicted section header stages all conflicted files
+- [x] Conflict marker safeguard: `s` on file with markers shows confirmation prompt
+- [x] `e` or `RET` on conflicted file opens diffview.nvim merge tool
+- [x] Graceful fallback if diffview.nvim not installed (opens file with conflict markers)
 
 **Files created:**
 - `lua/gitlad/popups/merge.lua` - Merge popup with switches and actions
@@ -352,8 +355,8 @@ This feature is implemented in **3 PRs** for incremental delivery:
 - `lua/gitlad/git/parse.lua` - Extend `GitStatusResult` with `merge_in_progress`, `merge_head_oid`, `merge_head_subject`
 - `lua/gitlad/state/init.lua` - Fetch merge state during refresh
 - `lua/gitlad/state/reducer.lua` - Copy merge fields in reducer
-- `lua/gitlad/ui/views/status.lua` - Header display, `m` keybinding, staging conflicted files
-- `lua/gitlad/popups/help.lua` - Add `m` (Merge) entry
+- `lua/gitlad/ui/views/status.lua` - Header display, `m` keybinding, staging conflicted files, `e` keybinding, diffview integration
+- `lua/gitlad/popups/help.lua` - Add `m` (Merge), `e` (Edit) entries
 
 #### PR 2: Full Merge Popup Options
 
@@ -365,12 +368,12 @@ This feature is implemented in **3 PRs** for incremental delivery:
 - [ ] Diff algorithm (`-Xdiff-algorithm=`): default, minimal, patience, histogram
 - [ ] Mark `--ff-only` and `--no-ff` as mutually exclusive
 
-#### PR 3: Conflict Resolution Workflow
+#### PR 3: Conflict Resolution Workflow - COMPLETE (merged into PR 1)
 
 **Scope:** Enhance conflict resolution with diffview.nvim integration.
 
-- [ ] `e` or `RET` on conflicted file opens diffview.nvim merge tool
-- [ ] Graceful fallback if diffview.nvim not installed (opens file with conflict markers)
+- [x] `e` or `RET` on conflicted file opens diffview.nvim merge tool (implemented in PR 1)
+- [x] Graceful fallback if diffview.nvim not installed (implemented in PR 1)
 
 **Magit parity notes:**
 - Magit's "absorb", "preview", and "dissolve" actions are advanced features that even neogit hasn't implemented - skipped initially
