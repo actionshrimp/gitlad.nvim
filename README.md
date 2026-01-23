@@ -40,11 +40,21 @@ Using lazy.nvim:
 ```lua
 {
   "actionshrimp/gitlad.nvim",
+  dependencies = {
+    -- Optional: for full-buffer diffs and 3-way staging view
+    -- Use the 3-way-staging branch for HEAD|INDEX|WORKING view support
+    {
+      "actionshrimp/diffview.nvim",
+      branch = "3-way-staging",
+    },
+  },
   config = function()
     require("gitlad").setup()
   end,
 }
 ```
+
+> **Note:** The 3-way staging view (`d` then `3` on staged/unstaged files) requires the `3-way-staging` branch from the [actionshrimp/diffview.nvim](https://github.com/actionshrimp/diffview.nvim/tree/3-way-staging) fork. This feature shows HEAD | INDEX | WORKING side-by-side with editable index buffers.
 
 ## Usage
 

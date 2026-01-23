@@ -142,17 +142,23 @@ function M._diff_range_with_context(repo_state, ref)
 end
 
 --- 3-way staging view (HEAD/index/working tree)
---- Opens diffview with both "Changes" (unstaged) and "Staged changes" sections.
+--- Opens diffview showing all files in a 3-pane layout: HEAD | INDEX | WORKING
 --- Index buffers are editable - writing to them updates the git index.
 --- Working tree buffers are also editable.
+--- If file_path is provided, that file will be pre-selected.
 ---@param repo_state RepoState
-function M._diff_3way(repo_state)
+---@param file_path? string Optional file path to pre-select
+function M._diff_3way(repo_state, file_path)
   local has_diffview, diffview = check_diffview()
 
   if has_diffview then
-    -- Open with no args to get the staging view showing both
-    -- "Changes" (index vs working tree) and "Staged changes" (HEAD vs index)
-    diffview.open({})
+    -- Pass --staging-3way to force ALL files into 3-pane view (HEAD | INDEX | WORKING)
+    -- This works even for files that only have staged OR unstaged changes
+    local args = { "--staging-3way" }
+    if file_path then
+      table.insert(args, "--selected-file=" .. file_path)
+    end
+    diffview.open(args)
   else
     vim.notify(
       "[gitlad] 3-way staging view requires diffview.nvim. Install with: { 'sindrets/diffview.nvim' }",
@@ -246,7 +252,7 @@ function M.open(repo_state, context)
   -- Add 3-way staging view for index-related sections (staged/unstaged)
   if context.section == "staged" or context.section == "unstaged" then
     builder:action("3", "3-way (HEAD/index/worktree)", function()
-      M._diff_3way(repo_state)
+      M._diff_3way(repo_state, context.file_path)
     end)
   end
 
