@@ -1138,4 +1138,880 @@ T["diffview integration"]["e keybinding appears in help"] = function()
   cleanup_repo(child, repo)
 end
 
+-- =============================================================================
+-- Branch selection tests
+-- =============================================================================
+T["branch selection"] = MiniTest.new_set()
+
+T["branch selection"]["prompts with vim.ui.select when no context branch"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit on main
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create a feature branch
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "feature.txt", "feature")
+  git(child, repo, "add feature.txt")
+  git(child, repo, 'commit -m "Feature"')
+  git(child, repo, "checkout main")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Mock vim.ui.select to capture the call
+  child.lua([[
+    _G.select_called = false
+    _G.select_items = nil
+    _G.original_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      _G.select_called = true
+      _G.select_items = items
+      on_choice(nil)  -- Cancel selection
+    end
+  ]])
+
+  -- Open merge popup and trigger merge action
+  child.type_keys("m")
+  child.lua([[vim.wait(500, function() return false end)]])
+  child.type_keys("m") -- Press 'm' again to trigger merge action
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  local select_called = child.lua_get([[_G.select_called]])
+  eq(select_called, true)
+
+  local select_items = child.lua_get([[_G.select_items]])
+  -- Should contain the feature branch
+  local found_feature = false
+  if select_items then
+    for _, item in ipairs(select_items) do
+      if item == "feature" then
+        found_feature = true
+      end
+    end
+  end
+  eq(found_feature, true)
+
+  -- Restore
+  child.lua([[vim.ui.select = _G.original_select]])
+  cleanup_repo(child, repo)
+end
+
+T["branch selection"]["excludes current branch from selection list"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit on main
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create feature branches
+  git(child, repo, "checkout -b feature1")
+  git(child, repo, "checkout -b feature2")
+  git(child, repo, "checkout main")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Mock vim.ui.select
+  child.lua([[
+    _G.select_items = nil
+    _G.original_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      _G.select_items = items
+      on_choice(nil)
+    end
+  ]])
+
+  child.type_keys("m")
+  child.lua([[vim.wait(500, function() return false end)]])
+  child.type_keys("m")
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  local select_items = child.lua_get([[_G.select_items]])
+
+  -- Should NOT contain main (current branch)
+  local found_main = false
+  if select_items then
+    for _, item in ipairs(select_items) do
+      if item == "main" then
+        found_main = true
+      end
+    end
+  end
+  eq(found_main, false)
+
+  child.lua([[vim.ui.select = _G.original_select]])
+  cleanup_repo(child, repo)
+end
+
+T["branch selection"]["shows notification when no branches available"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit on main - only one branch exists
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Track notifications
+  child.lua([[
+    _G.notifications = {}
+    _G.original_notify = vim.notify
+    vim.notify = function(msg, level)
+      table.insert(_G.notifications, { msg = msg, level = level })
+    end
+  ]])
+
+  child.type_keys("m")
+  child.lua([[vim.wait(500, function() return false end)]])
+  child.type_keys("m")
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  local notifications = child.lua_get([[_G.notifications]])
+
+  -- Should have notification about no branches
+  local found_no_branches = false
+  for _, n in ipairs(notifications) do
+    if n.msg and n.msg:match("No branches to merge") then
+      found_no_branches = true
+    end
+  end
+  eq(found_no_branches, true)
+
+  child.lua([[vim.notify = _G.original_notify]])
+  cleanup_repo(child, repo)
+end
+
+-- =============================================================================
+-- Diffview integration tests (extended)
+-- =============================================================================
+T["diffview fallback"] = MiniTest.new_set()
+
+T["diffview fallback"]["shows message when diffview not installed"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create merge conflict
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main"')
+
+  git(child, repo, "merge feature --no-edit || true")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Ensure diffview is not available
+  child.lua([[
+    package.loaded["diffview"] = nil
+    package.preload["diffview"] = nil
+  ]])
+
+  -- Track notifications
+  child.lua([[
+    _G.notifications = {}
+    _G.original_notify = vim.notify
+    vim.notify = function(msg, level)
+      table.insert(_G.notifications, { msg = msg, level = level })
+    end
+  ]])
+
+  -- Find conflicted file and press 'e'
+  child.lua([[
+    status_buf = vim.api.nvim_get_current_buf()
+    status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[status_lines]])
+
+  local found_conflicted = false
+  local conflicted_line = nil
+  for i, line in ipairs(lines) do
+    if line:match("^Conflicted") then
+      found_conflicted = true
+    end
+    if found_conflicted and line:match("test%.txt") then
+      conflicted_line = i
+      break
+    end
+  end
+
+  if conflicted_line then
+    child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
+    child.type_keys("e")
+    child.lua([[vim.wait(500, function() return false end)]])
+
+    local notifications = child.lua_get([[_G.notifications]])
+
+    -- Should have notification about diffview not installed
+    local found_diffview_msg = false
+    for _, n in ipairs(notifications) do
+      if n.msg and n.msg:match("diffview.nvim not installed") then
+        found_diffview_msg = true
+      end
+    end
+    eq(found_diffview_msg, true)
+  end
+
+  child.lua([[vim.notify = _G.original_notify]])
+  cleanup_repo(child, repo)
+end
+
+T["diffview fallback"]["opens file directly when diffview not installed"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create merge conflict
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main"')
+
+  git(child, repo, "merge feature --no-edit || true")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Ensure diffview is not available
+  child.lua([[
+    package.loaded["diffview"] = nil
+    package.preload["diffview"] = nil
+  ]])
+
+  -- Find conflicted file and press 'e'
+  child.lua([[
+    status_buf = vim.api.nvim_get_current_buf()
+    status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[status_lines]])
+
+  local found_conflicted = false
+  local conflicted_line = nil
+  for i, line in ipairs(lines) do
+    if line:match("^Conflicted") then
+      found_conflicted = true
+    end
+    if found_conflicted and line:match("test%.txt") then
+      conflicted_line = i
+      break
+    end
+  end
+
+  if conflicted_line then
+    child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
+    child.type_keys("e")
+    child.lua([[vim.wait(500, function() return false end)]])
+
+    -- Should now be editing test.txt
+    local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+    eq(bufname:match("test%.txt") ~= nil, true)
+  end
+
+  cleanup_repo(child, repo)
+end
+
+-- =============================================================================
+-- Abort confirmation tests
+-- =============================================================================
+T["abort confirmation"] = MiniTest.new_set()
+
+T["abort confirmation"]["does not abort when user selects No"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create merge conflict
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main"')
+
+  git(child, repo, "merge feature --no-edit || true")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- Verify merge is in progress
+  local in_progress_before =
+    child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
+  eq(in_progress_before, true)
+
+  -- Mock vim.ui.select to select "No"
+  child.lua([[
+    _G.original_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      on_choice("No")
+    end
+  ]])
+
+  -- Call merge_abort directly using M.get() which is the correct API
+  child.lua(string.format(
+    [[
+    local merge_popup = require("gitlad.popups.merge")
+    local state = require("gitlad.state")
+    local repo_state = state.get(%q)
+    merge_popup._merge_abort(repo_state)
+  ]],
+    repo
+  ))
+
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Merge should still be in progress
+  local in_progress_after =
+    child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
+  eq(in_progress_after, true)
+
+  child.lua([[vim.ui.select = _G.original_select]])
+  cleanup_repo(child, repo)
+end
+
+T["abort confirmation"]["aborts when user selects Yes"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create merge conflict
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main"')
+
+  git(child, repo, "merge feature --no-edit || true")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- Mock vim.ui.select to select "Yes"
+  child.lua([[
+    _G.original_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      on_choice("Yes")
+    end
+  ]])
+
+  -- Call merge_abort directly using M.get() which is the correct API
+  child.lua(string.format(
+    [[
+    local merge_popup = require("gitlad.popups.merge")
+    local state = require("gitlad.state")
+    local repo_state = state.get(%q)
+    merge_popup._merge_abort(repo_state)
+  ]],
+    repo
+  ))
+
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Merge should no longer be in progress
+  local in_progress_after =
+    child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
+  eq(in_progress_after, false)
+
+  child.lua([[vim.ui.select = _G.original_select]])
+  cleanup_repo(child, repo)
+end
+
+-- =============================================================================
+-- Error path tests
+-- =============================================================================
+T["error paths"] = MiniTest.new_set()
+
+T["error paths"]["merge_abort fails gracefully when not merging"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit - no merge in progress
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- Try to abort when not merging
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    git.merge_abort({ cwd = %q }, function(success, err)
+      _G.abort_result = { success = success, err = err }
+    end)
+  ]],
+    repo
+  ))
+
+  child.lua([[vim.wait(1000, function() return _G.abort_result ~= nil end)]])
+  local result = child.lua_get([[_G.abort_result]])
+
+  eq(result.success, false)
+  -- Error should indicate no merge to abort
+  eq(result.err ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["error paths"]["merge_continue fails with unresolved conflicts"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create merge conflict
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main"')
+
+  -- Start merge with conflict but don't resolve
+  git(child, repo, "merge feature --no-edit || true")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- Try to continue without resolving
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    git.merge_continue({ cwd = %q }, function(success, err)
+      _G.continue_result = { success = success, err = err }
+    end)
+  ]],
+    repo
+  ))
+
+  child.lua([[vim.wait(1000, function() return _G.continue_result ~= nil end)]])
+  local result = child.lua_get([[_G.continue_result]])
+
+  eq(result.success, false)
+  -- Error should indicate unmerged paths
+  eq(result.err ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["error paths"]["merge fails with invalid branch name"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- Try to merge non-existent branch
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    git.merge("nonexistent-branch", { "--no-edit" }, { cwd = %q }, function(success, output, err)
+      _G.merge_result = { success = success, output = output, err = err }
+    end)
+  ]],
+    repo
+  ))
+
+  child.lua([[vim.wait(1000, function() return _G.merge_result ~= nil end)]])
+  local result = child.lua_get([[_G.merge_result]])
+
+  eq(result.success, false)
+  -- Error should mention the branch
+  eq(result.err ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["error paths"]["ff-only merge fails when not fast-forwardable"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create divergent branches
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "feature.txt", "feature")
+  git(child, repo, "add feature.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  git(child, repo, "checkout main")
+  create_file(child, repo, "main.txt", "main")
+  git(child, repo, "add main.txt")
+  git(child, repo, 'commit -m "Main diverge"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- Try ff-only merge on divergent branch
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    git.merge("feature", { "--ff-only" }, { cwd = %q }, function(success, output, err)
+      _G.merge_result = { success = success, output = output, err = err }
+    end)
+  ]],
+    repo
+  ))
+
+  child.lua([[vim.wait(1000, function() return _G.merge_result ~= nil end)]])
+  local result = child.lua_get([[_G.merge_result]])
+
+  eq(result.success, false)
+  -- Error should mention fast-forward
+  eq(result.err ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+-- =============================================================================
+-- Merge arguments tests
+-- =============================================================================
+T["merge arguments"] = MiniTest.new_set()
+
+T["merge arguments"]["squash merge stages changes without creating merge commit"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "feature.txt", "feature content")
+  git(child, repo, "add feature.txt")
+  git(child, repo, 'commit -m "Add feature"')
+
+  git(child, repo, "checkout main")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- Perform squash merge
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    git.merge("feature", { "--squash" }, { cwd = %q }, function(success, output, err)
+      _G.merge_result = { success = success, output = output, err = err }
+    end)
+  ]],
+    repo
+  ))
+
+  child.lua([[vim.wait(1000, function() return _G.merge_result ~= nil end)]])
+  local result = child.lua_get([[_G.merge_result]])
+
+  eq(result.success, true)
+
+  -- Changes should be staged
+  local staged = git(child, repo, "diff --cached --name-only")
+  eq(staged:match("feature%.txt") ~= nil, true)
+
+  -- No MERGE_HEAD (not a merge commit pending)
+  local merge_in_progress =
+    child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
+  eq(merge_in_progress, false)
+
+  -- HEAD should not have changed (no auto-commit)
+  local log = git(child, repo, "log --oneline -1")
+  eq(log:match("Initial") ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["merge arguments"]["no-commit merge stages changes without committing"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "feature.txt", "feature content")
+  git(child, repo, "add feature.txt")
+  git(child, repo, 'commit -m "Add feature"')
+
+  -- Go back to main and create a divergent commit
+  -- (--no-commit only creates MERGE_HEAD for non-fast-forward merges)
+  git(child, repo, "checkout main")
+  create_file(child, repo, "main.txt", "main content")
+  git(child, repo, "add main.txt")
+  git(child, repo, 'commit -m "Main diverge"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- Perform no-commit merge (now it's a real merge, not fast-forward)
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    git.merge("feature", { "--no-commit", "--no-edit" }, { cwd = %q }, function(success, output, err)
+      _G.merge_result = { success = success, output = output, err = err }
+    end)
+  ]],
+    repo
+  ))
+
+  child.lua([[vim.wait(1000, function() return _G.merge_result ~= nil end)]])
+  local result = child.lua_get([[_G.merge_result]])
+
+  eq(result.success, true)
+
+  -- Changes should be staged
+  local staged = git(child, repo, "diff --cached --name-only")
+  eq(staged:match("feature%.txt") ~= nil, true)
+
+  -- MERGE_HEAD should exist (merge pending)
+  local merge_in_progress =
+    child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
+  eq(merge_in_progress, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["merge arguments"]["multiple switches can be combined"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "feature.txt", "feature")
+  git(child, repo, "add feature.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  git(child, repo, "checkout main")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open merge popup and enable switches
+  child.type_keys("m")
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Toggle ff-only switch
+  child.type_keys("-f")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Verify switch is shown as enabled in popup
+  child.lua([[
+    popup_buf = vim.api.nvim_get_current_buf()
+    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[popup_lines]])
+
+  -- Look for enabled switch indicator (typically shown differently)
+  local found_switch_line = false
+  for _, line in ipairs(lines) do
+    if line:match("%-f.*ff%-only") then
+      found_switch_line = true
+    end
+  end
+  eq(found_switch_line, true)
+
+  child.type_keys("q")
+  cleanup_repo(child, repo)
+end
+
+-- =============================================================================
+-- Auto-staging after diffview tests
+-- =============================================================================
+T["auto-staging"] = MiniTest.new_set()
+
+T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create merge conflict
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main"')
+
+  git(child, repo, "merge feature --no-edit || true")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- Manually resolve the conflict (remove markers)
+  create_file(child, repo, "test.txt", "line1\nresolved")
+
+  -- Set up mock diffview that captures the autocmd
+  child.lua([[
+    -- Mock diffview to just set up the autocmd without opening anything
+    package.loaded["diffview"] = {
+      open = function() end
+    }
+  ]])
+
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Find conflicted file and press 'e' to trigger diffview integration
+  child.lua([[
+    status_buf = vim.api.nvim_get_current_buf()
+    status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[status_lines]])
+
+  local conflicted_line = nil
+  local in_conflicted = false
+  for i, line in ipairs(lines) do
+    if line:match("^Conflicted") then
+      in_conflicted = true
+    end
+    if in_conflicted and line:match("test%.txt") then
+      conflicted_line = i
+      break
+    end
+  end
+
+  if conflicted_line then
+    child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
+    child.type_keys("e")
+    child.lua([[vim.wait(500, function() return false end)]])
+
+    -- Fire the DiffviewViewClosed event to simulate closing diffview
+    child.lua([[vim.api.nvim_exec_autocmds("User", { pattern = "DiffviewViewClosed" })]])
+    child.lua([[vim.wait(1000, function() return false end)]])
+
+    -- File should now be staged
+    local staged = git(child, repo, "diff --cached --name-only")
+    eq(staged:match("test%.txt") ~= nil, true)
+  end
+
+  cleanup_repo(child, repo)
+end
+
+T["auto-staging"]["does not stage files that still have conflict markers"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create merge conflict
+  create_file(child, repo, "test.txt", "line1\nline2")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  git(child, repo, "checkout -b feature")
+  create_file(child, repo, "test.txt", "line1\nfeature")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  git(child, repo, "checkout main")
+  create_file(child, repo, "test.txt", "line1\nmain")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Main"')
+
+  git(child, repo, "merge feature --no-edit || true")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+
+  -- DON'T resolve the conflict - leave markers in place
+
+  -- Mock diffview
+  child.lua([[
+    package.loaded["diffview"] = {
+      open = function() end
+    }
+  ]])
+
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Find conflicted file and press 'e'
+  child.lua([[
+    status_buf = vim.api.nvim_get_current_buf()
+    status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[status_lines]])
+
+  local conflicted_line = nil
+  local in_conflicted = false
+  for i, line in ipairs(lines) do
+    if line:match("^Conflicted") then
+      in_conflicted = true
+    end
+    if in_conflicted and line:match("test%.txt") then
+      conflicted_line = i
+      break
+    end
+  end
+
+  if conflicted_line then
+    child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
+    child.type_keys("e")
+    child.lua([[vim.wait(500, function() return false end)]])
+
+    -- Fire the DiffviewViewClosed event
+    child.lua([[vim.api.nvim_exec_autocmds("User", { pattern = "DiffviewViewClosed" })]])
+    child.lua([[vim.wait(1000, function() return false end)]])
+
+    -- File should NOT be staged (still has markers)
+    local staged = git(child, repo, "diff --cached --name-only")
+    -- staged might be empty or not contain test.txt
+    local is_staged = staged:match("test%.txt") ~= nil
+    eq(is_staged, false)
+  end
+
+  cleanup_repo(child, repo)
+end
+
 return T

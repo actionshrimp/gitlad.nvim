@@ -19,6 +19,17 @@ local spinner_util = require("gitlad.ui.utils.spinner")
 -- Namespace for sign column indicators
 local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 
+--- Join repository root path with a relative file path
+--- Handles trailing slashes in repo_root to avoid double slashes
+---@param repo_root string Repository root path (may have trailing slash)
+---@param rel_path string Relative path within the repo
+---@return string Full path
+local function join_path(repo_root, rel_path)
+  -- Remove trailing slash from repo_root if present
+  local base = repo_root:gsub("/$", "")
+  return base .. "/" .. rel_path
+end
+
 ---@class LineInfo
 ---@field type "file" Discriminator for union type
 ---@field path string File path
@@ -552,6 +563,7 @@ function StatusBuffer:_yank_section_value()
 end
 
 --- Check if a file contains conflict markers
+--- Exported as M._has_conflict_markers for testing
 ---@param file_path string Absolute path to the file
 ---@return boolean has_markers True if conflict markers found
 local function has_conflict_markers(file_path)
@@ -598,7 +610,7 @@ local function open_diffview_merge(repo_root, file_path, repo_state)
             -- Check each previously conflicted file for resolution
             local resolved_files = {}
             for _, path in ipairs(conflicted_files) do
-              local full_path = repo_root .. path
+              local full_path = join_path(repo_root, path)
               if not has_conflict_markers(full_path) then
                 table.insert(resolved_files, { path = path, section = "conflicted" })
               end
@@ -633,7 +645,7 @@ local function open_diffview_merge(repo_root, file_path, repo_state)
   else
     -- Fallback: just open the file with conflict markers
     if file_path then
-      local full_path = repo_root .. file_path
+      local full_path = join_path(repo_root, file_path)
       vim.cmd("edit " .. vim.fn.fnameescape(full_path))
       vim.notify(
         "[gitlad] diffview.nvim not installed. Opening file with conflict markers.",
@@ -1048,7 +1060,7 @@ function StatusBuffer:_stage_current()
       if #files > 0 then
         local files_with_markers = {}
         for _, file in ipairs(files) do
-          local full_path = self.repo_state.repo_root .. file.path
+          local full_path = join_path(self.repo_state.repo_root, file.path)
           if has_conflict_markers(full_path) then
             table.insert(files_with_markers, file.path)
           end
@@ -1115,7 +1127,7 @@ function StatusBuffer:_stage_current()
     self.repo_state:stage(path, section)
   elseif section == "conflicted" then
     -- Check for conflict markers before staging
-    local full_path = self.repo_state.repo_root .. path
+    local full_path = join_path(self.repo_state.repo_root, path)
     if has_conflict_markers(full_path) then
       -- Warn user and ask for confirmation
       vim.ui.select({ "No", "Yes" }, {
@@ -1442,7 +1454,7 @@ function StatusBuffer:_visit_file()
   -- Check if on a submodule - open its directory
   local submodule = self:_get_current_submodule()
   if submodule then
-    local submodule_path = self.repo_state.repo_root .. submodule.path
+    local submodule_path = join_path(self.repo_state.repo_root, submodule.path)
     -- Close status and open submodule directory
     self:close()
     vim.cmd("edit " .. vim.fn.fnameescape(submodule_path))
@@ -1458,7 +1470,7 @@ function StatusBuffer:_visit_file()
       return
     end
 
-    local full_path = self.repo_state.repo_root .. path
+    local full_path = join_path(self.repo_state.repo_root, path)
     -- Close status and open file
     self:close()
     vim.cmd("edit " .. vim.fn.fnameescape(full_path))
@@ -2176,5 +2188,8 @@ function M.get_buffer(repo_state)
   end
   return nil
 end
+
+-- Export for testing
+M._has_conflict_markers = has_conflict_markers
 
 return M
