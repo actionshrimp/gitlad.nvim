@@ -89,6 +89,11 @@ function M.run_async(args, opts, callback)
   local timeout_timer = nil
   local completed = false
 
+  -- Use unbuffered mode when streaming is requested for real-time output
+  local streaming = opts.on_output_line ~= nil
+  local stdout_partial = ""
+  local stderr_partial = ""
+
   local function on_complete(code)
     if completed then
       return
@@ -97,6 +102,22 @@ function M.run_async(args, opts, callback)
 
     if timeout_timer then
       vim.fn.timer_stop(timeout_timer)
+    end
+
+    -- Emit any remaining partial lines when streaming
+    if streaming then
+      if stdout_partial ~= "" then
+        table.insert(stdout_data, stdout_partial)
+        vim.schedule(function()
+          opts.on_output_line(stdout_partial, false)
+        end)
+      end
+      if stderr_partial ~= "" then
+        table.insert(stderr_data, stderr_partial)
+        vim.schedule(function()
+          opts.on_output_line(stderr_partial, true)
+        end)
+      end
     end
 
     -- Calculate duration
@@ -128,39 +149,62 @@ function M.run_async(args, opts, callback)
   job_id = vim.fn.jobstart(cmd, {
     cwd = opts.cwd or vim.fn.getcwd(),
     env = opts.env,
-    stdout_buffered = true,
-    stderr_buffered = true,
+    stdout_buffered = not streaming,
+    stderr_buffered = not streaming,
     on_stdout = function(_, data)
       if data then
-        -- Remove trailing empty string from buffered output
-        if #data > 0 and data[#data] == "" then
-          table.remove(data)
-        end
-        -- Stream each line to callback if provided
-        if opts.on_output_line then
-          for _, line in ipairs(data) do
-            vim.schedule(function()
-              opts.on_output_line(line, false)
-            end)
+        if streaming then
+          -- Manual line buffering for real-time streaming
+          for i, chunk in ipairs(data) do
+            if i == 1 then
+              -- First chunk continues the previous partial line
+              stdout_partial = stdout_partial .. chunk
+            else
+              -- Previous partial is now complete
+              if stdout_partial ~= "" then
+                table.insert(stdout_data, stdout_partial)
+                local line = stdout_partial
+                vim.schedule(function()
+                  opts.on_output_line(line, false)
+                end)
+              end
+              stdout_partial = chunk
+            end
           end
+        else
+          -- Buffered mode - data arrives as complete lines
+          if #data > 0 and data[#data] == "" then
+            table.remove(data)
+          end
+          vim.list_extend(stdout_data, data)
         end
-        vim.list_extend(stdout_data, data)
       end
     end,
     on_stderr = function(_, data)
       if data then
-        if #data > 0 and data[#data] == "" then
-          table.remove(data)
-        end
-        -- Stream each line to callback if provided
-        if opts.on_output_line then
-          for _, line in ipairs(data) do
-            vim.schedule(function()
-              opts.on_output_line(line, true)
-            end)
+        if streaming then
+          -- Manual line buffering for real-time streaming
+          for i, chunk in ipairs(data) do
+            if i == 1 then
+              stderr_partial = stderr_partial .. chunk
+            else
+              if stderr_partial ~= "" then
+                table.insert(stderr_data, stderr_partial)
+                local line = stderr_partial
+                vim.schedule(function()
+                  opts.on_output_line(line, true)
+                end)
+              end
+              stderr_partial = chunk
+            end
           end
+        else
+          -- Buffered mode
+          if #data > 0 and data[#data] == "" then
+            table.remove(data)
+          end
+          vim.list_extend(stderr_data, data)
         end
-        vim.list_extend(stderr_data, data)
       end
     end,
     on_exit = function(_, code)
@@ -242,6 +286,11 @@ function M.run_async_with_stdin(args, stdin_lines, opts, callback)
   local timeout_timer = nil
   local completed = false
 
+  -- Use unbuffered mode when streaming is requested for real-time output
+  local streaming = opts.on_output_line ~= nil
+  local stdout_partial = ""
+  local stderr_partial = ""
+
   local function on_complete(code)
     if completed then
       return
@@ -250,6 +299,22 @@ function M.run_async_with_stdin(args, stdin_lines, opts, callback)
 
     if timeout_timer then
       vim.fn.timer_stop(timeout_timer)
+    end
+
+    -- Emit any remaining partial lines when streaming
+    if streaming then
+      if stdout_partial ~= "" then
+        table.insert(stdout_data, stdout_partial)
+        vim.schedule(function()
+          opts.on_output_line(stdout_partial, false)
+        end)
+      end
+      if stderr_partial ~= "" then
+        table.insert(stderr_data, stderr_partial)
+        vim.schedule(function()
+          opts.on_output_line(stderr_partial, true)
+        end)
+      end
     end
 
     -- Calculate duration
@@ -281,38 +346,62 @@ function M.run_async_with_stdin(args, stdin_lines, opts, callback)
   job_id = vim.fn.jobstart(cmd, {
     cwd = opts.cwd or vim.fn.getcwd(),
     env = opts.env,
-    stdout_buffered = true,
-    stderr_buffered = true,
+    stdout_buffered = not streaming,
+    stderr_buffered = not streaming,
     on_stdout = function(_, data)
       if data then
-        if #data > 0 and data[#data] == "" then
-          table.remove(data)
-        end
-        -- Stream each line to callback if provided
-        if opts.on_output_line then
-          for _, line in ipairs(data) do
-            vim.schedule(function()
-              opts.on_output_line(line, false)
-            end)
+        if streaming then
+          -- Manual line buffering for real-time streaming
+          for i, chunk in ipairs(data) do
+            if i == 1 then
+              -- First chunk continues the previous partial line
+              stdout_partial = stdout_partial .. chunk
+            else
+              -- Previous partial is now complete
+              if stdout_partial ~= "" then
+                table.insert(stdout_data, stdout_partial)
+                local line = stdout_partial
+                vim.schedule(function()
+                  opts.on_output_line(line, false)
+                end)
+              end
+              stdout_partial = chunk
+            end
           end
+        else
+          -- Buffered mode - data arrives as complete lines
+          if #data > 0 and data[#data] == "" then
+            table.remove(data)
+          end
+          vim.list_extend(stdout_data, data)
         end
-        vim.list_extend(stdout_data, data)
       end
     end,
     on_stderr = function(_, data)
       if data then
-        if #data > 0 and data[#data] == "" then
-          table.remove(data)
-        end
-        -- Stream each line to callback if provided
-        if opts.on_output_line then
-          for _, line in ipairs(data) do
-            vim.schedule(function()
-              opts.on_output_line(line, true)
-            end)
+        if streaming then
+          -- Manual line buffering for real-time streaming
+          for i, chunk in ipairs(data) do
+            if i == 1 then
+              stderr_partial = stderr_partial .. chunk
+            else
+              if stderr_partial ~= "" then
+                table.insert(stderr_data, stderr_partial)
+                local line = stderr_partial
+                vim.schedule(function()
+                  opts.on_output_line(line, true)
+                end)
+              end
+              stderr_partial = chunk
+            end
           end
+        else
+          -- Buffered mode
+          if #data > 0 and data[#data] == "" then
+            table.remove(data)
+          end
+          vim.list_extend(stderr_data, data)
         end
-        vim.list_extend(stderr_data, data)
       end
     end,
     on_exit = function(_, code)

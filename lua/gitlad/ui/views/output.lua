@@ -59,8 +59,8 @@ function M.open(opts)
   local col = math.floor((vim.o.columns - width) / 2)
   local row = math.floor((vim.o.lines - height) / 2)
 
-  -- Create floating window
-  self._winnr = vim.api.nvim_open_win(self._bufnr, false, {
+  -- Create floating window (enter=true to focus it for keymaps)
+  self._winnr = vim.api.nvim_open_win(self._bufnr, true, {
     relative = "editor",
     width = width,
     height = height,

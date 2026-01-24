@@ -856,6 +856,30 @@ git commit -m "Update App component on main"
 
 git stash pop -q 2>/dev/null || true  # Restore stashed changes
 
+# =============================================================================
+# Add a pre-commit hook that simulates a slow linting process
+# =============================================================================
+cat > .git/hooks/pre-commit << 'HOOK'
+#!/usr/bin/env bash
+echo "Running pre-commit checks..."
+for i in {1..10}; do
+  sleep 0.1
+  echo "Checking step $i/10..."
+done
+
+# Fail if FAIL_HOOK file is staged
+if git diff --cached --name-only | grep -q "^FAIL_HOOK$"; then
+  echo ""
+  echo "ERROR: FAIL_HOOK file detected in commit!"
+  echo "This simulates a linting failure."
+  exit 1
+fi
+
+echo "All checks passed!"
+exit 0
+HOOK
+chmod +x .git/hooks/pre-commit
+
 echo ""
 echo "=========================================="
 echo "Test repository created at: $REPO_DIR"
@@ -873,6 +897,11 @@ echo "  - feature/conflict-merge: Will conflict with main (both modified App.js)
 echo ""
 echo "The 'lib' submodule has new commits - it will appear in Unstaged changes."
 echo "Use this to test submodule popup context from file entries."
+echo ""
+echo "Pre-commit hook installed:"
+echo "  - Runs 10 iterations with 100ms delay each"
+echo "  - Fails if 'FAIL_HOOK' file is staged (touch FAIL_HOOK && git add FAIL_HOOK)"
+echo "  - Use this to test the commit output viewer"
 echo ""
 echo "To use with gitlad.nvim:"
 echo "  cd $REPO_DIR && nvim -u $(dirname "$0")/../dev/init.lua"
