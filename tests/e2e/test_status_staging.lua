@@ -499,4 +499,122 @@ T["section staging"]["u on Unstaged header does nothing"] = function()
   assert_truthy(status:find(" M file.txt"), "file.txt should still be unstaged")
 end
 
+-- =============================================================================
+-- Cursor Positioning After Unstaging Tests
+-- =============================================================================
+
+T["unstage cursor positioning"] = MiniTest.new_set()
+
+T["unstage cursor positioning"]["u moves cursor to next staged file"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Stage multiple files (alphabetical order: aaa, bbb, ccc)
+  create_file(child, repo, "aaa.txt", "a")
+  create_file(child, repo, "bbb.txt", "b")
+  create_file(child, repo, "ccc.txt", "c")
+  git(child, repo, "add .")
+
+  open_gitlad(child, repo)
+
+  -- Find and go to the middle file (bbb.txt)
+  local lines = get_buffer_lines(child)
+  local bbb_line = find_line_with(lines, "bbb.txt")
+  assert_truthy(bbb_line, "Should find bbb.txt")
+  child.cmd(tostring(bbb_line))
+
+  -- Unstage bbb.txt
+  child.type_keys("u")
+  wait(child, 200)
+
+  -- Cursor should now be on ccc.txt (the next staged file)
+  local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  lines = get_buffer_lines(child)
+  local current_line_text = lines[cursor_line]
+  assert_truthy(
+    current_line_text:find("ccc.txt"),
+    "Cursor should be on ccc.txt (next staged file), but is on: " .. tostring(current_line_text)
+  )
+end
+
+T["unstage cursor positioning"]["u moves cursor to previous staged file when last"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Stage multiple files (alphabetical order: aaa, bbb)
+  create_file(child, repo, "aaa.txt", "a")
+  create_file(child, repo, "bbb.txt", "b")
+  git(child, repo, "add .")
+
+  open_gitlad(child, repo)
+
+  -- Find and go to the last file (bbb.txt)
+  local lines = get_buffer_lines(child)
+  local bbb_line = find_line_with(lines, "bbb.txt")
+  assert_truthy(bbb_line, "Should find bbb.txt")
+  child.cmd(tostring(bbb_line))
+
+  -- Unstage bbb.txt
+  child.type_keys("u")
+  wait(child, 200)
+
+  -- Cursor should now be on aaa.txt (the previous staged file)
+  local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  lines = get_buffer_lines(child)
+  local current_line_text = lines[cursor_line]
+  assert_truthy(
+    current_line_text:find("aaa.txt"),
+    "Cursor should be on aaa.txt (previous staged file), but is on: " .. tostring(current_line_text)
+  )
+end
+
+T["unstage cursor positioning"]["repeated u unstages multiple files in succession"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Stage 3 files
+  create_file(child, repo, "file1.txt", "1")
+  create_file(child, repo, "file2.txt", "2")
+  create_file(child, repo, "file3.txt", "3")
+  git(child, repo, "add .")
+
+  open_gitlad(child, repo)
+
+  -- Find and go to the first staged file
+  local lines = get_buffer_lines(child)
+  local file1_line = find_line_with(lines, "file1.txt")
+  assert_truthy(file1_line, "Should find file1.txt")
+  child.cmd(tostring(file1_line))
+
+  -- Unstage all three files by pressing u three times
+  child.type_keys("u")
+  wait(child, 200)
+  child.type_keys("u")
+  wait(child, 200)
+  child.type_keys("u")
+  wait(child, 200)
+
+  -- All files should now be unstaged
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("%?%? file1.txt"), "file1.txt should be untracked")
+  assert_truthy(status:find("%?%? file2.txt"), "file2.txt should be untracked")
+  assert_truthy(status:find("%?%? file3.txt"), "file3.txt should be untracked")
+  eq(status:find("A "), nil, "No staged files should remain")
+end
+
 return T

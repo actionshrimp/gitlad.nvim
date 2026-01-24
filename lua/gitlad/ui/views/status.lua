@@ -63,6 +63,10 @@ end
 ---@class SignInfo
 ---@field expanded boolean Whether the item is expanded
 
+---@class CursorTarget
+---@field path string File path to move cursor to
+---@field section string Section the file should be in
+
 ---@class StatusBuffer
 ---@field bufnr number Buffer number
 ---@field winnr number|nil Window number if open
@@ -75,6 +79,7 @@ end
 ---@field sign_lines table<number, SignInfo> Map of line numbers to sign info
 ---@field spinner Spinner Animated spinner for refresh indicator
 ---@field status_line_num number|nil Line number of the status indicator line
+---@field pending_cursor_target CursorTarget|nil Target for cursor positioning after render
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
 
@@ -1144,6 +1149,43 @@ function StatusBuffer:_stage_current()
   end
 end
 
+--- Find the next file line in a section starting after a given line
+---@param start_line number Line to start searching after
+---@param section string Section to search within
+---@param exclude_path? string Path to exclude from results
+---@return number|nil line Line number of next file, or nil if not found
+---@return string|nil path Path of next file, or nil if not found
+function StatusBuffer:_find_next_file_in_section(start_line, section, exclude_path)
+  local total_lines = vim.api.nvim_buf_line_count(self.bufnr)
+  for line_num = start_line + 1, total_lines do
+    local info = self.line_map[line_num]
+    if info and info.section == section and info.type == "file" and not info.hunk_index then
+      if not exclude_path or info.path ~= exclude_path then
+        return line_num, info.path
+      end
+    end
+  end
+  return nil, nil
+end
+
+--- Find the previous file line in a section starting before a given line
+---@param start_line number Line to start searching before
+---@param section string Section to search within
+---@param exclude_path? string Path to exclude from results
+---@return number|nil line Line number of previous file, or nil if not found
+---@return string|nil path Path of previous file, or nil if not found
+function StatusBuffer:_find_prev_file_in_section(start_line, section, exclude_path)
+  for line_num = start_line - 1, 1, -1 do
+    local info = self.line_map[line_num]
+    if info and info.section == section and info.type == "file" and not info.hunk_index then
+      if not exclude_path or info.path ~= exclude_path then
+        return line_num, info.path
+      end
+    end
+  end
+  return nil, nil
+end
+
 --- Unstage the file or hunk under cursor, or entire section if on section header
 function StatusBuffer:_unstage_current()
   -- First check if we're on a section header
@@ -1175,6 +1217,18 @@ function StatusBuffer:_unstage_current()
   end
 
   if section == "staged" then
+    -- Find the next staged file to move cursor to after unstaging
+    -- First try next file, then try previous file
+    local _, next_path = self:_find_next_file_in_section(line, "staged", path)
+    if not next_path then
+      _, next_path = self:_find_prev_file_in_section(line, "staged", path)
+    end
+
+    -- Store the target for cursor positioning after render
+    if next_path then
+      self.pending_cursor_target = { path = next_path, section = "staged" }
+    end
+
     -- Check if we're on a hunk line
     if hunk_index then
       local key = diff_cache_key(path, section)
@@ -2054,6 +2108,26 @@ function StatusBuffer:render()
 
   -- Place expand/collapse indicators in sign column
   self:_place_signs()
+
+  -- Position cursor on pending target (e.g., after unstaging a file)
+  if self.pending_cursor_target then
+    local target = self.pending_cursor_target
+    self.pending_cursor_target = nil
+    for line_num, info in pairs(self.line_map) do
+      if
+        info.path == target.path
+        and info.section == target.section
+        and info.type == "file"
+        and not info.hunk_index
+      then
+        -- Only set cursor if we're in the right window
+        if self.winnr and vim.api.nvim_win_is_valid(self.winnr) then
+          vim.api.nvim_win_set_cursor(self.winnr, { line_num, 0 })
+        end
+        break
+      end
+    end
+  end
 
   -- Make buffer non-modifiable to prevent accidental edits
   vim.bo[self.bufnr].modifiable = false

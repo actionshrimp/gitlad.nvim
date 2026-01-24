@@ -11,12 +11,12 @@ Done:
 - [x] diffing from refs view: diff popup on cherries shows commit diff, `d r` on refs uses multi-step workflow (pick base → pick range type `..` or `...`)
 - [x] Currently when using diffview to edit what is staged vs unstaged, we have a regular diffview screen with 2 splits and at the time I asked about if it was possible to do a 3-split view so we could see origina/index/unstaged - it seemed like it wasn't possible to get diffview to do that. However, with the recent work on merge conflicts, it transpires that the Diffview conflict resolution screen definitely has 3 splits! can we use that for a better view on the current status by treating it as a 'conflict' of sorts? ideally it would be original on left, index in the middle, and unstaged on the right
 - [x] commit hook output popup improvements/fixes
+- [x] When unstaging files, the cursor doesnt move to the next staged file to make it easy to keep pressing 'u' repeatedly
 
 Now:
-- [ ] When unstaging files, the cursor doesnt move to the next staged file to make it easy to keep pressing 'u' repeatedly
+- [ ] <cr> on a commit is a shortcut for `d d`
 
 Upcoming:
-- [ ] <cr> on a commit is a shortcut for `d d`
 - [ ] <cr> on a hunk in staging view, jump to same line in file
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear
 - [ ] Reflog HEAD on log view
