@@ -204,4 +204,201 @@ T["rebase_popup"]["has interactive action"] = function()
   cleanup_repo(child, repo)
 end
 
+T["commit_at_point"] = MiniTest.new_set()
+
+-- Helper to setup repo with multiple commits and staged changes for instant operations
+local function setup_repo_for_instant_op(child)
+  local repo = create_test_repo(child)
+
+  -- Create multiple commits so we have unpushed commits to target
+  create_file(child, repo, "file1.txt", "content1")
+  git(child, repo, "add .")
+  git(child, repo, "commit -m 'First commit'")
+
+  create_file(child, repo, "file2.txt", "content2")
+  git(child, repo, "add .")
+  git(child, repo, "commit -m 'Second commit'")
+
+  create_file(child, repo, "file3.txt", "content3")
+  git(child, repo, "add .")
+  git(child, repo, "commit -m 'Third commit'")
+
+  -- Stage changes for the instant fixup/squash
+  create_file(child, repo, "fixup_file.txt", "fixup content")
+  git(child, repo, "add .")
+
+  return repo
+end
+
+T["commit_at_point"]["instant fixup uses commit at point in status view"] = function()
+  local child = _G.child
+  local repo = setup_repo_for_instant_op(child)
+
+  -- Change to repo and open status
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Navigate to the Recent commits section and find a commit line
+  -- Search for "First commit" which should be in the recent commits
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:find("First commit") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Verify we're on a commit line by checking line content
+  local current_line = child.lua_get([[vim.api.nvim_get_current_line()]])
+  expect.equality(current_line:find("First commit") ~= nil, true, "Should be on First commit line")
+
+  -- Open commit popup
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Press F for instant fixup - should NOT open the commit selector since we have commit at point
+  child.type_keys("F")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Check that we didn't open a commit selector (no floating window with commit list)
+  -- The instant fixup should have started directly, so we should see a notification
+  local messages = child.lua_get([[vim.fn.execute("messages")]])
+
+  -- Should see "Creating fixup commit" message, not a commit selector popup
+  -- (commit selector would have title "Fixup commit" but wouldn't show "Creating" message)
+  expect.equality(
+    messages:find("Creating fixup commit") ~= nil or messages:find("fixup applied") ~= nil,
+    true,
+    "Instant fixup should execute directly without commit selector"
+  )
+
+  cleanup_repo(child, repo)
+end
+
+T["commit_at_point"]["instant fixup uses commit at point in log view"] = function()
+  local child = _G.child
+  local repo = setup_repo_for_instant_op(child)
+
+  -- Change to repo and open status first to get repo_state
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open log view via the popup
+  child.type_keys("l")
+  child.lua([[vim.wait(100, function() return false end)]])
+  child.type_keys("l") -- Press 'l' again to show log
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Navigate to a commit line (should start on first commit)
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:find("First commit") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Open commit popup
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Press F for instant fixup
+  child.type_keys("F")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should see fixup execution message, not a selector
+  local messages = child.lua_get([[vim.fn.execute("messages")]])
+  expect.equality(
+    messages:find("Creating fixup commit") ~= nil or messages:find("fixup applied") ~= nil,
+    true,
+    "Instant fixup should execute directly from log view"
+  )
+
+  cleanup_repo(child, repo)
+end
+
+T["commit_at_point"]["instant squash uses commit at point in status view"] = function()
+  local child = _G.child
+  local repo = setup_repo_for_instant_op(child)
+
+  -- Change to repo and open status
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Navigate to a commit line
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:find("Second commit") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Open commit popup
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Press S for instant squash
+  child.type_keys("S")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should see squash execution message, not a selector
+  local messages = child.lua_get([[vim.fn.execute("messages")]])
+  expect.equality(
+    messages:find("Creating squash commit") ~= nil or messages:find("squash applied") ~= nil,
+    true,
+    "Instant squash should execute directly without commit selector"
+  )
+
+  cleanup_repo(child, repo)
+end
+
+T["commit_at_point"]["instant fixup falls back to selector when no commit at point"] = function()
+  local child = _G.child
+  local repo = setup_repo_for_instant_op(child)
+
+  -- Change to repo and open status
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Stay at top of buffer (header area, not on a commit)
+  child.type_keys("gg")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Open commit popup
+  child.type_keys("c")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Press F for instant fixup - should open commit selector since not on a commit
+  child.type_keys("F")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should have opened a floating window (commit selector)
+  local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+
+  -- If commit selector opened, we should have 3+ windows (status + popup + selector)
+  -- or at least 2 windows (status + selector after popup closed)
+  expect.equality(win_count >= 2, true, "Should open commit selector when no commit at point")
+
+  -- Close everything
+  child.type_keys("q")
+  child.lua([[vim.wait(100, function() return false end)]])
+  child.type_keys("q")
+
+  cleanup_repo(child, repo)
+end
+
 return T

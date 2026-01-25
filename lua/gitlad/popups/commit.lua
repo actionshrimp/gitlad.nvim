@@ -14,7 +14,8 @@ local popup = require("gitlad.ui.popup")
 
 --- Create and show the commit popup
 ---@param repo_state RepoState
-function M.open(repo_state)
+---@param context? { commit?: string } Optional context with commit hash at point
+function M.open(repo_state, context)
   local commit_popup = popup
     .builder()
     :name("Commit")
@@ -43,10 +44,10 @@ function M.open(repo_state)
     end)
     :group_heading("Instant")
     :action("F", "Instant fixup", function(popup_data)
-      M._do_instant_fixup(repo_state, popup_data)
+      M._do_instant_fixup(repo_state, popup_data, context)
     end)
     :action("S", "Instant squash", function(popup_data)
-      M._do_instant_squash(repo_state, popup_data)
+      M._do_instant_squash(repo_state, popup_data, context)
     end)
     :build()
 
@@ -224,8 +225,8 @@ end
 --- Creates a fixup commit and immediately rebases to apply it
 ---@param repo_state RepoState
 ---@param popup_data PopupData
-function M._do_instant_fixup(repo_state, popup_data)
-  local commit_select = require("gitlad.ui.views.commit_select")
+---@param context? { commit?: string } Optional context with commit hash at point
+function M._do_instant_fixup(repo_state, popup_data, context)
   local args = popup_data:get_arguments()
 
   -- Validate staged changes
@@ -243,7 +244,14 @@ function M._do_instant_fixup(repo_state, popup_data)
     return
   end
 
-  -- Open commit selector
+  -- If we have a commit at point, use it directly
+  if context and context.commit then
+    execute_instant_operation(repo_state, context.commit, args, false)
+    return
+  end
+
+  -- Fall back to commit selector
+  local commit_select = require("gitlad.ui.views.commit_select")
   commit_select.open(repo_state, function(commit)
     if commit then
       execute_instant_operation(repo_state, commit.hash, args, false)
@@ -255,8 +263,8 @@ end
 --- Creates a squash commit and immediately rebases to apply it
 ---@param repo_state RepoState
 ---@param popup_data PopupData
-function M._do_instant_squash(repo_state, popup_data)
-  local commit_select = require("gitlad.ui.views.commit_select")
+---@param context? { commit?: string } Optional context with commit hash at point
+function M._do_instant_squash(repo_state, popup_data, context)
   local args = popup_data:get_arguments()
 
   -- Validate staged changes
@@ -274,7 +282,14 @@ function M._do_instant_squash(repo_state, popup_data)
     return
   end
 
-  -- Open commit selector
+  -- If we have a commit at point, use it directly
+  if context and context.commit then
+    execute_instant_operation(repo_state, context.commit, args, true)
+    return
+  end
+
+  -- Fall back to commit selector
+  local commit_select = require("gitlad.ui.views.commit_select")
   commit_select.open(repo_state, function(commit)
     if commit then
       execute_instant_operation(repo_state, commit.hash, args, true)
