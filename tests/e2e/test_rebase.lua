@@ -142,7 +142,6 @@ T["rebase popup"]["has all expected switches"] = function()
   local found_autostash = false
   local found_keep_empty = false
   local found_autosquash = false
-  local found_interactive = false
 
   for _, line in ipairs(lines) do
     if line:match("%-A.*[Aa]utostash") then
@@ -154,15 +153,12 @@ T["rebase popup"]["has all expected switches"] = function()
     if line:match("%-a.*[Aa]utosquash") then
       found_autosquash = true
     end
-    if line:match("%-i.*[Ii]nteractive") then
-      found_interactive = true
-    end
   end
 
   eq(found_autostash, true)
   eq(found_keep_empty, true)
   eq(found_autosquash, true)
-  eq(found_interactive, true)
+  -- Note: interactive (-i) is an action, not a switch, so it's tested separately in test_rebase_editor.lua
 
   child.type_keys("q")
   cleanup_repo(child, repo)

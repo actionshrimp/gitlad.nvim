@@ -76,7 +76,7 @@ end
 T["rebase_editor"]["is_active returns false initially"] = function()
   local child = _G.child
 
-  local result = child.lua_get([[
+  local result = child.lua([[
     local rebase_editor = require("gitlad.ui.views.rebase_editor")
     return rebase_editor.is_active()
   ]])
@@ -146,10 +146,11 @@ T["commit_popup_instant"]["commit popup has instant fixup action"] = function()
   child.lua([[vim.wait(100, function() return false end)]])
 
   -- Check that the popup contains the instant fixup action
-  local lines = child.lua_get([[
-    local bufnr = vim.api.nvim_get_current_buf()
-    return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  child.lua([[
+    _test_popup_bufnr = vim.api.nvim_get_current_buf()
+    _test_popup_lines = vim.api.nvim_buf_get_lines(_test_popup_bufnr, 0, -1, false)
   ]])
+  local lines = child.lua_get([[_test_popup_lines]])
 
   local found_instant_fixup = false
   local found_instant_squash = false
@@ -184,10 +185,11 @@ T["rebase_popup"]["has interactive action"] = function()
   child.lua([[vim.wait(100, function() return false end)]])
 
   -- Check that the popup contains the interactive action
-  local lines = child.lua_get([[
-    local bufnr = vim.api.nvim_get_current_buf()
-    return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  child.lua([[
+    _test_popup_bufnr = vim.api.nvim_get_current_buf()
+    _test_popup_lines = vim.api.nvim_buf_get_lines(_test_popup_bufnr, 0, -1, false)
   ]])
+  local lines = child.lua_get([[_test_popup_lines]])
 
   local found_interactive = false
   for _, line in ipairs(lines) do

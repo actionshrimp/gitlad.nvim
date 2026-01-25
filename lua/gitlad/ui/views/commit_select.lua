@@ -102,7 +102,10 @@ function M.open(repo_state, callback, opts)
   git.log_detailed({ "-" .. limit }, { cwd = repo_state.repo_root }, function(commits, err)
     if err or not commits or #commits == 0 then
       vim.schedule(function()
-        vim.notify("[gitlad] Failed to load commits: " .. (err or "no commits"), vim.log.levels.ERROR)
+        vim.notify(
+          "[gitlad] Failed to load commits: " .. (err or "no commits"),
+          vim.log.levels.ERROR
+        )
         callback(nil)
       end)
       return

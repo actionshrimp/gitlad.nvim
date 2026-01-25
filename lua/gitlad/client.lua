@@ -74,7 +74,8 @@ function M.get_nvim_remote_editor()
   local gitlad_path = source_path:sub(2, -#"lua/gitlad/client.lua" - 1)
   local nvim_path = fn.shellescape(vim.v.progpath)
 
-  local runtimepath_cmd = fn.shellescape(fmt("set runtimepath^=%s", fn.fnameescape(tostring(gitlad_path))))
+  local runtimepath_cmd =
+    fn.shellescape(fmt("set runtimepath^=%s", fn.fnameescape(tostring(gitlad_path))))
   local lua_cmd = fn.shellescape("lua require('gitlad.client').client()")
 
   local shell_cmd = {

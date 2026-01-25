@@ -183,25 +183,39 @@ local function execute_instant_operation(repo_state, target_hash, args, is_squas
 
       -- Step 2: Instant rebase to apply the fixup/squash
       -- Rebase from target's parent
-      git.rebase_instantly(target_hash .. "~1", {}, { cwd = repo_state.repo_root }, function(rebase_success, output, rebase_err)
-        vim.schedule(function()
-          if rebase_success then
-            vim.notify("[gitlad] " .. operation_name:sub(1, 1):upper() .. operation_name:sub(2) .. " applied successfully", vim.log.levels.INFO)
-            repo_state:refresh_status(true)
-          else
-            -- Check if rebase is in progress (conflicts)
-            if git.rebase_in_progress({ cwd = repo_state.repo_root }) then
+      git.rebase_instantly(
+        target_hash .. "~1",
+        {},
+        { cwd = repo_state.repo_root },
+        function(rebase_success, output, rebase_err)
+          vim.schedule(function()
+            if rebase_success then
               vim.notify(
-                "[gitlad] Rebase stopped due to conflicts - resolve and use rebase popup to continue",
-                vim.log.levels.WARN
+                "[gitlad] "
+                  .. operation_name:sub(1, 1):upper()
+                  .. operation_name:sub(2)
+                  .. " applied successfully",
+                vim.log.levels.INFO
               )
+              repo_state:refresh_status(true)
             else
-              vim.notify("[gitlad] Rebase failed: " .. (rebase_err or "unknown"), vim.log.levels.ERROR)
+              -- Check if rebase is in progress (conflicts)
+              if git.rebase_in_progress({ cwd = repo_state.repo_root }) then
+                vim.notify(
+                  "[gitlad] Rebase stopped due to conflicts - resolve and use rebase popup to continue",
+                  vim.log.levels.WARN
+                )
+              else
+                vim.notify(
+                  "[gitlad] Rebase failed: " .. (rebase_err or "unknown"),
+                  vim.log.levels.ERROR
+                )
+              end
+              repo_state:refresh_status(true)
             end
-            repo_state:refresh_status(true)
-          end
-        end)
-      end)
+          end)
+        end
+      )
     end)
   end)
 end

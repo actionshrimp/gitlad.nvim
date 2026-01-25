@@ -50,7 +50,15 @@ local function set_line_action(action, comment_char)
 
     -- Skip break and exec lines (they don't have commits)
     local first_word = line:match("^(%S+)")
-    if first_word and (first_word:match("^br") or first_word:match("^ex") or first_word == "break" or first_word == "exec") then
+    if
+      first_word
+      and (
+        first_word:match("^br")
+        or first_word:match("^ex")
+        or first_word == "break"
+        or first_word == "exec"
+      )
+    then
       vim.cmd("normal! j")
       if changed > 0 then
         break
@@ -399,7 +407,10 @@ function M.open(filename, on_close)
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 
   for i, line in ipairs(lines) do
-    if line:match("^" .. vim.pesc(comment_char) .. "%s*Commands:") or line:match("^" .. vim.pesc(comment_char) .. " p,") then
+    if
+      line:match("^" .. vim.pesc(comment_char) .. "%s*Commands:")
+      or line:match("^" .. vim.pesc(comment_char) .. " p,")
+    then
       help_start = i
       break
     end
