@@ -423,7 +423,8 @@ function PopupData:_render_multicolumn(lines, groups)
 
   for row = 1, max_lines do
     local parts = {}
-    local current_col_offset = 0
+    -- Track byte offset for extmark positions (extmarks use bytes, not display columns)
+    local current_byte_offset = 0
 
     for col = 1, self.columns do
       local col_line = column_lines[col][row] or ""
@@ -445,9 +446,9 @@ function PopupData:_render_multicolumn(lines, groups)
             local action = group.actions[tracker.action_idx]
             local line_idx = #lines + 1
             self.action_positions[line_idx] = self.action_positions[line_idx] or {}
-            -- Position is: current column offset + 1 (for leading space)
+            -- Position is: current byte offset + 1 (for leading space)
             self.action_positions[line_idx][action.key] =
-              { col = current_col_offset + 1, len = #action.key }
+              { col = current_byte_offset + 1, len = #action.key }
             tracker.action_idx = tracker.action_idx + 1
             if tracker.action_idx > #group.actions then
               -- Move to next group
@@ -460,7 +461,8 @@ function PopupData:_render_multicolumn(lines, groups)
       end
 
       table.insert(parts, padded)
-      current_col_offset = current_col_offset + column_widths[col] + display_width(col_gap)
+      -- Update byte offset: use #padded (byte length) not display_width
+      current_byte_offset = current_byte_offset + #padded + #col_gap
     end
 
     local combined = table.concat(parts, col_gap)

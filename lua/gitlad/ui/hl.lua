@@ -1105,25 +1105,27 @@ function M.apply_popup_highlights(bufnr, lines, switches, options, actions, acti
       end
 
       -- Action lines - use position metadata if available, otherwise pattern match
+    end
+
+    -- Always check position metadata for action highlighting (works for multi-column)
+    -- This is separate from heading detection because a line can have both a heading
+    -- in one column and actions in another column
+    local line_positions = action_positions and action_positions[i]
+    if line_positions then
+      -- Use precise position metadata
+      for key, pos in pairs(line_positions) do
+        M.set(bufnr, ns_popup, line_idx, pos.col, pos.col + pos.len, "GitladPopupActionKey")
+      end
     elseif not is_heading then
-      -- Check if we have position metadata for this line
-      local line_positions = action_positions and action_positions[i]
-      if line_positions then
-        -- Use precise position metadata
-        for key, pos in pairs(line_positions) do
-          M.set(bufnr, ns_popup, line_idx, pos.col, pos.col + pos.len, "GitladPopupActionKey")
-        end
-      else
-        -- Fallback: pattern match for action keys (single column)
-        for key, _ in pairs(action_keys) do
-          -- Escape special pattern characters in the key
-          local escaped_key = key:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
-          local pattern = "^%s" .. escaped_key .. "%s"
-          if line:match(pattern) then
-            -- Key starts at position 1 (after leading space), length is #key
-            M.set(bufnr, ns_popup, line_idx, 1, 1 + #key, "GitladPopupActionKey")
-            break
-          end
+      -- Fallback: pattern match for action keys (single column only)
+      for key, _ in pairs(action_keys) do
+        -- Escape special pattern characters in the key
+        local escaped_key = key:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+        local pattern = "^%s" .. escaped_key .. "%s"
+        if line:match(pattern) then
+          -- Key starts at position 1 (after leading space), length is #key
+          M.set(bufnr, ns_popup, line_idx, 1, 1 + #key, "GitladPopupActionKey")
+          break
         end
       end
     end
