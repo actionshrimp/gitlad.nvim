@@ -163,8 +163,7 @@ fi
 # Colorize: SLOW tests red, WARN tests yellow, FAIL status red
 TEST_FILE="$test_file" TEST_BATCH="$batch" TEST_OUTPUT_MODE="streaming" \
     nvim --headless -u tests/minimal_init.lua \
-    -c "luafile ${script_dir}/test_batch.lua" \
-    -c "qa!" 2>&1 | tee "$outfile" | while IFS= read -r line; do
+    -c "luafile ${script_dir}/test_batch.lua" 2>&1 | tee "$outfile" | while IFS= read -r line; do
     case "$line" in
         SLOW*) printf '\033[0;31m%s\033[0m\n' "$line" ;;
         WARN*) printf '\033[1;33m%s\033[0m\n' "$line" ;;

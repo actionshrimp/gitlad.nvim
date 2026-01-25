@@ -71,10 +71,12 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Diff popup** - `d` keybinding, integrates with diffview.nvim
 - **Stash popup** - `z` keybinding for stash operations
 - **Rebase popup** - `r` keybinding for interactive rebase, continue, abort, skip
+- **Interactive rebase editor** - Custom buffer with p/r/e/s/f/d keybindings, M-j/M-k to reorder
+- **Instant fixup** - `c F` creates fixup commit and immediately rebases to apply it
 - **Cherry-pick popup** - `A` keybinding with conflict detection
 - **Revert popup** - `_` keybinding with conflict detection
 - **Reset popup** - `X` keybinding with mixed, soft, hard, keep modes
-- Test infrastructure with mini.test (500+ tests across 47 test files)
+- Test infrastructure with mini.test (440+ tests across 49 test files)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -314,13 +316,31 @@ Transient-style popup system inspired by neogit/magit:
 - [x] Actions: interactive (`i`), autosquash (`a`), onto (`o`), continue (`r`), abort (`A`), skip (`s`)
 - [x] Switches: `--autostash`, `--preserve-merges`/`--rebase-merges`, `--interactive`, `--autosquash`
 - [x] Context-aware: if cursor on commit, uses that as target for interactive/onto
-- [x] Rebase editor uses native git behavior (EDITOR opens in terminal)
-- [ ] pick/reword/edit/squash/fixup/drop commands in custom editor (future enhancement)
+- [x] Interactive rebase with custom editor buffer (evil-collection keybindings)
+- [x] pick/reword/edit/squash/fixup/drop commands with single keystrokes
+- [x] M-j/M-k to reorder commits, ZZ to submit, ZQ to abort
 
 **Files created:**
 - `lua/gitlad/popups/rebase.lua` - Rebase popup with switches and actions
+- `lua/gitlad/client.lua` - RPC client for headless Neovim editor integration
+- `lua/gitlad/ui/views/rebase_editor.lua` - Interactive rebase todo editor buffer
 - `tests/unit/test_rebase_popup.lua` - Unit tests for popup structure
+- `tests/unit/test_rebase_editor.lua` - Unit tests for rebase editor
 - `tests/e2e/test_rebase.lua` - E2E tests for rebase operations
+- `tests/e2e/test_rebase_editor.lua` - E2E tests for rebase editor
+
+### 4.1.1 Instant Fixup (commit popup) - COMPLETE
+- [x] `c F` in commit popup creates fixup commit and immediately rebases
+- [x] `c S` in commit popup creates squash commit and immediately rebases
+- [x] Commit selector UI for choosing target commit
+- [x] Uses `git commit --fixup=<hash>` then `git rebase --autosquash`
+
+**Files created:**
+- `lua/gitlad/ui/views/commit_select.lua` - Floating commit selector window
+- `lua/gitlad/git/init.lua` - Added `rebase_instantly()` function
+
+**Files modified:**
+- `lua/gitlad/popups/commit.lua` - Added "Instant" action group with F/S actions
 
 ### 4.2 Merge & Conflict Resolution (3-way merge via diffview.nvim)
 

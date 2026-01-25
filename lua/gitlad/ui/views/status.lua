@@ -359,7 +359,9 @@ function StatusBuffer:_setup_keymaps()
   -- Rebase popup
   keymap.set(bufnr, "n", "r", function()
     local rebase_popup = require("gitlad.popups.rebase")
-    rebase_popup.open(self.repo_state)
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    rebase_popup.open(self.repo_state, context)
   end, "Rebase popup")
 
   -- Merge popup

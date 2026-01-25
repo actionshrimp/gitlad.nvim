@@ -41,6 +41,13 @@ function M.open(repo_state)
     :action("a", "Amend", function(popup_data)
       M._do_commit(repo_state, popup_data, true)
     end)
+    :group_heading("Instant")
+    :action("F", "Instant fixup", function(popup_data)
+      M._do_instant_fixup(repo_state, popup_data)
+    end)
+    :action("S", "Instant squash", function(popup_data)
+      M._do_instant_squash(repo_state, popup_data)
+    end)
     :build()
 
   commit_popup:show()
@@ -142,6 +149,123 @@ function M._do_reword(repo_state, popup_data)
   table.insert(args, "--only")
 
   commit_editor.open(repo_state, args)
+end
+
+--- Execute the instant fixup/squash operation
+---@param repo_state RepoState
+---@param target_hash string Target commit hash
+---@param args string[] Extra commit arguments
+---@param is_squash boolean Whether this is squash (true) or fixup (false)
+local function execute_instant_operation(repo_state, target_hash, args, is_squash)
+  local git = require("gitlad.git")
+
+  -- Determine commit flag
+  local commit_flag = is_squash and ("--squash=" .. target_hash) or ("--fixup=" .. target_hash)
+  local commit_args = vim.list_extend({ commit_flag }, args)
+
+  local operation_name = is_squash and "squash" or "fixup"
+
+  vim.notify("[gitlad] Creating " .. operation_name .. " commit...", vim.log.levels.INFO)
+
+  -- Step 1: Create the fixup/squash commit
+  -- Use commit_fixup which doesn't pass -F (--fixup generates its own message)
+  git.commit_fixup(commit_args, { cwd = repo_state.repo_root }, function(success, err)
+    vim.schedule(function()
+      if not success then
+        vim.notify(
+          "[gitlad] Failed to create " .. operation_name .. " commit: " .. (err or "unknown"),
+          vim.log.levels.ERROR
+        )
+        return
+      end
+
+      vim.notify("[gitlad] Rebasing to apply " .. operation_name .. "...", vim.log.levels.INFO)
+
+      -- Step 2: Instant rebase to apply the fixup/squash
+      -- Rebase from target's parent
+      git.rebase_instantly(target_hash .. "~1", {}, { cwd = repo_state.repo_root }, function(rebase_success, output, rebase_err)
+        vim.schedule(function()
+          if rebase_success then
+            vim.notify("[gitlad] " .. operation_name:sub(1, 1):upper() .. operation_name:sub(2) .. " applied successfully", vim.log.levels.INFO)
+            repo_state:refresh_status(true)
+          else
+            -- Check if rebase is in progress (conflicts)
+            if git.rebase_in_progress({ cwd = repo_state.repo_root }) then
+              vim.notify(
+                "[gitlad] Rebase stopped due to conflicts - resolve and use rebase popup to continue",
+                vim.log.levels.WARN
+              )
+            else
+              vim.notify("[gitlad] Rebase failed: " .. (rebase_err or "unknown"), vim.log.levels.ERROR)
+            end
+            repo_state:refresh_status(true)
+          end
+        end)
+      end)
+    end)
+  end)
+end
+
+--- Perform instant fixup
+--- Creates a fixup commit and immediately rebases to apply it
+---@param repo_state RepoState
+---@param popup_data PopupData
+function M._do_instant_fixup(repo_state, popup_data)
+  local commit_select = require("gitlad.ui.views.commit_select")
+  local args = popup_data:get_arguments()
+
+  -- Validate staged changes
+  local status = repo_state.status
+  local has_staged = status and status.staged and #status.staged > 0
+
+  -- Check for --all flag which stages everything
+  local has_all = vim.tbl_contains(args, "--all")
+
+  if not has_staged and not has_all then
+    vim.notify(
+      "[gitlad] Nothing staged for fixup. Stage changes first or use -a to stage all.",
+      vim.log.levels.WARN
+    )
+    return
+  end
+
+  -- Open commit selector
+  commit_select.open(repo_state, function(commit)
+    if commit then
+      execute_instant_operation(repo_state, commit.hash, args, false)
+    end
+  end, { prompt = "Fixup commit" })
+end
+
+--- Perform instant squash
+--- Creates a squash commit and immediately rebases to apply it
+---@param repo_state RepoState
+---@param popup_data PopupData
+function M._do_instant_squash(repo_state, popup_data)
+  local commit_select = require("gitlad.ui.views.commit_select")
+  local args = popup_data:get_arguments()
+
+  -- Validate staged changes
+  local status = repo_state.status
+  local has_staged = status and status.staged and #status.staged > 0
+
+  -- Check for --all flag which stages everything
+  local has_all = vim.tbl_contains(args, "--all")
+
+  if not has_staged and not has_all then
+    vim.notify(
+      "[gitlad] Nothing staged for squash. Stage changes first or use -a to stage all.",
+      vim.log.levels.WARN
+    )
+    return
+  end
+
+  -- Open commit selector
+  commit_select.open(repo_state, function(commit)
+    if commit then
+      execute_instant_operation(repo_state, commit.hash, args, true)
+    end
+  end, { prompt = "Squash into commit" })
 end
 
 return M

@@ -276,6 +276,20 @@ function M.commit_amend_no_edit(args, opts, callback)
   end)
 end
 
+--- Create a fixup or squash commit (message is auto-generated)
+--- Used for --fixup=<commit> or --squash=<commit> which generate their own message
+---@param args string[] Arguments including --fixup=<hash> or --squash=<hash>
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.commit_fixup(args, opts, callback)
+  local commit_args = { "commit" }
+  vim.list_extend(commit_args, args)
+
+  cli.run_async(commit_args, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
 --- Create a commit with streaming output viewer
 --- Shows a floating window with real-time hook output
 ---@param message_lines string[] Commit message lines
@@ -1001,6 +1015,34 @@ function M.rebase_in_progress(opts)
   local rebase_merge = git_dir .. "/rebase-merge"
   local rebase_apply = git_dir .. "/rebase-apply"
   return vim.fn.isdirectory(rebase_merge) == 1 or vim.fn.isdirectory(rebase_apply) == 1
+end
+
+--- Run an instant rebase (non-interactive, autosquash)
+--- Used for instant fixup/squash operations.
+--- Sets GIT_SEQUENCE_EDITOR to ":" to auto-apply the todo without user interaction.
+---@param commit string Base commit for rebase (parent of commits to squash)
+---@param args string[] Extra arguments
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, output: string|nil, err: string|nil)
+function M.rebase_instantly(commit, args, opts, callback)
+  local rebase_args = { "rebase", "--interactive", "--autosquash", "--autostash", "--keep-empty" }
+  vim.list_extend(rebase_args, args or {})
+  table.insert(rebase_args, commit)
+
+  -- Use ":" as sequence editor to auto-apply todo (no-op editor)
+  local env = vim.tbl_extend("force", opts and opts.env or {}, {
+    GIT_SEQUENCE_EDITOR = ":",
+    GIT_EDITOR = ":",
+  })
+
+  local run_opts = vim.tbl_extend("force", opts or {}, { env = env })
+
+  cli.run_async(rebase_args, run_opts, function(result)
+    local stdout = table.concat(result.stdout, "\n")
+    local stderr = table.concat(result.stderr, "\n")
+    local output = stdout ~= "" and stdout or stderr
+    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
+  end)
 end
 
 --- Get all refs (branches and tags) using git for-each-ref

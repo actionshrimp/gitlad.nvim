@@ -13,7 +13,7 @@ MiniTest.setup()
 local test_file = os.getenv("TEST_FILE")
 if not test_file then
   print("Error: TEST_FILE environment variable not set")
-  vim.cmd("cq!")
+  vim.cmd("cq 1")
   return
 end
 
@@ -29,8 +29,9 @@ if not run_all then
   end
 end
 
--- Track individual test start times
+-- Track individual test start times and failures
 local case_start_times = {}
+local has_failures = false
 
 -- Custom reporter for streaming output with per-test timing
 local streaming_reporter = {
@@ -54,6 +55,11 @@ local streaming_reporter = {
     -- Only print on final state (Pass or Fail)
     if state ~= "Pass" and state ~= "Fail" then
       return
+    end
+
+    -- Track failures
+    if state == "Fail" then
+      has_failures = true
     end
 
     -- Calculate elapsed time
@@ -90,6 +96,19 @@ local streaming_reporter = {
   finish = function() end,
 }
 
+-- Failure-tracking reporter for standard mode (wraps default behavior)
+local failure_tracking_reporter = {
+  start = function() end,
+  update = function(case_num)
+    local cases = MiniTest.current.all_cases
+    local case = cases[case_num]
+    if case and case.exec and case.exec.state == "Fail" then
+      has_failures = true
+    end
+  end,
+  finish = function() end,
+}
+
 -- Track which test we're on and filter accordingly
 local case_idx = 0
 local run_opts = {
@@ -108,9 +127,23 @@ if not run_all then
   end
 end
 
--- Use streaming reporter if requested
+-- Use appropriate reporter
 if output_mode == "streaming" then
   run_opts.execute = { reporter = streaming_reporter }
+else
+  run_opts.execute = { reporter = failure_tracking_reporter }
 end
 
-MiniTest.run(run_opts)
+local ok, err = pcall(MiniTest.run, run_opts)
+if not ok then
+  print("Error running tests: " .. tostring(err))
+  vim.cmd("cq 1")
+  return
+end
+
+-- Exit with proper code
+if has_failures then
+  vim.cmd("cq 1")
+else
+  vim.cmd("qa!")
+end

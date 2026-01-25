@@ -18,6 +18,7 @@ local M = {}
 
 local popup = require("gitlad.ui.popup")
 local git = require("gitlad.git")
+local client = require("gitlad.client")
 
 --- Extract remote name from ref (e.g., "origin/main" -> "origin")
 ---@param ref string|nil
@@ -59,15 +60,36 @@ local function build_rebase_args(popup_data)
   return args
 end
 
+--- Open or focus the status buffer
+---@param repo_state RepoState
+local function open_status_buffer(repo_state)
+  local status_view = require("gitlad.ui.views.status")
+  -- This will open a new window if needed, or focus existing one
+  status_view.open(repo_state)
+end
+
 --- Execute rebase operation
 ---@param repo_state RepoState
 ---@param target string Target ref to rebase onto
 ---@param args string[]
 local function do_rebase(repo_state, target, args)
+  -- Check if interactive mode is enabled
+  local is_interactive = vim.tbl_contains(args, "--interactive") or vim.tbl_contains(args, "-i")
+
+  -- Build options with potential custom editor env for interactive rebase
+  local opts = { cwd = repo_state.repo_root }
+  if is_interactive then
+    -- Use our custom editor for interactive rebase
+    opts.env = client.get_envs_git_editor()
+  end
+
   vim.notify("[gitlad] Rebasing onto " .. target .. "...", vim.log.levels.INFO)
 
-  git.rebase(target, args, { cwd = repo_state.repo_root }, function(success, output, err)
+  git.rebase(target, args, opts, function(success, output, err)
     vim.schedule(function()
+      -- Open/focus the status buffer first
+      open_status_buffer(repo_state)
+
       if success then
         vim.notify("[gitlad] Rebase complete", vim.log.levels.INFO)
         repo_state:refresh_status(true)
@@ -89,12 +111,19 @@ end
 
 --- Create and show the rebase popup (normal mode - no rebase in progress)
 ---@param repo_state RepoState
-local function show_normal_popup(repo_state)
+---@param context? { commit: string } Context with commit at point
+local function show_normal_popup(repo_state, context)
   local status = repo_state.status
   local branch = status and status.branch or "HEAD"
 
   -- Build dynamic description showing current branch
   local heading = string.format("Rebase %s onto", branch)
+
+  -- Show commit at point in heading if available
+  local commit_info = ""
+  if context and context.commit then
+    commit_info = string.format(" (from %s)", context.commit:sub(1, 7))
+  end
 
   local rebase_popup = popup
     .builder()
@@ -108,9 +137,8 @@ local function show_normal_popup(repo_state)
     )
     :switch("k", "keep-empty", "Keep empty commits")
     :switch("a", "autosquash", "Autosquash")
-    :switch("i", "interactive", "Interactive")
     -- Actions
-    :group_heading(heading)
+    :group_heading(heading .. commit_info)
     :action("p", "pushremote", function(popup_data)
       M._rebase_pushremote(repo_state, popup_data)
     end)
@@ -119,6 +147,9 @@ local function show_normal_popup(repo_state)
     end)
     :action("e", "elsewhere", function(popup_data)
       M._rebase_elsewhere(repo_state, popup_data)
+    end)
+    :action("i", "interactively", function(popup_data)
+      M._rebase_interactive(repo_state, popup_data, context)
     end)
     :build()
 
@@ -150,11 +181,12 @@ end
 --- Create and show the rebase popup
 --- Shows different UI depending on whether a rebase is in progress
 ---@param repo_state RepoState
-function M.open(repo_state)
+---@param context? { commit: string } Context with commit at point
+function M.open(repo_state, context)
   if git.rebase_in_progress({ cwd = repo_state.repo_root }) then
     show_in_progress_popup(repo_state)
   else
-    show_normal_popup(repo_state)
+    show_normal_popup(repo_state, context)
   end
 end
 
@@ -330,6 +362,34 @@ function M._rebase_abort(repo_state)
       end
     end)
   end)
+end
+
+--- Start an interactive rebase
+--- If a commit is at point, uses that as the target (rebases commits after it)
+--- Otherwise prompts for a commit to rebase from
+---@param repo_state RepoState
+---@param popup_data PopupData
+---@param context? { commit: string } Context with commit at point
+function M._rebase_interactive(repo_state, popup_data, context)
+  local args = build_rebase_args(popup_data)
+  -- Always add --interactive for this action
+  if not vim.tbl_contains(args, "--interactive") then
+    table.insert(args, "--interactive")
+  end
+
+  -- If we have a commit at point, use it as the target
+  if context and context.commit then
+    do_rebase(repo_state, context.commit, args)
+    return
+  end
+
+  -- Otherwise, prompt for a commit using commit selector
+  local commit_select = require("gitlad.ui.views.commit_select")
+  commit_select.open(repo_state, function(commit)
+    if commit then
+      do_rebase(repo_state, commit.hash, args)
+    end
+  end, { prompt = "Interactive rebase from" })
 end
 
 return M

@@ -17,7 +17,7 @@ test: test-unit test-e2e
 
 # Run only unit tests
 test-unit: deps
-	nvim --headless -u tests/minimal_init.lua -c "lua require('mini.test').setup(); MiniTest.run({collect = {find_files = function() return vim.fn.glob('tests/unit/*.lua', false, true) end}})" -c "qa!"
+	nvim --headless -u tests/minimal_init.lua -c "lua require('mini.test').setup(); local ok, err = pcall(MiniTest.run, {collect = {find_files = function() return vim.fn.glob('tests/unit/*.lua', false, true) end}}); if not ok then print('Error: ' .. err); vim.cmd('cq!') end; local has_fail = false; for _, c in ipairs(MiniTest.current.all_cases or {}) do if c.exec and c.exec.state == 'Fail' then has_fail = true; break end end; if has_fail then vim.cmd('cq!') end" -c "qa!"
 
 # Run only e2e tests (parallel by default, requires GNU parallel)
 # Use JOBS=N to control parallelism (default: 4)
@@ -31,7 +31,7 @@ test-e2e: deps
 
 # Run e2e tests sequentially (useful for debugging)
 test-e2e-sequential: deps
-	nvim --headless -u tests/minimal_init.lua -c "lua require('mini.test').setup(); MiniTest.run({collect = {find_files = function() return vim.fn.glob('tests/e2e/*.lua', false, true) end}})" -c "qa!"
+	nvim --headless -u tests/minimal_init.lua -c "lua require('mini.test').setup(); local ok, err = pcall(MiniTest.run, {collect = {find_files = function() return vim.fn.glob('tests/e2e/*.lua', false, true) end}}); if not ok then print('Error: ' .. err); vim.cmd('cq!') end; local has_fail = false; for _, c in ipairs(MiniTest.current.all_cases or {}) do if c.exec and c.exec.state == 'Fail' then has_fail = true; break end end; if has_fail then vim.cmd('cq!') end" -c "qa!"
 
 # Install test dependencies
 deps:
