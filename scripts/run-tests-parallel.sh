@@ -17,15 +17,20 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# Configuration - default to number of CPUs
+# Configuration - default to min(4, nproc)
+# Higher parallelism causes contention when spawning child Neovim processes
+# (each test case spawns a child via mini.test, and the connection polling
+# loop slows down significantly under load)
 if [[ -z "$JOBS" ]]; then
     if command -v nproc > /dev/null 2>&1; then
-        JOBS=$(nproc)
+        CPU_COUNT=$(nproc)
     elif command -v sysctl > /dev/null 2>&1; then
-        JOBS=$(sysctl -n hw.ncpu)
+        CPU_COUNT=$(sysctl -n hw.ncpu)
     else
-        JOBS=4
+        CPU_COUNT=4
     fi
+    # Cap at 4 - tests are I/O bound, not CPU bound
+    JOBS=$((CPU_COUNT < 4 ? CPU_COUNT : 4))
 fi
 
 TEMP_DIR=$(mktemp -d)
