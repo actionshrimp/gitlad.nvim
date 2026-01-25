@@ -331,7 +331,7 @@ function LogBuffer:render()
   table.insert(lines, header)
   table.insert(lines, string.format("%d commits", #self.commits))
   table.insert(lines, "")
-  table.insert(lines, "Press <CR>/<Tab> expand, d diff, y yank hash, g refresh, q close")
+  table.insert(lines, "Press <CR> diff, <Tab> expand, d popup, y yank, gr refresh, q close")
   table.insert(lines, "")
 
   local header_lines = #lines
