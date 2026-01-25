@@ -26,6 +26,7 @@ Done:
 Now:
 
 Upcoming:
+- [ ] fix tab cycling behaviours when point is over a specific section or file
 - [ ] Reflog HEAD on log view
 - [ ] add a 'view is stale' indicator
 - [ ] 'when i have scrolled down in the status buffer, then close it with `q`, when i reopen it again it would be nice to scroll to the top
