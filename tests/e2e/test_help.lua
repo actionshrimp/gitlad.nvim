@@ -237,7 +237,7 @@ T["help popup"]["displays Other section"] = function()
     if line:match("Other") then
       found_other = true
     end
-    if line:match("g%s+Refresh") then
+    if line:match("gr%s+Refresh") then
       found_g = true
     end
     if line:match("%$%s+Git command history") then

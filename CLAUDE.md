@@ -30,7 +30,7 @@ A fast, well-tested git interface for Neovim inspired by magit, fugitive, and la
 
 **No automatic git syncing.** In large monorepos (1M+ files), `git status` can take seconds. Instead:
 
-1. **Manual refresh only** - User presses `g` to refresh, with visual "Refreshing..." indicator
+1. **Manual refresh only** - User presses `gr` to refresh, with visual "Refreshing..." indicator
 2. **Optimistic updates** - When staging/unstaging, run git command, check exit code, update Lua state directly
 3. **Git command history** - `$` shows all git commands run, their output, and exit codes
 
@@ -307,6 +307,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `A` | Cherry-pick |
 | `_` | Revert |
 | `X` | Reset |
+| `'` | Submodule |
 | `t` | Tag (not yet implemented) |
 | `!` | Run git command (not yet implemented) |
 
@@ -320,6 +321,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `f` | Fixup (meld, discard message) |
 | `d` | Drop (remove commit) |
 | `x` | Exec (insert shell command) |
+| `b` | Break (insert break line) |
 | `M-j` / `M-k` | Move commit down/up |
 | `ZZ` / `C-c C-c` | Submit (apply rebase) |
 | `ZQ` / `C-c C-k` | Abort (cancel rebase) |

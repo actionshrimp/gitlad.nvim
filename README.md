@@ -30,9 +30,9 @@ In large monorepos (1M+ files), `git status` can take seconds. gitlad.nvim avoid
    - Check the exit code
    - If success: update the in-memory state directly (move file between sections)
    - If failure: show error, state unchanged
-3. **Manual refresh** - Press `g` to sync with git when needed
+3. **Manual refresh** - Press `gr` to sync with git when needed
 
-This means the UI may occasionally be out of sync with git (if you run git commands outside the plugin), but `g` is always available to resync.
+This means the UI may occasionally be out of sync with git (if you run git commands outside the plugin), but `gr` is always available to resync.
 
 ## Installation
 
@@ -94,9 +94,11 @@ Using lazy.nvim:
 | `d` | Diff |
 | `z` | Stash |
 | `r` | Rebase |
+| `m` | Merge |
 | `A` | Cherry-pick |
 | `_` | Revert |
 | `X` | Reset |
+| `'` | Submodule |
 
 **Other**
 | Key | Action |
