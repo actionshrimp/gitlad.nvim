@@ -1081,12 +1081,18 @@ function M.apply_popup_highlights(bufnr, lines, switches, options, actions)
         M.set(bufnr, ns_popup, line_idx, cli_start - 1, #line, "GitladPopupValue")
       end
 
-      -- Action line: " a description"
-    elseif line:match("^%s[a-zA-Z]%s") then
-      -- Highlight the key
-      local key = line:match("^%s([a-zA-Z])")
-      if key and action_keys[key] then
-        M.set(bufnr, ns_popup, line_idx, 1, 2, "GitladPopupActionKey")
+      -- Action line: " key description" (handles multi-char keys, special chars, <Key> notation)
+    elseif line:match("^%s%S") then
+      -- Try to match the line against known action keys
+      for key, _ in pairs(action_keys) do
+        -- Escape special pattern characters in the key
+        local escaped_key = key:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+        local pattern = "^%s" .. escaped_key .. "%s"
+        if line:match(pattern) then
+          -- Key starts at position 1 (after leading space), length is #key
+          M.set(bufnr, ns_popup, line_idx, 1, 1 + #key, "GitladPopupActionKey")
+          break
+        end
       end
     end
   end
