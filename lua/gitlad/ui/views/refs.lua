@@ -177,6 +177,21 @@ function RefsBuffer:_setup_keymaps()
     local context = ref and { commit = ref.hash } or nil
     reset_popup.open(self.repo_state, context)
   end, "Reset popup")
+
+  -- Rebase popup
+  keymap.set(bufnr, "n", "r", function()
+    local rebase_popup = require("gitlad.popups.rebase")
+    -- Check for cherry commit first (individual commits under expanded refs)
+    local cherry = self:_get_current_cherry()
+    if cherry then
+      rebase_popup.open(self.repo_state, { commit = cherry.hash })
+      return
+    end
+    -- Fall back to ref hash
+    local ref = self:_get_current_ref()
+    local context = ref and { commit = ref.hash } or nil
+    rebase_popup.open(self.repo_state, context)
+  end, "Rebase popup")
 end
 
 --- Get current ref under cursor
