@@ -1529,10 +1529,11 @@ function StatusBuffer:_get_diff_line_target(path, section, hunk_index)
   local buffer_line = cursor[1]
 
   -- Find where this file's diff starts in the buffer by scanning backward
+  -- Stop when we hit the file entry line (hunk_index = nil) or a different file
   local diff_start_line = buffer_line
   for line = buffer_line, 1, -1 do
     local info = self.line_map[line]
-    if not info or info.path ~= path or info.section ~= section then
+    if not info or info.path ~= path or info.section ~= section or not info.hunk_index then
       diff_start_line = line + 1
       break
     end
@@ -2129,20 +2130,46 @@ function StatusBuffer:render()
   end
 
   -- === Commit sections (unpulled/unpushed/recent) - shown after file changes, magit style ===
+  -- Order: user's commits first, then what to pull, with upstream last (often has many commits)
 
   -- Track whether we have any unpushed commits (used to decide whether to show recent commits)
   local has_unpushed_upstream = status.upstream
     and status.unpushed_upstream
     and #status.unpushed_upstream > 0
 
-  -- Unpulled/Unpushed sections for upstream (merge branch)
-  if status.upstream then
+  if status.push_remote then
+    -- Push remote is different from upstream - show push remote sections first
+    -- 1. User's commits to push remote (most important - your own work)
     add_commit_section(
-      "Unpulled from " .. status.upstream,
-      status.unpulled_upstream or {},
-      "unpulled_upstream"
+      "Unpushed to " .. status.push_remote,
+      status.unpushed_push or {},
+      "unpushed_push"
     )
-
+    -- 2. Commits to pull from push remote
+    add_commit_section(
+      "Unpulled from " .. status.push_remote,
+      status.unpulled_push or {},
+      "unpulled_push"
+    )
+    -- 3. User's commits not yet in upstream (if upstream exists)
+    if status.upstream and has_unpushed_upstream then
+      add_commit_section(
+        "Unmerged into " .. status.upstream,
+        status.unpushed_upstream or {},
+        "unpushed_upstream"
+      )
+    end
+    -- 4. Commits to pull from upstream (last - often has many commits)
+    if status.upstream then
+      add_commit_section(
+        "Unpulled from " .. status.upstream,
+        status.unpulled_upstream or {},
+        "unpulled_upstream"
+      )
+    end
+  elseif status.upstream then
+    -- No separate push remote - just show upstream sections
+    -- 1. User's commits first
     if has_unpushed_upstream then
       add_commit_section(
         "Unmerged into " .. status.upstream,
@@ -2150,19 +2177,11 @@ function StatusBuffer:render()
         "unpushed_upstream"
       )
     end
-  end
-
-  -- Unpulled/Unpushed sections for push remote (if different)
-  if status.push_remote then
+    -- 2. Commits to pull (last)
     add_commit_section(
-      "Unpulled from " .. status.push_remote,
-      status.unpulled_push or {},
-      "unpulled_push"
-    )
-    add_commit_section(
-      "Unpushed to " .. status.push_remote,
-      status.unpushed_push or {},
-      "unpushed_push"
+      "Unpulled from " .. status.upstream,
+      status.unpulled_upstream or {},
+      "unpulled_upstream"
     )
   end
 
