@@ -19,6 +19,17 @@ local spinner_util = require("gitlad.ui.utils.spinner")
 -- Namespace for sign column indicators
 local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 
+-- Sections that can be collapsed (commit sections, stashes, submodules)
+local COLLAPSIBLE_SECTIONS = {
+  unpulled_upstream = true,
+  unpushed_upstream = true,
+  unpulled_push = true,
+  unpushed_push = true,
+  recent = true,
+  stashes = true,
+  submodules = true,
+}
+
 --- Join repository root path with a relative file path
 --- Handles trailing slashes in repo_root to avoid double slashes
 ---@param repo_root string Repository root path (may have trailing slash)
@@ -36,6 +47,7 @@ end
 ---@field section "staged"|"unstaged"|"untracked"|"conflicted" Section type
 ---@field entry GitStatusEntry The full status entry (contains submodule field)
 ---@field hunk_index number|nil Index of hunk if this is a diff line
+---@field is_hunk_header boolean|nil True if this line is a @@ hunk header
 
 ---@class DiffHunk
 ---@field header string The @@ header line
@@ -73,13 +85,14 @@ end
 ---@field repo_state RepoState Repository state
 ---@field line_map table<number, LineInfo|CommitLineInfo|StashLineInfo|SubmoduleLineInfo> Map of line numbers to file, commit, stash, or submodule info
 ---@field section_lines table<number, SectionInfo> Map of line numbers to section headers
----@field expanded_files table<string, boolean> Map of "section:path" to expanded state
+---@field expanded_files table<string, boolean|table<number, boolean>> Map of "section:path" to expansion state (false=collapsed, {}=headers, {[n]=true}=per-hunk, true=all)
 ---@field expanded_commits table<string, boolean> Map of commit hash to expanded state
 ---@field diff_cache table<string, DiffData> Map of "section:path" to parsed diff data
 ---@field sign_lines table<number, SignInfo> Map of line numbers to sign info
 ---@field spinner Spinner Animated spinner for refresh indicator
 ---@field status_line_num number|nil Line number of the status indicator line
 ---@field pending_cursor_target CursorTarget|nil Target for cursor positioning after render
+---@field visibility_level number Current visibility level (1-4, default 2)
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
 
@@ -104,6 +117,7 @@ local function get_or_create_buffer(repo_state)
   self.expanded_commits = {} -- Tracks which commits have details expanded
   self.collapsed_sections = {} -- Tracks which commit sections are collapsed
   self.diff_cache = {} -- Caches fetched diff lines
+  self.visibility_level = 2 -- Current visibility level (1=headers, 2=items, 3=diffs, 4=all)
   self.status_line_num = nil -- Line number of the status indicator
   -- Initialize submodules section visibility from config
   local cfg = require("gitlad.config").get()
@@ -244,6 +258,25 @@ function StatusBuffer:_setup_keymaps()
   keymap.set(bufnr, "n", "<Tab>", function()
     self:_toggle_diff()
   end, "Toggle diff")
+
+  -- Global visibility cycling (magit-style)
+  keymap.set(bufnr, "n", "<S-Tab>", function()
+    self:_cycle_visibility_level()
+  end, "Cycle visibility level")
+
+  -- Jump to specific visibility levels (g prefix to avoid conflicts with window managers)
+  keymap.set(bufnr, "n", "g1", function()
+    self:_apply_visibility_level(1)
+  end, "Show headers only")
+  keymap.set(bufnr, "n", "g2", function()
+    self:_apply_visibility_level(2)
+  end, "Show items")
+  keymap.set(bufnr, "n", "g3", function()
+    self:_apply_visibility_level(3)
+  end, "Show diffs")
+  keymap.set(bufnr, "n", "g4", function()
+    self:_apply_visibility_level(4)
+  end, "Show all")
 
   -- Git command history
   keymap.set(bufnr, "n", "$", function()
@@ -1307,7 +1340,12 @@ local function parse_diff(lines)
   return data
 end
 
---- Toggle diff view for current file or collapse section
+--- Toggle diff view for current file, hunk, or section
+--- Expansion states for files:
+---   nil/false = collapsed (no diff shown)
+---   {} = headers mode (show @@ lines only)
+---   { [n] = true } = headers mode with specific hunks expanded
+---   true = fully expanded (all hunks)
 function StatusBuffer:_toggle_diff()
   -- First check if we're on a section header (for commit sections)
   local cursor = vim.api.nvim_win_get_cursor(0)
@@ -1316,16 +1354,7 @@ function StatusBuffer:_toggle_diff()
 
   if section_info then
     -- Check if this is a collapsible section (commit sections, stashes, submodules)
-    local collapsible_sections = {
-      unpulled_upstream = true,
-      unpushed_upstream = true,
-      unpulled_push = true,
-      unpushed_push = true,
-      recent = true,
-      stashes = true,
-      submodules = true,
-    }
-    if collapsible_sections[section_info.section] then
+    if COLLAPSIBLE_SECTIONS[section_info.section] then
       -- Toggle the section collapsed state
       local section_key = section_info.section
       self.collapsed_sections[section_key] = not self.collapsed_sections[section_key]
@@ -1339,7 +1368,7 @@ function StatusBuffer:_toggle_diff()
   if submodule then
     local key = "submodule:" .. submodule.path
 
-    -- Toggle expanded state
+    -- Toggle expanded state (submodules don't have hunk-level expansion)
     if self.expanded_files[key] then
       self.expanded_files[key] = false
       self.diff_cache[key] = nil
@@ -1374,23 +1403,46 @@ function StatusBuffer:_toggle_diff()
     return
   end
 
+  -- Get line info to check if we're on a hunk header
+  local line_info = self.line_map[line]
+  if line_info and line_info.type == "file" and line_info.is_hunk_header then
+    -- We're on a hunk header - toggle this specific hunk
+    local key = diff_cache_key(line_info.path, line_info.section)
+    local expansion_state = self.expanded_files[key]
+
+    -- Only toggle individual hunks when in headers mode (table)
+    if type(expansion_state) == "table" then
+      local hunk_index = line_info.hunk_index
+      expansion_state[hunk_index] = not expansion_state[hunk_index]
+      self:render()
+      return
+    end
+    -- If fully expanded (true), don't toggle individual hunks - fall through to file toggle
+  end
+
   local path, section = self:_get_current_file()
   if not path then
     return
   end
 
   local key = diff_cache_key(path, section)
+  local current_state = self.expanded_files[key]
 
-  -- Toggle expanded state - if expanded, collapse
-  if self.expanded_files[key] then
+  -- Cycle through states: collapsed → headers → expanded → collapsed
+  if current_state == true then
+    -- Fully expanded → collapse
     self.expanded_files[key] = false
     self.diff_cache[key] = nil
     self:render()
     return
+  elseif type(current_state) == "table" then
+    -- Headers mode → fully expand
+    self.expanded_files[key] = true
+    self:render()
+    return
   end
 
-  -- Expand - always fetch fresh diff
-  -- Use appropriate diff function based on section
+  -- Collapsed → fetch diff and show headers
   local function on_diff_result(diff_lines, err)
     if err then
       vim.notify("[gitlad] Diff error: " .. err, vim.log.levels.ERROR)
@@ -1399,7 +1451,7 @@ function StatusBuffer:_toggle_diff()
 
     vim.schedule(function()
       self.diff_cache[key] = parse_diff(diff_lines or {})
-      self.expanded_files[key] = true
+      self.expanded_files[key] = {} -- Headers mode (empty table = no hunks expanded)
       self:render()
     end)
   end
@@ -1412,19 +1464,149 @@ function StatusBuffer:_toggle_diff()
 
   -- Fetch the diff for staged/unstaged files
   local staged = (section == "staged")
-  git.diff(path, staged, { cwd = self.repo_state.repo_root }, function(diff_lines, err)
-    if err then
-      vim.notify("[gitlad] Diff error: " .. err, vim.log.levels.ERROR)
-      return
-    end
+  git.diff(path, staged, { cwd = self.repo_state.repo_root }, on_diff_result)
+end
 
-    vim.schedule(function()
-      -- Parse the diff into structured data with hunks
-      self.diff_cache[key] = parse_diff(diff_lines or {})
-      self.expanded_files[key] = true
+--- Expand all file diffs (batch fetch)
+--- Fetches diffs for all files and calls callback when complete
+---@param callback fun(keys: string[]) Called with list of cache keys when all diffs fetched
+function StatusBuffer:_expand_all_files(callback)
+  local status = self.repo_state.status
+  if not status then
+    callback({})
+    return
+  end
+
+  local all_files = {}
+
+  -- Collect all files with their section info
+  for _, entry in ipairs(status.staged or {}) do
+    table.insert(all_files, { entry = entry, section = "staged", staged = true })
+  end
+  for _, entry in ipairs(status.unstaged or {}) do
+    table.insert(all_files, { entry = entry, section = "unstaged", staged = false })
+  end
+  for _, entry in ipairs(status.untracked or {}) do
+    table.insert(all_files, { entry = entry, section = "untracked", untracked = true })
+  end
+  for _, entry in ipairs(status.conflicted or {}) do
+    table.insert(all_files, { entry = entry, section = "conflicted", staged = false })
+  end
+
+  if #all_files == 0 then
+    callback({})
+    return
+  end
+
+  local pending = 0
+  local keys_to_expand = {}
+  local opts = { cwd = self.repo_state.repo_root }
+
+  for _, file_info in ipairs(all_files) do
+    local key = diff_cache_key(file_info.entry.path, file_info.section)
+    table.insert(keys_to_expand, key)
+
+    if not self.diff_cache[key] then
+      pending = pending + 1
+
+      local function on_result(diff_lines, err)
+        if not err then
+          vim.schedule(function()
+            self.diff_cache[key] = parse_diff(diff_lines or {})
+          end)
+        end
+        pending = pending - 1
+        if pending == 0 then
+          vim.schedule(function()
+            callback(keys_to_expand)
+          end)
+        end
+      end
+
+      if file_info.untracked then
+        git.diff_untracked(file_info.entry.path, opts, on_result)
+      else
+        git.diff(file_info.entry.path, file_info.staged, opts, on_result)
+      end
+    end
+  end
+
+  if pending == 0 then
+    callback(keys_to_expand)
+  end
+end
+
+--- Apply a specific visibility level
+--- Level 1: Section headers only (all collapsed)
+--- Level 2: Sections + items (sections expanded, no diffs)
+--- Level 3: Items + file diffs (all file diffs expanded)
+--- Level 4: Everything (file diffs + commit details)
+---@param level number Visibility level (1-4)
+function StatusBuffer:_apply_visibility_level(level)
+  level = math.max(1, math.min(4, level)) -- Clamp to 1-4
+  self.visibility_level = level
+
+  local status = self.repo_state.status
+  if not status then
+    return
+  end
+
+  if level == 1 then
+    -- Collapse all collapsible sections, clear all expansions
+    for section_name, _ in pairs(COLLAPSIBLE_SECTIONS) do
+      self.collapsed_sections[section_name] = true
+    end
+    self.expanded_files = {}
+    self.expanded_commits = {}
+    self:render()
+  elseif level == 2 then
+    -- Expand all sections, clear all diffs and commit details
+    self.collapsed_sections = {}
+    self.expanded_files = {}
+    self.expanded_commits = {}
+    self:render()
+  elseif level == 3 then
+    -- Expand all sections and show file diff headers (hunks collapsed)
+    self.collapsed_sections = {}
+    self.expanded_commits = {}
+    self:_expand_all_files(function(keys)
+      for _, key in ipairs(keys) do
+        self.expanded_files[key] = {} -- Headers mode (empty table = no hunks expanded)
+      end
       self:render()
     end)
-  end)
+  elseif level == 4 then
+    -- Expand everything: sections, file diffs, and commit details
+    self.collapsed_sections = {}
+
+    -- Expand all commits
+    local commits_to_expand = {}
+    for _, commits in pairs({
+      status.unpushed_upstream or {},
+      status.unpulled_upstream or {},
+      status.unpushed_push or {},
+      status.unpulled_push or {},
+      status.recent or {},
+    }) do
+      for _, commit in ipairs(commits) do
+        commits_to_expand[commit.hash] = true
+      end
+    end
+    self.expanded_commits = commits_to_expand
+
+    self:_expand_all_files(function(keys)
+      for _, key in ipairs(keys) do
+        self.expanded_files[key] = true
+      end
+      self:render()
+    end)
+  end
+end
+
+--- Cycle through visibility levels (1 → 2 → 3 → 4 → 1)
+function StatusBuffer:_cycle_visibility_level()
+  local next_level = (self.visibility_level % 4) + 1
+  self:_apply_visibility_level(next_level)
 end
 
 --- Update just the status indicator line (called by spinner animation)
@@ -1859,7 +2041,9 @@ function StatusBuffer:render()
     local is_submodule_entry = entry.submodule and entry.submodule:sub(1, 1) == "S"
     local key = is_submodule_entry and ("submodule:" .. entry.path)
       or diff_cache_key(entry.path, section)
-    local is_expanded = self.expanded_files[key]
+    local expansion_state = self.expanded_files[key]
+    -- Determine if file is expanded at all (true or table means some level of expansion)
+    local is_expanded = expansion_state == true or type(expansion_state) == "table"
 
     -- Format without expand indicator (it goes in sign column)
     local line_text = status_char and string.format("%s %s %s", sign, status_char, display)
@@ -1879,24 +2063,42 @@ function StatusBuffer:render()
         table.insert(lines, "+" .. diff_data.new_sha)
         self.line_map[#lines] = { type = "submodule_diff", diff_type = "add" }
       else
-        -- Normal file diff
-        local current_hunk_index = 0
+        -- Normal file diff with per-hunk expansion support
+        -- expansion_state can be:
+        --   true = all hunks expanded
+        --   {} = headers only (no hunks expanded)
+        --   { [n] = true } = specific hunks expanded
+        local is_fully_expanded = expansion_state == true
+        local hunk_expansion = type(expansion_state) == "table" and expansion_state or {}
 
-        for _, diff_line in ipairs(diff_data.display_lines) do
-          -- Track which hunk we're in
-          if diff_line:match("^@@") then
-            current_hunk_index = current_hunk_index + 1
-          end
+        for hunk_index, hunk in ipairs(diff_data.hunks) do
+          local hunk_is_expanded = is_fully_expanded or hunk_expansion[hunk_index]
 
-          table.insert(lines, diff_line)
-          -- Diff lines map to the file and include hunk index
+          -- Always show the hunk header (@@ line)
+          table.insert(lines, hunk.header)
           self.line_map[#lines] = {
             type = "file",
             path = entry.path,
             section = section,
             entry = entry,
-            hunk_index = current_hunk_index > 0 and current_hunk_index or nil,
+            hunk_index = hunk_index,
+            is_hunk_header = true,
           }
+          self.sign_lines[#lines] = { expanded = hunk_is_expanded }
+
+          -- Show hunk content only if this hunk is expanded
+          if hunk_is_expanded then
+            for _, content_line in ipairs(hunk.lines) do
+              table.insert(lines, content_line)
+              self.line_map[#lines] = {
+                type = "file",
+                path = entry.path,
+                section = section,
+                entry = entry,
+                hunk_index = hunk_index,
+              }
+            end
+          end
         end
       end
     end
@@ -2364,10 +2566,20 @@ end
 ---@param repo_state RepoState
 ---@return StatusBuffer|nil
 function M.get_buffer(repo_state)
-  local key = repo_state.repo_root
-  local buf = status_buffers[key]
-  if buf and vim.api.nvim_buf_is_valid(buf.bufnr) then
-    return buf
+  if repo_state then
+    local key = repo_state.repo_root
+    local buf = status_buffers[key]
+    if buf and vim.api.nvim_buf_is_valid(buf.bufnr) then
+      return buf
+    end
+    return nil
+  end
+
+  -- If no repo_state provided, return the first valid buffer (for testing)
+  for _, buf in pairs(status_buffers) do
+    if vim.api.nvim_buf_is_valid(buf.bufnr) then
+      return buf
+    end
   end
   return nil
 end

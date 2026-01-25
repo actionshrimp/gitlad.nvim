@@ -114,12 +114,14 @@ T["diff expansion"]["TAB expands diff for modified file"] = function()
 
   open_gitlad(child, repo)
 
-  -- Navigate to file and expand
+  -- Navigate to file and expand (TAB twice: headers → full)
   local lines = get_buffer_lines(child)
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
-  child.type_keys("<Tab>")
+  child.type_keys("<Tab>") -- First TAB: headers only
   wait(child, 200)
+  child.type_keys("<Tab>") -- Second TAB: fully expanded
+  wait(child, 100)
 
   -- Check that diff lines are shown
   lines = get_buffer_lines(child)
@@ -146,26 +148,30 @@ T["diff expansion"]["TAB collapses expanded diff"] = function()
 
   open_gitlad(child, repo)
 
-  -- Navigate to file and expand
+  -- Navigate to file and expand (TAB cycles: collapsed → headers → full → collapsed)
   local lines = get_buffer_lines(child)
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
-  child.type_keys("<Tab>")
+  child.type_keys("<Tab>") -- First TAB: headers only
   wait(child, 200)
 
-  -- Verify expanded
+  -- Verify headers shown
   lines = get_buffer_lines(child)
   local has_diff = find_line_with(lines, "@@")
-  assert_truthy(has_diff, "Should show diff after first TAB")
+  assert_truthy(has_diff, "Should show @@ header after first TAB")
 
-  -- Collapse with another TAB
+  -- Second TAB: fully expanded
+  child.type_keys("<Tab>")
+  wait(child, 100)
+
+  -- Third TAB: collapse
   child.type_keys("<Tab>")
   wait(child, 100)
 
   -- Verify collapsed
   lines = get_buffer_lines(child)
   has_diff = find_line_with(lines, "@@")
-  eq(has_diff, nil, "Should not show diff after second TAB")
+  eq(has_diff, nil, "Should not show diff after third TAB (collapsed)")
 end
 
 T["diff expansion"]["shows content for untracked file"] = function()
@@ -182,12 +188,14 @@ T["diff expansion"]["shows content for untracked file"] = function()
 
   open_gitlad(child, repo)
 
-  -- Navigate to file and expand
+  -- Navigate to file and expand (TAB twice: headers → full)
   local lines = get_buffer_lines(child)
   local file_line = find_line_with(lines, "new.txt")
   child.cmd(tostring(file_line))
-  child.type_keys("<Tab>")
+  child.type_keys("<Tab>") -- First TAB: headers only
   wait(child, 200)
+  child.type_keys("<Tab>") -- Second TAB: fully expanded
+  wait(child, 100)
 
   -- Check that file content is shown
   lines = get_buffer_lines(child)
@@ -221,12 +229,14 @@ T["hunk staging"]["s on diff line stages single hunk"] = function()
 
   open_gitlad(child, repo)
 
-  -- Expand the diff
+  -- Expand the diff (TAB twice: headers → full)
   local lines = get_buffer_lines(child)
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
-  child.type_keys("<Tab>")
+  child.type_keys("<Tab>") -- First TAB: headers only
   wait(child, 200)
+  child.type_keys("<Tab>") -- Second TAB: fully expanded
+  wait(child, 100)
 
   -- Find the first hunk's diff line and stage it
   lines = get_buffer_lines(child)
@@ -261,12 +271,14 @@ T["hunk staging"]["u on diff line unstages single hunk"] = function()
 
   open_gitlad(child, repo)
 
-  -- Expand the staged diff
+  -- Expand the staged diff (TAB twice: headers → full)
   local lines = get_buffer_lines(child)
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
-  child.type_keys("<Tab>")
+  child.type_keys("<Tab>") -- First TAB: headers only
   wait(child, 200)
+  child.type_keys("<Tab>") -- Second TAB: fully expanded
+  wait(child, 100)
 
   -- Find a diff line and unstage
   lines = get_buffer_lines(child)
@@ -302,12 +314,14 @@ T["visual selection"]["stages selected lines from hunk"] = function()
 
   open_gitlad(child, repo)
 
-  -- Expand the diff
+  -- Expand the diff (TAB twice: headers → full)
   local lines = get_buffer_lines(child)
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
-  child.type_keys("<Tab>")
+  child.type_keys("<Tab>") -- First TAB: headers only
   wait(child, 200)
+  child.type_keys("<Tab>") -- Second TAB: fully expanded
+  wait(child, 100)
 
   -- Find the first changed line
   lines = get_buffer_lines(child)
@@ -340,12 +354,14 @@ T["visual selection"]["unstages selected lines from staged hunk"] = function()
 
   open_gitlad(child, repo)
 
-  -- Expand the staged diff
+  -- Expand the staged diff (TAB twice: headers → full)
   local lines = get_buffer_lines(child)
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
-  child.type_keys("<Tab>")
+  child.type_keys("<Tab>") -- First TAB: headers only
   wait(child, 200)
+  child.type_keys("<Tab>") -- Second TAB: fully expanded
+  wait(child, 100)
 
   -- Find the first changed line
   lines = get_buffer_lines(child)
@@ -380,12 +396,14 @@ T["visual selection"]["stages multiple selected lines"] = function()
 
   open_gitlad(child, repo)
 
-  -- Expand the diff
+  -- Expand the diff (TAB twice: headers → full)
   local lines = get_buffer_lines(child)
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
-  child.type_keys("<Tab>")
+  child.type_keys("<Tab>") -- First TAB: headers only
   wait(child, 200)
+  child.type_keys("<Tab>") -- Second TAB: fully expanded
+  wait(child, 100)
 
   -- Find the +B line and select B and C (but not D)
   lines = get_buffer_lines(child)
@@ -442,9 +460,11 @@ T["hunk navigation"]["<CR> on diff line jumps to file at correct line"] = functi
   child.type_keys("gj")
   wait(child, 100)
 
-  -- Expand the diff
-  child.type_keys("<Tab>")
+  -- Expand the diff (TAB twice: headers → full)
+  child.type_keys("<Tab>") -- First TAB: headers only
   wait(child, 300)
+  child.type_keys("<Tab>") -- Second TAB: fully expanded
+  wait(child, 100)
 
   -- Move down to a diff line (should be on a + line)
   -- Navigate down several lines to get into the diff content

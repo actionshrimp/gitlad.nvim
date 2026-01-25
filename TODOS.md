@@ -15,18 +15,19 @@ Done:
 - [x] <cr> on a commit is a shortcut for `d d`
 - [x] <cr> on a hunk in staging view, jump to same line in file
 - [x] reorder commit sections: user's commits first, then unpulled, with upstream last
+- [x] instant fixup
+- [x] help popup is wrong (e.g. 'refresh' is now `gr` and not `g`)
+- [x] add a shift+tab bind to toggle all sections. also, a magit style meta+1/2/3/4 (I think it's these keys at least) to collapse/expand certain levels on the status view
+- [x] hunk level toggle/expansion
 
 Now:
 
 Upcoming:
-- [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear
 - [ ] Reflog HEAD on log view
 - [ ] add a 'view is stale' indicator
 - [ ] 'when i have scrolled down in the status buffer, then close it with `q`, when i reopen it again it would be nice to scroll to the top
 - [ ] for a moved file, only show the actual file changes in the diff
-- [ ] add a shift+tab bind to toggle all sections, or even better, a magit style meta+1/2/3/4 collaps expand type toggle system
 - [ ] support 'remotes' popup
-- [ ] instant fixup
 - [ ] some highlighting in the various popup menus are wrong - the key isnt always highlighted purple
-- [ ] help popup is wrong (e.g. 'refresh' is now `gr` and not `g`)
 - [ ] for some reason text in brackets in commit lists is highlighted green
+- [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
