@@ -38,6 +38,8 @@ local hl = require("gitlad.ui.hl")
 ---@field actions PopupAction[] List of actions and headings
 ---@field buffer number|nil Buffer handle when shown
 ---@field window number|nil Window handle when shown
+---@field columns number Number of columns for action rendering (default 1)
+---@field action_positions table<number, table<string, {col: number, len: number}>> Line -> key -> position info for highlighting
 local PopupData = {}
 PopupData.__index = PopupData
 
@@ -46,6 +48,7 @@ PopupData.__index = PopupData
 ---@field _switches PopupSwitch[] Switches being built
 ---@field _options PopupOption[] Options being built
 ---@field _actions PopupAction[] Actions being built
+---@field _columns number Number of columns for action rendering (default 1)
 local PopupBuilder = {}
 PopupBuilder.__index = PopupBuilder
 
@@ -57,6 +60,7 @@ function M.builder()
   builder._switches = {}
   builder._options = {}
   builder._actions = {}
+  builder._columns = 1
   return builder
 end
 
@@ -65,6 +69,14 @@ end
 ---@return PopupBuilder
 function PopupBuilder:name(name)
   self._name = name
+  return self
+end
+
+--- Set the number of columns for action rendering
+---@param n number Number of columns (default 1)
+---@return PopupBuilder
+function PopupBuilder:columns(n)
+  self._columns = n
   return self
 end
 
@@ -142,6 +154,8 @@ function PopupBuilder:build()
   data.actions = vim.deepcopy(self._actions)
   data.buffer = nil
   data.window = nil
+  data.columns = self._columns or 1
+  data.action_positions = {}
   return data
 end
 
@@ -196,10 +210,90 @@ function PopupData:set_option(key, value)
   end
 end
 
+--- Group actions by heading into sections
+---@return table[] Array of {heading: string|nil, actions: PopupAction[]}
+function PopupData:_group_actions_by_heading()
+  local groups = {}
+  local current_group = nil
+
+  for _, item in ipairs(self.actions) do
+    if item.type == "heading" then
+      if current_group then
+        table.insert(groups, current_group)
+      end
+      current_group = { heading = item.text, actions = {} }
+    elseif item.type == "action" then
+      if not current_group then
+        current_group = { heading = nil, actions = {} }
+      end
+      table.insert(current_group.actions, item)
+    end
+  end
+
+  if current_group then
+    table.insert(groups, current_group)
+  end
+
+  return groups
+end
+
+--- Get display width of a string (accounts for multi-byte UTF-8 characters)
+---@param str string
+---@return number display_width
+local function display_width(str)
+  -- Use vim.fn.strdisplaywidth if available, otherwise approximate
+  if vim.fn and vim.fn.strdisplaywidth then
+    return vim.fn.strdisplaywidth(str)
+  end
+  -- Fallback: count UTF-8 characters (not perfect but better than byte length)
+  local width = 0
+  for _ in str:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+    width = width + 1
+  end
+  return width
+end
+
+--- Pad a string to a target display width
+---@param str string
+---@param target_width number
+---@return string padded_string
+local function pad_to_width(str, target_width)
+  local current_width = display_width(str)
+  if current_width >= target_width then
+    return str
+  end
+  return str .. string.rep(" ", target_width - current_width)
+end
+
+--- Render a single group as lines
+---@param group table {heading: string|nil, actions: PopupAction[]}
+---@return string[] lines
+---@return number max_width Maximum display width in this group
+function PopupData:_render_group(group)
+  local lines = {}
+  local max_width = 0
+
+  if group.heading then
+    table.insert(lines, group.heading)
+    max_width = display_width(group.heading)
+  end
+
+  for _, action in ipairs(group.actions) do
+    local line = string.format(" %s %s", action.key, action.description)
+    table.insert(lines, line)
+    max_width = math.max(max_width, display_width(line))
+  end
+
+  return lines, max_width
+end
+
 --- Render the popup as lines of text
 ---@return string[]
 function PopupData:render_lines()
   local lines = {}
+
+  -- Clear action positions for fresh render
+  self.action_positions = {}
 
   -- Arguments section (switches and options)
   if #self.switches > 0 or #self.options > 0 then
@@ -231,17 +325,149 @@ function PopupData:render_lines()
     table.insert(lines, "")
   end
 
-  -- Actions section
-  for _, item in ipairs(self.actions) do
-    if item.type == "heading" then
-      table.insert(lines, item.text)
-    elseif item.type == "action" then
-      local line = string.format(" %s %s", item.key, item.description)
-      table.insert(lines, line)
+  -- Actions section - single column or multi-column
+  if self.columns <= 1 then
+    -- Single column rendering (original behavior)
+    for _, item in ipairs(self.actions) do
+      if item.type == "heading" then
+        table.insert(lines, item.text)
+      elseif item.type == "action" then
+        local line = string.format(" %s %s", item.key, item.description)
+        local line_idx = #lines + 1
+        self.action_positions[line_idx] = self.action_positions[line_idx] or {}
+        self.action_positions[line_idx][item.key] = { col = 1, len = #item.key }
+        table.insert(lines, line)
+      end
     end
+  else
+    -- Multi-column rendering
+    local groups = self:_group_actions_by_heading()
+    self:_render_multicolumn(lines, groups)
   end
 
   return lines
+end
+
+--- Render groups in multiple columns
+---@param lines string[] Output lines array (modified in place)
+---@param groups table[] Array of {heading: string|nil, actions: PopupAction[]}
+function PopupData:_render_multicolumn(lines, groups)
+  -- Calculate line count for each group
+  local group_line_counts = {}
+  for i, group in ipairs(groups) do
+    local count = #group.actions
+    if group.heading then
+      count = count + 1
+    end
+    group_line_counts[i] = count
+  end
+
+  -- Split groups into columns (try to balance line counts)
+  local total_lines = 0
+  for _, count in ipairs(group_line_counts) do
+    total_lines = total_lines + count
+  end
+
+  local target_per_col = math.ceil(total_lines / self.columns)
+  local column_groups = {}
+  for i = 1, self.columns do
+    column_groups[i] = {}
+  end
+
+  local current_col = 1
+  local current_col_lines = 0
+  for i, group in ipairs(groups) do
+    -- If adding this group would exceed target and we're not on the last column, move to next
+    if
+      current_col_lines + group_line_counts[i] > target_per_col
+      and current_col < self.columns
+      and current_col_lines > 0
+    then
+      current_col = current_col + 1
+      current_col_lines = 0
+    end
+    table.insert(column_groups[current_col], group)
+    current_col_lines = current_col_lines + group_line_counts[i]
+  end
+
+  -- Render each column's groups to get lines
+  local column_lines = {}
+  local column_widths = {}
+  for col = 1, self.columns do
+    column_lines[col] = {}
+    column_widths[col] = 0
+    for _, group in ipairs(column_groups[col]) do
+      local group_lines, max_width = self:_render_group(group)
+      for _, line in ipairs(group_lines) do
+        table.insert(column_lines[col], line)
+      end
+      column_widths[col] = math.max(column_widths[col], max_width)
+    end
+  end
+
+  -- Find max lines across all columns
+  local max_lines = 0
+  for col = 1, self.columns do
+    max_lines = math.max(max_lines, #column_lines[col])
+  end
+
+  -- Column separator
+  local col_gap = "    " -- 4 spaces between columns
+
+  -- Merge columns into output lines
+  -- Track which group/action we're at for position tracking
+  local col_action_indices = {}
+  for col = 1, self.columns do
+    col_action_indices[col] = { group_idx = 1, action_idx = 0, in_heading = true }
+  end
+
+  for row = 1, max_lines do
+    local parts = {}
+    local current_col_offset = 0
+
+    for col = 1, self.columns do
+      local col_line = column_lines[col][row] or ""
+      local padded = pad_to_width(col_line, column_widths[col])
+
+      -- Track action positions for highlighting
+      if col_line ~= "" then
+        -- Find which action this line corresponds to
+        local groups_in_col = column_groups[col]
+        local tracker = col_action_indices[col]
+        if tracker.group_idx <= #groups_in_col then
+          local group = groups_in_col[tracker.group_idx]
+          if tracker.in_heading and group.heading then
+            -- This is a heading line, skip to actions
+            tracker.in_heading = false
+            tracker.action_idx = 1
+          elseif tracker.action_idx <= #group.actions then
+            -- This is an action line
+            local action = group.actions[tracker.action_idx]
+            local line_idx = #lines + 1
+            self.action_positions[line_idx] = self.action_positions[line_idx] or {}
+            -- Position is: current column offset + 1 (for leading space)
+            self.action_positions[line_idx][action.key] =
+              { col = current_col_offset + 1, len = #action.key }
+            tracker.action_idx = tracker.action_idx + 1
+            if tracker.action_idx > #group.actions then
+              -- Move to next group
+              tracker.group_idx = tracker.group_idx + 1
+              tracker.in_heading = true
+              tracker.action_idx = 0
+            end
+          end
+        end
+      end
+
+      table.insert(parts, padded)
+      current_col_offset = current_col_offset + column_widths[col] + display_width(col_gap)
+    end
+
+    local combined = table.concat(parts, col_gap)
+    -- Trim trailing whitespace
+    combined = combined:gsub("%s+$", "")
+    table.insert(lines, combined)
+  end
 end
 
 --- Show the popup in a floating window
@@ -278,7 +504,14 @@ function PopupData:show()
   self.window = vim.api.nvim_open_win(self.buffer, true, win_opts)
 
   -- Apply syntax highlighting
-  hl.apply_popup_highlights(self.buffer, lines, self.switches, self.options, self.actions)
+  hl.apply_popup_highlights(
+    self.buffer,
+    lines,
+    self.switches,
+    self.options,
+    self.actions,
+    self.action_positions
+  )
 
   -- Set up keymaps
   self:_setup_keymaps()
@@ -305,7 +538,14 @@ function PopupData:refresh()
   vim.bo[self.buffer].modifiable = false
 
   -- Apply syntax highlighting
-  hl.apply_popup_highlights(self.buffer, lines, self.switches, self.options, self.actions)
+  hl.apply_popup_highlights(
+    self.buffer,
+    lines,
+    self.switches,
+    self.options,
+    self.actions,
+    self.action_positions
+  )
 end
 
 --- Set up keymaps for the popup buffer

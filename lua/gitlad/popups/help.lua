@@ -20,6 +20,7 @@ function M.open(status_buffer)
   local help_popup = popup
     .builder()
     :name("Help")
+    :columns(2)
     -- Navigation
     :group_heading("Navigation")
     :action("j", "Next item", function()

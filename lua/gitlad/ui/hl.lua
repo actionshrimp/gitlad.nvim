@@ -1016,7 +1016,8 @@ end
 ---@param switches table[] Switch definitions
 ---@param options table[] Option definitions
 ---@param actions table[] Action definitions
-function M.apply_popup_highlights(bufnr, lines, switches, options, actions)
+---@param action_positions? table<number, table<string, {col: number, len: number}>> Optional position metadata
+function M.apply_popup_highlights(bufnr, lines, switches, options, actions, action_positions)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
@@ -1048,11 +1049,33 @@ function M.apply_popup_highlights(bufnr, lines, switches, options, actions)
     local line_idx = i - 1 -- Convert to 0-indexed
 
     -- Section headings: "Arguments" or action group headings (no leading space, no key pattern)
-    if line:match("^[A-Z][a-z]") and not line:match("^%s") then
-      M.set(bufnr, ns_popup, line_idx, 0, #line, "GitladPopupHeading")
+    -- For multi-column, headings can appear anywhere but still start with capital letter
+    -- Check for heading pattern: starts with capital, followed by lowercase (word boundary)
+    local is_heading = false
+    -- Check at start of line
+    if line:match("^[A-Z][a-z]") then
+      is_heading = true
+      -- Find the end of the heading (next whitespace or end of line for single-column,
+      -- or check for column pattern)
+      local heading_end = line:find("%s%s%s%s") or #line
+      M.set(bufnr, ns_popup, line_idx, 0, heading_end, "GitladPopupHeading")
+    end
+    -- Check for headings in additional columns (after significant whitespace)
+    for match_start, heading in line:gmatch("()%s%s%s%s([A-Z][a-z]+)") do
+      local heading_start = match_start + 3 -- After the 4-space gap
+      local heading_len = #heading
+      M.set(
+        bufnr,
+        ns_popup,
+        line_idx,
+        heading_start,
+        heading_start + heading_len,
+        "GitladPopupHeading"
+      )
+    end
 
-      -- Switch line: " *-a description (--flag)" or "  -a description"
-    elseif line:match("^%s[%*%s]%-") then
+    -- Switch line: " *-a description (--flag)" or "  -a description"
+    if line:match("^%s[%*%s]%-") then
       -- Check if enabled (has *)
       if line:match("^%s%*%-") then
         M.set(bufnr, ns_popup, line_idx, 1, 2, "GitladPopupSwitchEnabled")
@@ -1081,17 +1104,26 @@ function M.apply_popup_highlights(bufnr, lines, switches, options, actions)
         M.set(bufnr, ns_popup, line_idx, cli_start - 1, #line, "GitladPopupValue")
       end
 
-      -- Action line: " key description" (handles multi-char keys, special chars, <Key> notation)
-    elseif line:match("^%s%S") then
-      -- Try to match the line against known action keys
-      for key, _ in pairs(action_keys) do
-        -- Escape special pattern characters in the key
-        local escaped_key = key:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
-        local pattern = "^%s" .. escaped_key .. "%s"
-        if line:match(pattern) then
-          -- Key starts at position 1 (after leading space), length is #key
-          M.set(bufnr, ns_popup, line_idx, 1, 1 + #key, "GitladPopupActionKey")
-          break
+      -- Action lines - use position metadata if available, otherwise pattern match
+    elseif not is_heading then
+      -- Check if we have position metadata for this line
+      local line_positions = action_positions and action_positions[i]
+      if line_positions then
+        -- Use precise position metadata
+        for key, pos in pairs(line_positions) do
+          M.set(bufnr, ns_popup, line_idx, pos.col, pos.col + pos.len, "GitladPopupActionKey")
+        end
+      else
+        -- Fallback: pattern match for action keys (single column)
+        for key, _ in pairs(action_keys) do
+          -- Escape special pattern characters in the key
+          local escaped_key = key:gsub("([%%%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+          local pattern = "^%s" .. escaped_key .. "%s"
+          if line:match(pattern) then
+            -- Key starts at position 1 (after leading space), length is #key
+            M.set(bufnr, ns_popup, line_idx, 1, 1 + #key, "GitladPopupActionKey")
+            break
+          end
         end
       end
     end

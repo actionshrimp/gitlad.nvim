@@ -222,4 +222,113 @@ T["PopupData"]["render_lines() produces expected output"] = function()
   eq(found_action, true)
 end
 
+-- Two-column layout tests
+T["popup two column layout"] = MiniTest.new_set()
+
+T["popup two column layout"]["columns method sets column count"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup.builder():columns(2):build()
+
+  eq(data.columns, 2)
+end
+
+T["popup two column layout"]["defaults to single column"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup.builder():build()
+
+  eq(data.columns, 1)
+end
+
+T["popup two column layout"]["renders groups in two columns"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup
+    .builder()
+    :columns(2)
+    :group_heading("Left Section")
+    :action("a", "Action A", function() end)
+    :action("b", "Action B", function() end)
+    :group_heading("Right Section")
+    :action("c", "Action C", function() end)
+    :action("d", "Action D", function() end)
+    :build()
+
+  local lines = data:render_lines()
+
+  -- Should have both sections on same lines (side by side)
+  -- Find a line that contains content from both columns
+  local has_two_columns = false
+  for _, line in ipairs(lines) do
+    if
+      (line:match("Left Section") and line:match("Right Section"))
+      or (line:match("Action A") and line:match("Action C"))
+      or (line:match("Action B") and line:match("Action D"))
+    then
+      has_two_columns = true
+      break
+    end
+  end
+
+  eq(has_two_columns, true)
+end
+
+T["popup two column layout"]["tracks action positions for highlighting"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup
+    .builder()
+    :columns(2)
+    :group_heading("Left")
+    :action("a", "Action A", function() end)
+    :group_heading("Right")
+    :action("b", "Action B", function() end)
+    :build()
+
+  local _ = data:render_lines()
+
+  -- Should have action positions tracked
+  local found_positions = false
+  for _, pos_table in pairs(data.action_positions) do
+    for key, pos in pairs(pos_table) do
+      if key == "a" or key == "b" then
+        -- Position should have col and len
+        expect.no_equality(pos.col, nil)
+        expect.no_equality(pos.len, nil)
+        found_positions = true
+      end
+    end
+  end
+
+  eq(found_positions, true)
+end
+
+T["popup two column layout"]["balances groups between columns"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  -- Create an unbalanced popup - first group much larger than second
+  local data = popup
+    .builder()
+    :columns(2)
+    :group_heading("Large Group")
+    :action("a", "Action A", function() end)
+    :action("b", "Action B", function() end)
+    :action("c", "Action C", function() end)
+    :action("d", "Action D", function() end)
+    :action("e", "Action E", function() end)
+    :action("f", "Action F", function() end)
+    :group_heading("Small Group")
+    :action("g", "Action G", function() end)
+    :build()
+
+  local lines = data:render_lines()
+
+  -- Should split into columns, not have everything in one column
+  -- The large group (7 lines including heading) should be in one column
+  -- The small group (2 lines including heading) should be in the other
+  -- This should result in fewer lines than single column (9 lines)
+  eq(#lines < 9, true)
+end
+
 return T

@@ -19,8 +19,11 @@ Done:
 - [x] help popup is wrong (e.g. 'refresh' is now `gr` and not `g`)
 - [x] add a shift+tab bind to toggle all sections. also, a magit style meta+1/2/3/4 (I think it's these keys at least) to collapse/expand certain levels on the status view
 - [x] hunk level toggle/expansion
+- [ ] some highlighting in the various popup menus are wrong - the key isnt always highlighted purple
 
 Now:
+- [x] the help popup is a bit long now! it would be good if it could be rendered as two columns with some logical grouping of different sections
+- [ ] for some reason text in brackets in commit lists is highlighted green
 
 Upcoming:
 - [ ] Reflog HEAD on log view
@@ -28,6 +31,5 @@ Upcoming:
 - [ ] 'when i have scrolled down in the status buffer, then close it with `q`, when i reopen it again it would be nice to scroll to the top
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] support 'remotes' popup
-- [ ] some highlighting in the various popup menus are wrong - the key isnt always highlighted purple
-- [ ] for some reason text in brackets in commit lists is highlighted green
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
+- [ ] pressing 'p p' for a new branch errors saying there's no remote set, it would be nice if it could default to creating a branch with the same name on the 'default remote' (usually origin) if git has such a concept and there's one configured? it's a bit annoying to have to manually set the upstream to origin first.
