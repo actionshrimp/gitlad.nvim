@@ -19,11 +19,11 @@ Done:
 - [x] help popup is wrong (e.g. 'refresh' is now `gr` and not `g`)
 - [x] add a shift+tab bind to toggle all sections. also, a magit style meta+1/2/3/4 (I think it's these keys at least) to collapse/expand certain levels on the status view
 - [x] hunk level toggle/expansion
-- [ ] some highlighting in the various popup menus are wrong - the key isnt always highlighted purple
+- [x] some highlighting in the various popup menus are wrong - the key isnt always highlighted purple
+- [x] the help popup is a bit long now! it would be good if it could be rendered as two columns with some logical grouping of different sections
+- [x] for some reason text in brackets in commit lists is highlighted green
 
 Now:
-- [x] the help popup is a bit long now! it would be good if it could be rendered as two columns with some logical grouping of different sections
-- [ ] for some reason text in brackets in commit lists is highlighted green
 
 Upcoming:
 - [ ] Reflog HEAD on log view

@@ -146,6 +146,72 @@ T["render()"]["shows both author and date"] = function()
   eq(result.lines[1], "  abc1234 Test (Jane) 1 hour ago")
 end
 
+T["render()"]["sets has_author flag when show_author is true"] = function()
+  local commits = { make_commit("abc1234", "Test", { author = "John Doe" }) }
+
+  local result = log_list.render(commits, nil, { show_author = true })
+  eq(result.line_info[1].has_author, true)
+end
+
+T["render()"]["has_author is false when show_author is not set"] = function()
+  local commits = { make_commit("abc1234", "Test", { author = "John Doe" }) }
+
+  local result = log_list.render(commits, nil, {})
+  eq(result.line_info[1].has_author, false)
+end
+
+T["render()"]["has_author is false when commit has no author"] = function()
+  local commits = { make_commit("abc1234", "Test with (parentheses)") }
+
+  local result = log_list.render(commits, nil, { show_author = true })
+  eq(result.line_info[1].has_author, false)
+end
+
+T["render()"]["parentheses in subject not mistaken for author"] = function()
+  -- This tests that commit messages with parentheses won't have author highlighting
+  local commits = { make_commit("abc1234", "feat: make <CR> on commit show diff (shortcut for d d)") }
+
+  -- No show_author option = has_author should be false
+  local result = log_list.render(commits, nil, {})
+  eq(result.lines[1], "  abc1234 feat: make <CR> on commit show diff (shortcut for d d)")
+  eq(result.line_info[1].has_author, false)
+end
+
+T["render()"]["tracks author column positions correctly"] = function()
+  local commits = { make_commit("abc1234", "Test subject", { author = "John Doe" }) }
+
+  local result = log_list.render(commits, nil, { show_author = true })
+  -- Line: "  abc1234 Test subject (John Doe)"
+  --        0123456789...
+  local info = result.line_info[1]
+  eq(info.has_author, true)
+  -- subject_end_col should be at end of "Test subject" (before " (")
+  -- "  abc1234 Test subject" = 22 chars (0-indexed: 0-21, so end is 22)
+  eq(info.subject_end_col, 22)
+  -- author_start_col should be at "(" after space = position 23
+  eq(info.author_start_col, 23)
+  -- author_end_col should be after ")" = position 33
+  eq(info.author_end_col, 33)
+end
+
+T["render()"]["tracks author positions with parentheses in subject"] = function()
+  -- Commit message with parentheses that should NOT be highlighted as author
+  local commits =
+    { make_commit("abc1234", "feat: show diff (shortcut for d d)", { author = "Dave Aitken" }) }
+
+  local result = log_list.render(commits, nil, { show_author = true })
+  -- Line: "  abc1234 feat: show diff (shortcut for d d) (Dave Aitken)"
+  local info = result.line_info[1]
+  eq(info.has_author, true)
+  -- The subject includes "(shortcut for d d)" - author starts AFTER that
+  -- "  abc1234 feat: show diff (shortcut for d d)" = 44 chars
+  eq(info.subject_end_col, 44)
+  -- Author "(Dave Aitken)" starts at position 45 (after space)
+  eq(info.author_start_col, 45)
+  -- Author ends at position 58
+  eq(info.author_end_col, 58)
+end
+
 -- =============================================================================
 -- render() with refs tests
 -- =============================================================================

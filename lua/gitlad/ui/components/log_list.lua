@@ -23,6 +23,10 @@ local M = {}
 ---@field section string Which section this belongs to
 ---@field expanded boolean|nil Whether details are expanded
 ---@field displayed_refs CommitRef[]|nil Filtered refs actually displayed on this line
+---@field has_author boolean|nil Whether this line has author text appended in parens
+---@field subject_end_col number|nil 0-indexed column where subject ends (before author)
+---@field author_start_col number|nil 0-indexed column where author parens start
+---@field author_end_col number|nil 0-indexed column where author parens end (exclusive)
 
 ---@class LogListResult
 ---@field lines string[] Formatted lines
@@ -114,11 +118,30 @@ function M.render(commits, expanded_hashes, opts)
 
     table.insert(parts, subject)
 
+    -- Track column positions for highlighting
+    -- Calculate current position (0-indexed) after subject
+    local current_len = 0
+    for _, p in ipairs(parts) do
+      current_len = current_len + #p
+    end
+    local subject_end_col = current_len -- Where subject ends (before author)
+
     -- Optionally add author
+    local has_author = false
+    local author_start_col = nil
+    local author_end_col = nil
     if opts.show_author and commit.author then
+      author_start_col = current_len + 1 -- After space, at opening paren (0-indexed)
       table.insert(parts, " (")
       table.insert(parts, commit.author)
       table.insert(parts, ")")
+      has_author = true
+      -- Recalculate current_len
+      current_len = 0
+      for _, p in ipairs(parts) do
+        current_len = current_len + #p
+      end
+      author_end_col = current_len -- After closing paren (exclusive, 0-indexed)
     end
 
     -- Optionally add date
@@ -136,6 +159,10 @@ function M.render(commits, expanded_hashes, opts)
       section = section,
       expanded = is_expanded or false,
       displayed_refs = displayed_refs, -- Filtered refs actually shown on this line
+      has_author = has_author,
+      subject_end_col = subject_end_col,
+      author_start_col = author_start_col,
+      author_end_col = author_end_col,
     }
 
     -- If expanded, add detail lines (body)
@@ -253,19 +280,14 @@ function M.apply_highlights(bufnr, start_line, result)
           subject_start = pos
         end
 
-        -- Highlight subject
+        -- Highlight subject and author using tracked column positions
         if subject_start <= #line then
-          -- Find where subject ends (before author in parens, or end of line)
-          local subject_end = line:find(" %(", subject_start)
-          if subject_end then
-            hl.set(bufnr, ns, line_idx, subject_start - 1, subject_end - 1, "GitladCommitMsg")
-            -- Highlight author in parens if present
-            local author_start, author_end = line:find("%(.-%)$")
-            if author_start then
-              hl.set(bufnr, ns, line_idx, author_start - 1, author_end, "GitladCommitAuthor")
-            end
+          if info.has_author and info.subject_end_col and info.author_start_col and info.author_end_col then
+            -- Use exact column positions tracked during render
+            hl.set(bufnr, ns, line_idx, subject_start - 1, info.subject_end_col, "GitladCommitMsg")
+            hl.set(bufnr, ns, line_idx, info.author_start_col, info.author_end_col, "GitladCommitAuthor")
           else
-            -- No author, subject goes to end
+            -- No author info, subject goes to end of line
             hl.set(bufnr, ns, line_idx, subject_start - 1, #line, "GitladCommitMsg")
           end
         end
