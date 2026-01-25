@@ -1507,6 +1507,79 @@ function StatusBuffer:_goto_prev_section()
   end
 end
 
+--- Calculate the target line number when on a diff line
+--- Returns the line number in the file that corresponds to the current cursor position
+---@param path string File path
+---@param section string Section type
+---@param hunk_index number Hunk index (1-based)
+---@return number|nil target_line Line number to jump to, or nil if can't calculate
+function StatusBuffer:_get_diff_line_target(path, section, hunk_index)
+  local diff_data = self.diff_cache[diff_cache_key(path, section)]
+  if not diff_data or not diff_data.hunks[hunk_index] then
+    return nil
+  end
+
+  local hunk = diff_data.hunks[hunk_index]
+  -- Parse the @@ header to get the new file starting line
+  local _, _, new_start = hunk.header:match("^@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
+  new_start = tonumber(new_start) or 1
+
+  -- Find the current buffer line
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local buffer_line = cursor[1]
+
+  -- Find where this file's diff starts in the buffer by scanning backward
+  -- Stop when we hit the file entry line (hunk_index = nil) or a different file
+  local diff_start_line = buffer_line
+  for line = buffer_line, 1, -1 do
+    local info = self.line_map[line]
+    if not info or info.path ~= path or info.section ~= section or not info.hunk_index then
+      diff_start_line = line + 1
+      break
+    end
+    if line == 1 then
+      diff_start_line = 1
+    end
+  end
+
+  -- Calculate display_line index (0-based offset from diff start)
+  local display_index = buffer_line - diff_start_line + 1
+
+  -- Find where in display_lines this hunk starts
+  local hunk_start_display = 0
+  local current_hunk = 0
+  for i, line in ipairs(diff_data.display_lines) do
+    if line:match("^@@") then
+      current_hunk = current_hunk + 1
+      if current_hunk == hunk_index then
+        hunk_start_display = i
+        break
+      end
+    end
+  end
+
+  -- If we're on the @@ header line itself, jump to new_start
+  if display_index == hunk_start_display then
+    return new_start
+  end
+
+  -- Count lines from hunk start to current position
+  -- Only count context lines and additions (+) since those exist in the new file
+  local line_offset = 0
+  for i = hunk_start_display + 1, display_index do
+    local line = diff_data.display_lines[i]
+    if line then
+      local first_char = line:sub(1, 1)
+      if first_char == " " or first_char == "+" then
+        line_offset = line_offset + 1
+      end
+      -- Deletions (-) don't count towards new file line numbers
+    end
+  end
+
+  return new_start + line_offset - 1 -- -1 because line_offset is 1-based count
+end
+
 --- Visit the file at cursor
 function StatusBuffer:_visit_file()
   -- Check if on a submodule - open its directory
@@ -1519,7 +1592,7 @@ function StatusBuffer:_visit_file()
     return
   end
 
-  local path, section = self:_get_current_file()
+  local path, section, hunk_index = self:_get_current_file()
   if path then
     -- For conflicted files, open diffview merge tool instead of the raw file
     if section == "conflicted" then
@@ -1529,16 +1602,30 @@ function StatusBuffer:_visit_file()
     end
 
     local full_path = join_path(self.repo_state.repo_root, path)
+    local target_line = nil
+
+    -- If on a diff line (inside expanded hunk), calculate target line
+    if hunk_index then
+      target_line = self:_get_diff_line_target(path, section, hunk_index)
+    end
+
     -- Close status and open file
     self:close()
     vim.cmd("edit " .. vim.fn.fnameescape(full_path))
+
+    -- Jump to target line if we calculated one
+    if target_line then
+      vim.api.nvim_win_set_cursor(0, { target_line, 0 })
+    end
     return
   end
 
-  -- If not on a file, check if on a commit - toggle expand
+  -- If not on a file, check if on a commit - show commit diff (shortcut for d d)
   local commit = self:_get_current_commit()
   if commit then
-    self:_toggle_diff()
+    local diff_popup = require("gitlad.popups.diff")
+    diff_popup._diff_commit(self.repo_state, commit)
+    return
   end
 end
 
@@ -2043,20 +2130,46 @@ function StatusBuffer:render()
   end
 
   -- === Commit sections (unpulled/unpushed/recent) - shown after file changes, magit style ===
+  -- Order: user's commits first, then what to pull, with upstream last (often has many commits)
 
   -- Track whether we have any unpushed commits (used to decide whether to show recent commits)
   local has_unpushed_upstream = status.upstream
     and status.unpushed_upstream
     and #status.unpushed_upstream > 0
 
-  -- Unpulled/Unpushed sections for upstream (merge branch)
-  if status.upstream then
+  if status.push_remote then
+    -- Push remote is different from upstream - show push remote sections first
+    -- 1. User's commits to push remote (most important - your own work)
     add_commit_section(
-      "Unpulled from " .. status.upstream,
-      status.unpulled_upstream or {},
-      "unpulled_upstream"
+      "Unpushed to " .. status.push_remote,
+      status.unpushed_push or {},
+      "unpushed_push"
     )
-
+    -- 2. Commits to pull from push remote
+    add_commit_section(
+      "Unpulled from " .. status.push_remote,
+      status.unpulled_push or {},
+      "unpulled_push"
+    )
+    -- 3. User's commits not yet in upstream (if upstream exists)
+    if status.upstream and has_unpushed_upstream then
+      add_commit_section(
+        "Unmerged into " .. status.upstream,
+        status.unpushed_upstream or {},
+        "unpushed_upstream"
+      )
+    end
+    -- 4. Commits to pull from upstream (last - often has many commits)
+    if status.upstream then
+      add_commit_section(
+        "Unpulled from " .. status.upstream,
+        status.unpulled_upstream or {},
+        "unpulled_upstream"
+      )
+    end
+  elseif status.upstream then
+    -- No separate push remote - just show upstream sections
+    -- 1. User's commits first
     if has_unpushed_upstream then
       add_commit_section(
         "Unmerged into " .. status.upstream,
@@ -2064,19 +2177,11 @@ function StatusBuffer:render()
         "unpushed_upstream"
       )
     end
-  end
-
-  -- Unpulled/Unpushed sections for push remote (if different)
-  if status.push_remote then
+    -- 2. Commits to pull (last)
     add_commit_section(
-      "Unpulled from " .. status.push_remote,
-      status.unpulled_push or {},
-      "unpulled_push"
-    )
-    add_commit_section(
-      "Unpushed to " .. status.push_remote,
-      status.unpushed_push or {},
-      "unpushed_push"
+      "Unpulled from " .. status.upstream,
+      status.unpulled_upstream or {},
+      "unpulled_upstream"
     )
   end
 

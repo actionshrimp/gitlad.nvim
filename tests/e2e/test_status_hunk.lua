@@ -414,4 +414,115 @@ T["visual selection"]["stages multiple selected lines"] = function()
   assert_truthy(unstaged_diff:find("+D"), "Unstaged diff should still contain +D")
 end
 
+-- =============================================================================
+-- Hunk Navigation Tests
+-- =============================================================================
+
+T["hunk navigation"] = MiniTest.new_set()
+
+T["hunk navigation"]["<CR> on diff line jumps to file at correct line"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create a file with multiple lines and commit it
+  local content =
+    "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\n"
+  create_file(child, repo, "file.txt", content)
+  git(child, repo, "add file.txt")
+  git(child, repo, 'commit -m "Initial commit"')
+
+  -- Modify lines 5-7 to create a change
+  local modified =
+    "line 1\nline 2\nline 3\nline 4\nmodified 5\nmodified 6\nmodified 7\nline 8\nline 9\nline 10\n"
+  create_file(child, repo, "file.txt", modified)
+
+  open_gitlad(child, repo)
+
+  -- Navigate to the unstaged file
+  child.type_keys("gj")
+  wait(child, 100)
+
+  -- Expand the diff
+  child.type_keys("<Tab>")
+  wait(child, 300)
+
+  -- Move down to a diff line (should be on a + line)
+  -- Navigate down several lines to get into the diff content
+  child.type_keys("jjjj")
+  wait(child, 100)
+
+  -- Press <CR> to jump to file
+  child.type_keys("<CR>")
+  wait(child, 200)
+
+  -- Verify we're now in file.txt
+  local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
+  assert_truthy(buf_name:find("file.txt"), "Should be in file.txt buffer")
+
+  -- Verify cursor is around line 5-7 (the modified lines)
+  local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  assert_truthy(
+    cursor_line >= 4 and cursor_line <= 8,
+    "Cursor should be around modified lines (4-8), got: " .. cursor_line
+  )
+end
+
+T["hunk navigation"]["<CR> on hunk header jumps to hunk start line"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create a file with many lines
+  local content = ""
+  for i = 1, 20 do
+    content = content .. "line " .. i .. "\n"
+  end
+  create_file(child, repo, "file.txt", content)
+  git(child, repo, "add file.txt")
+  git(child, repo, 'commit -m "Initial commit"')
+
+  -- Modify line 15
+  local modified = ""
+  for i = 1, 20 do
+    if i == 15 then
+      modified = modified .. "modified line 15\n"
+    else
+      modified = modified .. "line " .. i .. "\n"
+    end
+  end
+  create_file(child, repo, "file.txt", modified)
+
+  open_gitlad(child, repo)
+
+  -- Navigate to file and expand
+  child.type_keys("gj")
+  wait(child, 100)
+  child.type_keys("<Tab>")
+  wait(child, 300)
+
+  -- Move down once to get to the @@ header line
+  child.type_keys("j")
+  wait(child, 100)
+
+  -- Get current line content to verify we're on @@ line
+  local lines = get_buffer_lines(child)
+  local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  local current_line = lines[cursor_line]
+  assert_truthy(current_line:match("^@@"), "Should be on @@ header line")
+
+  -- Press <CR> to jump to file
+  child.type_keys("<CR>")
+  wait(child, 200)
+
+  -- Verify we're in file.txt
+  local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
+  assert_truthy(buf_name:find("file.txt"), "Should be in file.txt buffer")
+
+  -- Cursor should be around line 15 (where the change is)
+  cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  assert_truthy(
+    cursor_line >= 12 and cursor_line <= 16,
+    "Cursor should be around line 15, got: " .. cursor_line
+  )
+end
+
 return T

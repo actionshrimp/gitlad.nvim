@@ -83,10 +83,15 @@ function LogBuffer:_setup_keymaps()
     self:_goto_prev_commit()
   end, "Previous commit")
 
-  -- Expand/collapse commit details
+  -- Show commit diff (shortcut for d d)
   keymap.set(bufnr, "n", "<CR>", function()
-    self:_toggle_expand()
-  end, "Toggle commit details")
+    local diff_popup = require("gitlad.popups.diff")
+    local commit = self:_get_current_commit()
+    if commit then
+      diff_popup._diff_commit(self.repo_state, commit)
+    end
+  end, "Show commit diff")
+  -- Expand/collapse commit details
   keymap.set(bufnr, "n", "<Tab>", function()
     self:_toggle_expand()
   end, "Toggle commit details")
@@ -326,7 +331,7 @@ function LogBuffer:render()
   table.insert(lines, header)
   table.insert(lines, string.format("%d commits", #self.commits))
   table.insert(lines, "")
-  table.insert(lines, "Press <CR>/<Tab> expand, d diff, y yank hash, g refresh, q close")
+  table.insert(lines, "Press <CR> diff, <Tab> expand, d popup, y yank, gr refresh, q close")
   table.insert(lines, "")
 
   local header_lines = #lines
