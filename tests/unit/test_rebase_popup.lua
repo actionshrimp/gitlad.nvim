@@ -157,6 +157,17 @@ T["rebase popup"]["creates in-progress mode actions correctly"] = function()
   eq(abort_called, true)
 end
 
+T["rebase popup"]["_include_commit_in_rebase appends ^ to include selected commit"] = function()
+  local rebase = require("gitlad.popups.rebase")
+
+  -- Git rebase -i <commit> rebases commits AFTER the specified commit.
+  -- To include the commit itself, we need to use <commit>^ (parent).
+  -- This matches magit's magit-rebase-interactive-include-selected behavior.
+  eq(rebase._include_commit_in_rebase("abc123"), "abc123^")
+  eq(rebase._include_commit_in_rebase("HEAD~3"), "HEAD~3^")
+  eq(rebase._include_commit_in_rebase("feature-branch"), "feature-branch^")
+end
+
 T["rebase popup"]["toggle_switch works correctly"] = function()
   local popup = require("gitlad.ui.popup")
 

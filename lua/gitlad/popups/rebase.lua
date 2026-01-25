@@ -364,6 +364,16 @@ function M._rebase_abort(repo_state)
   end)
 end
 
+--- Transform a commit reference for interactive rebase to include the selected commit.
+--- Git's `rebase -i <commit>` rebases commits AFTER the specified commit (exclusive).
+--- By appending `^` (parent), we make it inclusive of the selected commit.
+--- This matches magit's default behavior (magit-rebase-interactive-include-selected = t).
+---@param commit string The commit hash or ref
+---@return string The transformed commit ref with ^ appended
+function M._include_commit_in_rebase(commit)
+  return commit .. "^"
+end
+
 --- Start an interactive rebase
 --- If a commit is at point, uses that as the target (rebases commits after it)
 --- Otherwise prompts for a commit to rebase from
@@ -379,7 +389,7 @@ function M._rebase_interactive(repo_state, popup_data, context)
 
   -- If we have a commit at point, use it as the target
   if context and context.commit then
-    do_rebase(repo_state, context.commit, args)
+    do_rebase(repo_state, M._include_commit_in_rebase(context.commit), args)
     return
   end
 
