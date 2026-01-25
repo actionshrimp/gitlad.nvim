@@ -256,10 +256,12 @@ function StatusBuffer:_setup_keymaps()
     help_popup.open(self)
   end, "Show help")
 
-  -- Commit popup
+  -- Commit popup (passes commit at point for instant fixup/squash)
   keymap.set(bufnr, "n", "c", function()
     local commit_popup = require("gitlad.popups.commit")
-    commit_popup.open(self.repo_state)
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    commit_popup.open(self.repo_state, context)
   end, "Commit popup")
 
   -- Push popup (evil-collection-magit style: p instead of P)
@@ -359,7 +361,9 @@ function StatusBuffer:_setup_keymaps()
   -- Rebase popup
   keymap.set(bufnr, "n", "r", function()
     local rebase_popup = require("gitlad.popups.rebase")
-    rebase_popup.open(self.repo_state)
+    local commit = self:_get_current_commit()
+    local context = commit and { commit = commit.hash } or nil
+    rebase_popup.open(self.repo_state, context)
   end, "Rebase popup")
 
   -- Merge popup

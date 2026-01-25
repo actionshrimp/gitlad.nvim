@@ -179,7 +179,8 @@ lua/gitlad/
 ├── utils/
 │   ├── init.lua          # Utility module index
 │   ├── errors.lua        # Centralized error handling
-│   └── keymap.lua        # Buffer-local keymap helpers
+│   ├── keymap.lua        # Buffer-local keymap helpers
+│   └── prompt.lua        # Ref prompt with completion (magit-style)
 ├── popups/
 │   ├── branch.lua        # Branch popup (checkout, create, delete, rename)
 │   ├── cherrypick.lua    # Cherry-pick popup with conflict detection
@@ -255,6 +256,14 @@ lua/gitlad/
    - `keymap.lua`: Simplified buffer-local keymap setup
    - Reduces duplication and ensures consistent patterns across codebase
 
+10. **Ref Prompts with Picker/Completion** (`utils/prompt.lua`)
+    - Three-tier picker with graceful fallback: snacks.nvim → mini.pick → vim.ui.input
+    - Shows suggestions (branches, tags, recent commits) while accepting arbitrary input
+    - Matches magit's `completing-read` with `require-match = 'any'` behavior
+    - **Preferred pattern** for any feature needing user to select a ref, commit, or branch
+    - No forced dependencies - works with whatever picker the user has installed
+    - Example: `prompt.prompt_for_ref({ prompt = "Rebase onto: " }, callback)`
+
 ## Keybindings (evil-collection-magit Style)
 
 **Note:** We follow [evil-collection-magit](https://github.com/emacs-evil/evil-collection/blob/master/modes/magit/evil-collection-magit.el) conventions, not vanilla magit. Key differences from vanilla magit:
@@ -301,6 +310,39 @@ This makes the plugin more comfortable for vim/evil users.
 | `t` | Tag (not yet implemented) |
 | `!` | Run git command (not yet implemented) |
 
+### Rebase Editor (when editing git-rebase-todo)
+| Key | Action |
+|-----|--------|
+| `p` | Pick (use commit) |
+| `r` | Reword (edit message) |
+| `e` | Edit (stop for amending) |
+| `s` | Squash (meld into previous) |
+| `f` | Fixup (meld, discard message) |
+| `d` | Drop (remove commit) |
+| `x` | Exec (insert shell command) |
+| `M-j` / `M-k` | Move commit down/up |
+| `ZZ` / `C-c C-c` | Submit (apply rebase) |
+| `ZQ` / `C-c C-k` | Abort (cancel rebase) |
+| `<CR>` | Show commit at point |
+
+### Commit Popup Actions
+| Key | Action |
+|-----|--------|
+| `c c` | Commit (opens editor) |
+| `c e` | Extend (amend without editing) |
+| `c w` | Reword (edit message only) |
+| `c a` | Amend (amend with editor) |
+| `c F` | Instant fixup (fixup + autosquash rebase) |
+| `c S` | Instant squash (squash + autosquash rebase) |
+
+### Rebase Popup Actions
+| Key | Action |
+|-----|--------|
+| `r i` | Interactive rebase (uses commit at point as target) |
+| `r p` | Rebase onto pushremote |
+| `r u` | Rebase onto upstream |
+| `r e` | Rebase elsewhere (prompts for branch) |
+
 ### Other
 | Key | Action |
 |-----|--------|
@@ -325,12 +367,13 @@ See **PLAN.md** for the detailed development roadmap with specific tasks, files 
 - Transient-style popup system (PopupBuilder)
 - Log view with expandable commit details, reusable log_list component
 - All Phase 3 popups: Commit, Push, Pull, Fetch, Branch, Log, Diff, Stash
-- Phase 4 popups: Rebase, Cherry-pick, Revert, Reset
+- Phase 4 popups: Rebase, Cherry-pick, Revert, Reset, Merge
+- Interactive rebase editor with p/r/e/s/f/d keybindings (evil-collection style)
+- Instant fixup/squash (`c F` / `c S`) - creates fixup commit and rebases immediately
 - Sequencer state detection (shows cherry-pick/revert in progress)
-- 500+ tests across 47 test files, CI configured
+- 440+ tests across 49 test files, CI configured
 
 **Next up:**
-- Merge & Conflict Resolution (via diffview.nvim)
 - Tag popup
 - Blame view
 

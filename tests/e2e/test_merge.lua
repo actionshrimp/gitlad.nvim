@@ -1933,9 +1933,11 @@ T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] =
     child.lua([[vim.api.nvim_exec_autocmds("User", { pattern = "DiffviewViewClosed" })]])
     child.lua([[vim.wait(1000, function() return false end)]])
 
-    -- File should now be staged
-    local staged = git(child, repo, "diff --cached --name-only")
-    eq(staged:match("test%.txt") ~= nil, true)
+    -- File should now be resolved (no longer in unmerged list)
+    -- When a file is staged during merge, it's removed from the unmerged list
+    local unmerged = git(child, repo, "ls-files -u")
+    local is_still_unmerged = unmerged:match("test%.txt") ~= nil
+    eq(is_still_unmerged, false)
   end
 
   cleanup_repo(child, repo)
@@ -2004,11 +2006,12 @@ T["auto-staging"]["does not stage files that still have conflict markers"] = fun
     child.lua([[vim.api.nvim_exec_autocmds("User", { pattern = "DiffviewViewClosed" })]])
     child.lua([[vim.wait(1000, function() return false end)]])
 
-    -- File should NOT be staged (still has markers)
-    local staged = git(child, repo, "diff --cached --name-only")
-    -- staged might be empty or not contain test.txt
-    local is_staged = staged:match("test%.txt") ~= nil
-    eq(is_staged, false)
+    -- File should still be unmerged (not resolved) since it has conflict markers
+    -- Use git ls-files -u to check if file is still unmerged
+    -- If file is in ls-files -u output, it's still conflicted (not resolved/staged)
+    local unmerged = git(child, repo, "ls-files -u")
+    local is_still_unmerged = unmerged:match("test%.txt") ~= nil
+    eq(is_still_unmerged, true)
   end
 
   cleanup_repo(child, repo)
