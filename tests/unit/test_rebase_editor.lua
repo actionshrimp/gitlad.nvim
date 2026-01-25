@@ -58,23 +58,20 @@ T["client"]["get_envs_git_editor returns env table"] = function()
   expect.equality(env.GIT_SEQUENCE_EDITOR, env.GIT_EDITOR)
 end
 
--- Test the commit_select module
-T["commit_select"] = MiniTest.new_set()
+-- Test the prompt utility module
+T["prompt"] = MiniTest.new_set()
 
-T["commit_select"]["module loads without error"] = function()
-  local ok, commit_select = pcall(require, "gitlad.ui.views.commit_select")
+T["prompt"]["module loads without error"] = function()
+  local ok, prompt = pcall(require, "gitlad.utils.prompt")
   expect.equality(ok, true)
-  expect.equality(type(commit_select), "table")
-  expect.equality(type(commit_select.open), "function")
-  expect.equality(type(commit_select.close), "function")
-  expect.equality(type(commit_select.is_active), "function")
+  expect.equality(type(prompt), "table")
+  expect.equality(type(prompt.prompt_for_ref), "function")
 end
 
-T["commit_select"]["is_active returns false when no selector open"] = function()
-  local commit_select = require("gitlad.ui.views.commit_select")
-  -- Ensure clean state
-  commit_select.close()
-  eq(commit_select.is_active(), false)
+T["prompt"]["global completion function exists"] = function()
+  -- Load the module to register the global function
+  require("gitlad.utils.prompt")
+  expect.equality(type(_G.gitlad_complete_refs), "function")
 end
 
 -- Test that instant fixup functions are added to commit popup

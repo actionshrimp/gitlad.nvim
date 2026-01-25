@@ -250,13 +250,13 @@ function M._do_instant_fixup(repo_state, popup_data, context)
     return
   end
 
-  -- Fall back to commit selector
-  local commit_select = require("gitlad.ui.views.commit_select")
-  commit_select.open(repo_state, function(commit)
-    if commit then
-      execute_instant_operation(repo_state, commit.hash, args, false)
+  -- Prompt for a ref (accepts any ref: SHA, branch, HEAD~n, etc.)
+  local prompt = require("gitlad.utils.prompt")
+  prompt.prompt_for_ref({ prompt = "Fixup commit: " }, function(ref)
+    if ref then
+      execute_instant_operation(repo_state, ref, args, false)
     end
-  end, { prompt = "Fixup commit" })
+  end)
 end
 
 --- Perform instant squash
@@ -288,13 +288,13 @@ function M._do_instant_squash(repo_state, popup_data, context)
     return
   end
 
-  -- Fall back to commit selector
-  local commit_select = require("gitlad.ui.views.commit_select")
-  commit_select.open(repo_state, function(commit)
-    if commit then
-      execute_instant_operation(repo_state, commit.hash, args, true)
+  -- Prompt for a ref (accepts any ref: SHA, branch, HEAD~n, etc.)
+  local prompt = require("gitlad.utils.prompt")
+  prompt.prompt_for_ref({ prompt = "Squash into commit: " }, function(ref)
+    if ref then
+      execute_instant_operation(repo_state, ref, args, true)
     end
-  end, { prompt = "Squash into commit" })
+  end)
 end
 
 return M

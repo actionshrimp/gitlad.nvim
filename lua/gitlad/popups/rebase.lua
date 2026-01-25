@@ -393,13 +393,13 @@ function M._rebase_interactive(repo_state, popup_data, context)
     return
   end
 
-  -- Otherwise, prompt for a commit using commit selector
-  local commit_select = require("gitlad.ui.views.commit_select")
-  commit_select.open(repo_state, function(commit)
-    if commit then
-      do_rebase(repo_state, commit.hash, args)
+  -- Otherwise, prompt for a ref (accepts any ref: SHA, branch, HEAD~n, etc.)
+  local prompt = require("gitlad.utils.prompt")
+  prompt.prompt_for_ref({ prompt = "Interactive rebase from: " }, function(ref)
+    if ref then
+      do_rebase(repo_state, M._include_commit_in_rebase(ref), args)
     end
-  end, { prompt = "Interactive rebase from" })
+  end)
 end
 
 return M

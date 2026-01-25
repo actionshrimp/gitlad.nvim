@@ -179,7 +179,8 @@ lua/gitlad/
 ├── utils/
 │   ├── init.lua          # Utility module index
 │   ├── errors.lua        # Centralized error handling
-│   └── keymap.lua        # Buffer-local keymap helpers
+│   ├── keymap.lua        # Buffer-local keymap helpers
+│   └── prompt.lua        # Ref prompt with completion (magit-style)
 ├── popups/
 │   ├── branch.lua        # Branch popup (checkout, create, delete, rename)
 │   ├── cherrypick.lua    # Cherry-pick popup with conflict detection
@@ -254,6 +255,14 @@ lua/gitlad/
    - `errors.lua`: Centralized error handling (`result_to_callback`, `notify`)
    - `keymap.lua`: Simplified buffer-local keymap setup
    - Reduces duplication and ensures consistent patterns across codebase
+
+10. **Ref Prompts with Picker/Completion** (`utils/prompt.lua`)
+    - Three-tier picker with graceful fallback: snacks.nvim → mini.pick → vim.ui.input
+    - Shows suggestions (branches, tags, recent commits) while accepting arbitrary input
+    - Matches magit's `completing-read` with `require-match = 'any'` behavior
+    - **Preferred pattern** for any feature needing user to select a ref, commit, or branch
+    - No forced dependencies - works with whatever picker the user has installed
+    - Example: `prompt.prompt_for_ref({ prompt = "Rebase onto: " }, callback)`
 
 ## Keybindings (evil-collection-magit Style)
 

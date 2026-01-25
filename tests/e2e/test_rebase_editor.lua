@@ -106,23 +106,23 @@ T["client"]["get_envs_git_editor returns valid env table"] = function()
   expect.equality(result.seq_contains_headless, true)
 end
 
-T["commit_select"] = MiniTest.new_set()
+T["prompt"] = MiniTest.new_set()
 
-T["commit_select"]["module loads in child process"] = function()
+T["prompt"]["module loads in child process"] = function()
   local child = _G.child
 
   local result = child.lua([[
-    local ok, commit_select = pcall(require, "gitlad.ui.views.commit_select")
+    local ok, prompt = pcall(require, "gitlad.utils.prompt")
     return {
       ok = ok,
-      has_open = type(commit_select.open) == "function",
-      has_close = type(commit_select.close) == "function",
+      has_prompt_for_ref = type(prompt.prompt_for_ref) == "function",
+      has_global_completion = type(_G.gitlad_complete_refs) == "function",
     }
   ]])
 
   expect.equality(result.ok, true)
-  expect.equality(result.has_open, true)
-  expect.equality(result.has_close, true)
+  expect.equality(result.has_prompt_for_ref, true)
+  expect.equality(result.has_global_completion, true)
 end
 
 T["commit_popup_instant"] = MiniTest.new_set()
@@ -365,7 +365,7 @@ T["commit_at_point"]["instant squash uses commit at point in status view"] = fun
   cleanup_repo(child, repo)
 end
 
-T["commit_at_point"]["instant fixup falls back to selector when no commit at point"] = function()
+T["commit_at_point"]["instant fixup falls back to prompt when no commit at point"] = function()
   local child = _G.child
   local repo = setup_repo_for_instant_op(child)
 
@@ -378,24 +378,49 @@ T["commit_at_point"]["instant fixup falls back to selector when no commit at poi
   child.type_keys("gg")
   child.lua([[vim.wait(100, function() return false end)]])
 
+  -- Mock pickers to track if prompt was triggered
+  -- Disable snacks and mini.pick to test vim.ui.input fallback
+  child.lua([[
+    _G.prompt_called = false
+    _G.prompt_opts = nil
+
+    -- Make snacks unavailable
+    package.loaded["snacks"] = nil
+    package.preload["snacks"] = function() error("snacks not available") end
+
+    -- Make mini.pick unavailable
+    package.loaded["mini.pick"] = nil
+    package.preload["mini.pick"] = function() error("mini.pick not available") end
+
+    -- Clear the prompt module cache to pick up the mocked dependencies
+    package.loaded["gitlad.utils.prompt"] = nil
+
+    -- Mock vim.ui.input
+    local original_input = vim.ui.input
+    vim.ui.input = function(opts, callback)
+      _G.prompt_called = true
+      _G.prompt_opts = opts
+      -- Don't call callback (simulates user cancelling)
+    end
+  ]])
+
   -- Open commit popup
   child.type_keys("c")
   child.lua([[vim.wait(100, function() return false end)]])
 
-  -- Press F for instant fixup - should open commit selector since not on a commit
+  -- Press F for instant fixup - should open prompt since not on a commit
   child.type_keys("F")
   child.lua([[vim.wait(200, function() return false end)]])
 
-  -- Should have opened a floating window (commit selector)
-  local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  -- vim.ui.input should have been called (fallback)
+  local prompt_called = child.lua_get([[_G.prompt_called]])
+  expect.equality(prompt_called, true, "Should prompt for ref when no commit at point")
 
-  -- If commit selector opened, we should have 3+ windows (status + popup + selector)
-  -- or at least 2 windows (status + selector after popup closed)
-  expect.equality(win_count >= 2, true, "Should open commit selector when no commit at point")
+  -- Check the prompt text
+  local prompt = child.lua_get([[_G.prompt_opts and _G.prompt_opts.prompt or ""]])
+  expect.equality(prompt:find("Fixup") ~= nil, true, "Prompt should mention fixup")
 
-  -- Close everything
-  child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  -- Close status buffer
   child.type_keys("q")
 
   cleanup_repo(child, repo)
