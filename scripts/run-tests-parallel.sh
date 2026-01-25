@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Parallel test runner for gitlad.nvim
-# Runs e2e tests in parallel while preserving mini.test output format
+# Runs e2e test files in parallel using GNU parallel
 #
-# Features:
-# - Runs each test file in parallel
-# - Auto-splits large test files into batches for better parallelism
-# - Configurable via JOBS, MAX_TESTS_PER_BATCH environment variables
+# Each test file runs in its own Neovim instance using mini.test natively.
+# Outputs per-file timing to help identify slow test files that may need splitting.
 
 set -e
 
@@ -17,10 +15,9 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Configuration
-# Default to number of CPUs, override with JOBS=N
+# Configuration - default to number of CPUs
 if [[ -z "$JOBS" ]]; then
     if command -v nproc > /dev/null 2>&1; then
         JOBS=$(nproc)
@@ -30,10 +27,6 @@ if [[ -z "$JOBS" ]]; then
         JOBS=4
     fi
 fi
-
-# Max tests per batch before splitting a file
-# Files with more tests than this will be split into multiple parallel batches
-MAX_TESTS_PER_BATCH=${MAX_TESTS_PER_BATCH:-10}
 
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
@@ -47,23 +40,11 @@ while [[ $# -gt 0 ]]; do
         --e2e-only) RUN_UNIT=false; shift ;;
         --jobs=*) JOBS="${1#*=}"; shift ;;
         -j) JOBS="$2"; shift; shift ;;
-        --max-batch=*) MAX_TESTS_PER_BATCH="${1#*=}"; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
-# Count tests in a file by looking for T["..."] = function() patterns
-# Handles both T["name"] = function() and T["group"]["name"] = function()
-count_tests() {
-    local file="$1"
-    local count
-    count=$(grep -cE '^T\["[^"]*"\](\["[^"]*"\])?\s*=\s*function' "$file" 2>/dev/null) || count=0
-    # Ensure we return a clean integer
-    echo "${count:-0}" | tr -d '\n'
-}
-
 export PROJECT_ROOT
-export SCRIPT_DIR
 
 echo -e "${BOLD}Running tests with $JOBS parallel jobs${NC}"
 echo ""
@@ -93,123 +74,116 @@ if $RUN_UNIT; then
     echo ""
 fi
 
-# Run e2e tests in parallel
+# Run e2e tests in parallel (one file per job)
 if $RUN_E2E; then
-    echo -e "${BOLD}=== E2E Tests (parallel, $JOBS jobs, max $MAX_TESTS_PER_BATCH tests/batch) ===${NC}"
+    echo -e "${BOLD}=== E2E Tests (parallel, $JOBS jobs) ===${NC}"
 
     cd "$PROJECT_ROOT"
-    E2E_FILES=(tests/e2e/*.lua)
 
     # Create output directory
-    E2E_OUTPUT_DIR="$TEMP_DIR/e2e"
-    mkdir -p "$E2E_OUTPUT_DIR"
+    OUTPUT_DIR="$TEMP_DIR/e2e"
+    mkdir -p "$OUTPUT_DIR"
 
-    # Build list of work items (file or file+batch)
-    # Format: "file:batch" where batch is empty for whole file, or "1,2,3" for specific tests
-    WORK_ITEMS_FILE="$TEMP_DIR/work_items.txt"
-    > "$WORK_ITEMS_FILE"
-
-    SPLIT_COUNT=0
-    for test_file in "${E2E_FILES[@]}"; do
-        test_count=$(count_tests "$test_file")
-
-        if [ "$test_count" -gt "$MAX_TESTS_PER_BATCH" ]; then
-            # Split this file into batches
-            batch_num=0
-            for ((i=1; i<=test_count; i+=MAX_TESTS_PER_BATCH)); do
-                batch_num=$((batch_num + 1))
-                # Build comma-separated list of test indices for this batch
-                batch_indices=""
-                for ((j=i; j<i+MAX_TESTS_PER_BATCH && j<=test_count; j++)); do
-                    if [ -n "$batch_indices" ]; then
-                        batch_indices="$batch_indices,$j"
-                    else
-                        batch_indices="$j"
-                    fi
-                done
-                echo "$test_file:$batch_indices" >> "$WORK_ITEMS_FILE"
-            done
-            SPLIT_COUNT=$((SPLIT_COUNT + 1))
-        else
-            # Run whole file as single work item
-            echo "$test_file:" >> "$WORK_ITEMS_FILE"
-        fi
-    done
-
-    WORK_COUNT=$(wc -l < "$WORK_ITEMS_FILE" | tr -d ' ')
-    if [ "$SPLIT_COUNT" -gt 0 ]; then
-        echo -e "${YELLOW}Split $SPLIT_COUNT large file(s) into batches (${#E2E_FILES[@]} files → $WORK_COUNT work items)${NC}"
-    fi
-
-    # Create a runner script for parallel to execute
-    RUNNER_SCRIPT="$TEMP_DIR/run_work_item.sh"
-    cat > "$RUNNER_SCRIPT" << 'RUNNER_EOF'
+    # Create runner script that runs a single test file and tracks timing
+    RUNNER_SCRIPT="$TEMP_DIR/run_test_file.sh"
+    cat > "$RUNNER_SCRIPT" << 'EOF'
 #!/usr/bin/env bash
-work_item="$1"
-script_dir="$2"
-output_dir="$3"
+test_file="$1"
+output_dir="$2"
+basename=$(basename "$test_file" .lua)
+outfile="$output_dir/${basename}.out"
+timefile="$output_dir/${basename}.time"
 
-test_file="${work_item%%:*}"
-batch="${work_item#*:}"
-basename=$(basename "$test_file")
+# Record start time
+start_time=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')
 
-if [ -n "$batch" ]; then
-    outfile="${output_dir}/${basename}.batch_${batch//,/_}.out"
+# Run mini.test natively on this single file
+nvim --headless -u tests/minimal_init.lua \
+    -c "lua require('mini.test').setup(); local ok, err = pcall(MiniTest.run, {collect = {find_files = function() return {'$test_file'} end}}); if not ok then print('Error: ' .. err); vim.cmd('cq!') end; local has_fail = false; for _, c in ipairs(MiniTest.current.all_cases or {}) do if c.exec and c.exec.state == 'Fail' then has_fail = true; break end end; if has_fail then vim.cmd('cq!') end" \
+    -c "qa!" > "$outfile" 2>&1
+exit_code=$?
+
+# Record end time and calculate duration
+end_time=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')
+duration=$((end_time - start_time))
+
+# Write timing info
+echo "$duration" > "$timefile"
+
+# Store exit code
+echo "$exit_code" > "${outfile}.exit"
+
+# Print status line with timing
+if [ $exit_code -eq 0 ]; then
+    printf "[%5dms] %-40s %s\n" "$duration" "$basename" "PASS"
 else
-    outfile="${output_dir}/${basename}.out"
+    printf "[%5dms] %-40s %s\n" "$duration" "$basename" "FAIL"
 fi
 
-# Run test - output includes timing from Lua
-# Colorize: SLOW tests red, WARN tests yellow, FAIL status red
-TEST_FILE="$test_file" TEST_BATCH="$batch" TEST_OUTPUT_MODE="streaming" \
-    nvim --headless -u tests/minimal_init.lua \
-    -c "luafile ${script_dir}/test_batch.lua" 2>&1 | tee "$outfile" | while IFS= read -r line; do
-    case "$line" in
-        SLOW*) printf '\033[0;31m%s\033[0m\n' "$line" ;;
-        WARN*) printf '\033[1;33m%s\033[0m\n' "$line" ;;
-        *FAIL*) printf '\033[0;31m%s\033[0m\n' "$line" ;;
-        *) printf '%s\n' "$line" ;;
-    esac
-done
-exit_code=${PIPESTATUS[0]}
-
-# Store exit code for later
-echo $exit_code > "${outfile}.exit"
-RUNNER_EOF
+exit $exit_code
+EOF
     chmod +x "$RUNNER_SCRIPT"
 
-    # Run work items in parallel, streaming output as tests complete
-    cat "$WORK_ITEMS_FILE" | \
-        parallel -j "$JOBS" --will-cite --line-buffer \
-        "$RUNNER_SCRIPT" {} "$SCRIPT_DIR" "$E2E_OUTPUT_DIR"
+    # Get list of e2e test files
+    E2E_FILES=(tests/e2e/*.lua)
+    echo "Running ${#E2E_FILES[@]} test files..."
+    echo ""
+
+    # Run files in parallel
+    # Use --halt soon,fail=1 to continue running but track failures
+    # Use --line-buffer to stream output as tests complete
+    printf '%s\n' "${E2E_FILES[@]}" | \
+        parallel -j "$JOBS" --will-cite --line-buffer --halt soon,fail=1 \
+        "$RUNNER_SCRIPT" {} "$OUTPUT_DIR" || true
 
     echo ""
 
-    # Count passes and failures
+    # Count passes and failures, collect timing data
     E2E_PASSED=0
     E2E_FAILED=0
-    FAILED_ITEMS=()
+    FAILED_FILES=()
+    declare -a TIMING_DATA
 
-    for exit_file in "$E2E_OUTPUT_DIR"/*.exit; do
+    for exit_file in "$OUTPUT_DIR"/*.exit; do
         [ -f "$exit_file" ] || continue
+        basename=$(basename "$exit_file" .out.exit)
         exit_code=$(cat "$exit_file")
+        timefile="$OUTPUT_DIR/${basename}.time"
+        duration=0
+        [ -f "$timefile" ] && duration=$(cat "$timefile")
+
+        TIMING_DATA+=("$duration $basename")
+
         if [ "$exit_code" -eq 0 ]; then
             E2E_PASSED=$((E2E_PASSED + 1))
         else
             E2E_FAILED=$((E2E_FAILED + 1))
-            FAILED_ITEMS+=("${exit_file%.exit}")
+            FAILED_FILES+=("$OUTPUT_DIR/${basename}.out")
         fi
     done
 
     # Show failures in detail
-    if [ ${#FAILED_ITEMS[@]} -gt 0 ]; then
-        echo -e "${RED}${BOLD}=== Failed Test Details ===${NC}"
-        for output_file in "${FAILED_ITEMS[@]}"; do
-            echo -e "\n${RED}--- $output_file ---${NC}"
+    if [ ${#FAILED_FILES[@]} -gt 0 ]; then
+        echo -e "${RED}${BOLD}=== Failed Test Output ===${NC}"
+        for output_file in "${FAILED_FILES[@]}"; do
+            echo -e "\n${RED}--- $(basename "$output_file" .out) ---${NC}"
             cat "$output_file"
         done
         echo ""
     fi
+
+    # Show timing report (sorted by duration, slowest first)
+    echo -e "${BOLD}=== Timing Report (slowest first) ===${NC}"
+    printf '%s\n' "${TIMING_DATA[@]}" | sort -rn | head -10 | while read duration name; do
+        if [ "$duration" -ge 5000 ]; then
+            printf "${RED}[%5dms] %s${NC}\n" "$duration" "$name"
+        elif [ "$duration" -ge 3000 ]; then
+            printf "${YELLOW}[%5dms] %s${NC}\n" "$duration" "$name"
+        else
+            printf "[%5dms] %s\n" "$duration" "$name"
+        fi
+    done
+    echo ""
 
     TOTAL_PASSED=$((TOTAL_PASSED + E2E_PASSED))
     TOTAL_FAILED=$((TOTAL_FAILED + E2E_FAILED))
@@ -218,9 +192,9 @@ fi
 # Summary
 echo -e "${BOLD}=== Summary ===${NC}"
 if [ $TOTAL_FAILED -eq 0 ]; then
-    echo -e "${GREEN}All test files passed!${NC}"
+    echo -e "${GREEN}All $TOTAL_PASSED test files passed!${NC}"
     exit 0
 else
-    echo -e "${RED}$TOTAL_FAILED test file(s) failed${NC}"
+    echo -e "${RED}$TOTAL_FAILED test file(s) failed, $TOTAL_PASSED passed${NC}"
     exit 1
 fi
