@@ -1535,10 +1535,12 @@ function StatusBuffer:_visit_file()
     return
   end
 
-  -- If not on a file, check if on a commit - toggle expand
+  -- If not on a file, check if on a commit - show commit diff (shortcut for d d)
   local commit = self:_get_current_commit()
   if commit then
-    self:_toggle_diff()
+    local diff_popup = require("gitlad.popups.diff")
+    diff_popup._diff_commit(self.repo_state, commit)
+    return
   end
 end
 

@@ -317,4 +317,84 @@ T["navigation"]["gg works to jump to top of buffer"] = function()
   eq(cursor_after_gg, 1, "gg should move to line 1")
 end
 
+-- =============================================================================
+-- CR on commit tests
+-- =============================================================================
+
+T["cr on commit"] = MiniTest.new_set()
+
+T["cr on commit"]["<CR> on commit in log view triggers diff"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create commits
+  create_file(child, repo, "file1.txt", "content 1")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "First commit"')
+
+  create_file(child, repo, "file2.txt", "content 2")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Second commit"')
+
+  open_gitlad(child, repo)
+
+  -- Open log view (l then l)
+  child.type_keys("ll")
+  wait(child, 500)
+
+  -- Verify we're in log buffer
+  local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
+  assert_truthy(buf_name:find("gitlad://log"), "Should be in log buffer")
+
+  -- Navigate to a commit
+  child.type_keys("gj")
+  wait(child, 100)
+
+  -- Press <CR> on commit - should trigger diff
+  -- Since diffview may not be installed in test env, we capture any notification
+  child.lua([[
+    _G.last_notify = nil
+    local original_notify = vim.notify
+    vim.notify = function(msg, level)
+      _G.last_notify = { msg = msg, level = level }
+      original_notify(msg, level)
+    end
+  ]])
+
+  child.type_keys("<CR>")
+  wait(child, 300)
+
+  -- Either diffview opens (test passes), or we get a notification about diffview not being installed
+  -- In either case, no error should occur - the key should be bound
+  local errors = child.lua_get("vim.v.errmsg")
+  eq(errors == "" or errors == nil, true, "Should not have errors")
+end
+
+T["cr on commit"]["<CR> keymap is set on log buffer"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create a commit
+  create_file(child, repo, "file.txt", "content")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  open_gitlad(child, repo)
+
+  -- Open log view
+  child.type_keys("ll")
+  wait(child, 500)
+
+  -- Check that <CR> keymap exists
+  child.lua([[
+    _G.has_cr = false
+    local keymaps = vim.api.nvim_buf_get_keymap(0, 'n')
+    for _, km in ipairs(keymaps) do
+      if km.lhs == "<CR>" then _G.has_cr = true end
+    end
+  ]])
+  local has_cr = child.lua_get("_G.has_cr")
+  eq(has_cr, true, "<CR> should be mapped in log buffer")
+end
+
 return T

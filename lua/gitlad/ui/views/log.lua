@@ -83,10 +83,15 @@ function LogBuffer:_setup_keymaps()
     self:_goto_prev_commit()
   end, "Previous commit")
 
-  -- Expand/collapse commit details
+  -- Show commit diff (shortcut for d d)
   keymap.set(bufnr, "n", "<CR>", function()
-    self:_toggle_expand()
-  end, "Toggle commit details")
+    local diff_popup = require("gitlad.popups.diff")
+    local commit = self:_get_current_commit()
+    if commit then
+      diff_popup._diff_commit(self.repo_state, commit)
+    end
+  end, "Show commit diff")
+  -- Expand/collapse commit details
   keymap.set(bufnr, "n", "<Tab>", function()
     self:_toggle_expand()
   end, "Toggle commit details")
