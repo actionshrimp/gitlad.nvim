@@ -286,21 +286,23 @@ local function toggle_diff(self)
   local key = diff_cache_key(path, section)
   local current_state = self.expanded_files[key]
 
-  -- Cycle through states: collapsed -> headers -> expanded -> collapsed
-  if current_state == true then
-    -- Fully expanded -> collapse
+  -- 2-state toggle with memory: expanded <-> collapsed
+  if current_state then
+    -- Currently expanded (true or table) -> collapse
+    -- Save hunk state to remembered_file_states before collapsing
+    if type(current_state) == "table" then
+      self.remembered_file_states[key] = vim.deepcopy(current_state)
+    else
+      -- Was fully expanded (true), remember that
+      self.remembered_file_states[key] = nil
+    end
     self.expanded_files[key] = false
     self.diff_cache[key] = nil
     self:render()
     return
-  elseif type(current_state) == "table" then
-    -- Headers mode -> fully expand
-    self.expanded_files[key] = true
-    self:render()
-    return
   end
 
-  -- Collapsed -> fetch diff and show headers
+  -- Collapsed -> fetch diff and expand (restoring remembered state or defaulting to fully expanded)
   local function on_diff_result(diff_lines, err)
     if err then
       vim.notify("[gitlad] Diff error: " .. err, vim.log.levels.ERROR)
@@ -309,7 +311,13 @@ local function toggle_diff(self)
 
     vim.schedule(function()
       self.diff_cache[key] = parse_diff(diff_lines or {})
-      self.expanded_files[key] = {} -- Headers mode (empty table = no hunks expanded)
+      -- Restore remembered hunk state, or default to fully expanded
+      local remembered = self.remembered_file_states[key]
+      if remembered then
+        self.expanded_files[key] = vim.deepcopy(remembered)
+      else
+        self.expanded_files[key] = true -- Default to fully expanded
+      end
       self:render()
     end)
   end
@@ -470,6 +478,326 @@ local function cycle_visibility_level(self)
   apply_visibility_level(self, next_level)
 end
 
+--- Fetch diff for a single file and call callback when done
+---@param self StatusBuffer
+---@param path string File path
+---@param section string Section type
+---@param callback fun() Called when diff is fetched
+local function fetch_diff_for_file(self, path, section, callback)
+  local key = diff_cache_key(path, section)
+  local opts = { cwd = self.repo_state.repo_root }
+
+  local function on_result(diff_lines, err)
+    if not err then
+      vim.schedule(function()
+        self.diff_cache[key] = parse_diff(diff_lines or {})
+        callback()
+      end)
+    else
+      vim.notify("[gitlad] Diff error: " .. err, vim.log.levels.ERROR)
+    end
+  end
+
+  if section == "untracked" then
+    git.diff_untracked(path, opts, on_result)
+  else
+    local staged = (section == "staged")
+    git.diff(path, staged, opts, on_result)
+  end
+end
+
+--- Apply visibility level to a single file
+---@param self StatusBuffer
+---@param path string File path
+---@param section string Section type
+---@param level number Visibility level (1-4)
+local function apply_visibility_level_to_file(self, path, section, level)
+  local key = diff_cache_key(path, section)
+
+  if level == 1 or level == 2 then
+    -- Collapse file diff
+    self.expanded_files[key] = false
+    self.diff_cache[key] = nil
+    self:render()
+  elseif level == 3 then
+    -- Show headers only (fetch diff if needed)
+    if not self.diff_cache[key] then
+      fetch_diff_for_file(self, path, section, function()
+        self.expanded_files[key] = {} -- headers mode
+        self:render()
+      end)
+    else
+      self.expanded_files[key] = {} -- headers mode
+      self:render()
+    end
+  elseif level == 4 then
+    -- Fully expand
+    if not self.diff_cache[key] then
+      fetch_diff_for_file(self, path, section, function()
+        self.expanded_files[key] = true
+        self:render()
+      end)
+    else
+      self.expanded_files[key] = true
+      self:render()
+    end
+  end
+end
+
+--- Get all file cache keys for a given section
+---@param self StatusBuffer
+---@param section_name string Section name (e.g., "staged", "unstaged", "untracked", "conflicted")
+---@return string[] cache_keys List of "section:path" keys
+local function get_files_in_section(self, section_name)
+  local status = self.repo_state.status
+  if not status then
+    return {}
+  end
+
+  local keys = {}
+  local section_files = status[section_name] or {}
+
+  for _, entry in ipairs(section_files) do
+    local key = diff_cache_key(entry.path, section_name)
+    table.insert(keys, key)
+  end
+
+  return keys
+end
+
+--- Apply visibility level to all files in a section
+---@param self StatusBuffer
+---@param section_name string Section name
+---@param level number Visibility level (1-4)
+local function apply_visibility_level_to_section(self, section_name, level)
+  -- For collapsible sections (commits, stashes, submodules)
+  if COLLAPSIBLE_SECTIONS[section_name] then
+    if level == 1 then
+      self.collapsed_sections[section_name] = true
+      self:render()
+    else
+      self.collapsed_sections[section_name] = false
+      -- For level 4, expand commit details in this section
+      if level == 4 then
+        local status = self.repo_state.status
+        if status then
+          local section_commits = status[section_name] or {}
+          for _, commit in ipairs(section_commits) do
+            self.expanded_commits[commit.hash] = true
+          end
+        end
+      elseif level <= 2 then
+        -- For levels 1-2, collapse commit details in this section
+        local status = self.repo_state.status
+        if status then
+          local section_commits = status[section_name] or {}
+          for _, commit in ipairs(section_commits) do
+            self.expanded_commits[commit.hash] = nil
+          end
+        end
+      end
+      self:render()
+    end
+    return
+  end
+
+  -- For file sections (staged, unstaged, untracked, conflicted)
+  local file_keys = get_files_in_section(self, section_name)
+
+  if level == 1 or level == 2 then
+    -- Collapse all file diffs in section
+    for _, key in ipairs(file_keys) do
+      self.expanded_files[key] = false
+      self.diff_cache[key] = nil
+    end
+    self:render()
+  elseif level == 3 then
+    -- Headers mode for all files in section
+    local status = self.repo_state.status
+    local section_files = status and status[section_name] or {}
+
+    if #section_files == 0 then
+      self:render()
+      return
+    end
+
+    -- Batch fetch diffs and then set headers mode
+    local pending = 0
+    local opts = { cwd = self.repo_state.repo_root }
+
+    for _, entry in ipairs(section_files) do
+      local key = diff_cache_key(entry.path, section_name)
+      if not self.diff_cache[key] then
+        pending = pending + 1
+
+        local function on_result(diff_lines, err)
+          if not err then
+            vim.schedule(function()
+              self.diff_cache[key] = parse_diff(diff_lines or {})
+            end)
+          end
+          pending = pending - 1
+          if pending == 0 then
+            vim.schedule(function()
+              for _, fkey in ipairs(file_keys) do
+                self.expanded_files[fkey] = {} -- headers mode
+              end
+              self:render()
+            end)
+          end
+        end
+
+        if section_name == "untracked" then
+          git.diff_untracked(entry.path, opts, on_result)
+        else
+          local staged = (section_name == "staged")
+          git.diff(entry.path, staged, opts, on_result)
+        end
+      end
+    end
+
+    if pending == 0 then
+      for _, key in ipairs(file_keys) do
+        self.expanded_files[key] = {} -- headers mode
+      end
+      self:render()
+    end
+  elseif level == 4 then
+    -- Fully expand all files in section
+    local status = self.repo_state.status
+    local section_files = status and status[section_name] or {}
+
+    if #section_files == 0 then
+      self:render()
+      return
+    end
+
+    -- Batch fetch diffs and then fully expand
+    local pending = 0
+    local opts = { cwd = self.repo_state.repo_root }
+
+    for _, entry in ipairs(section_files) do
+      local key = diff_cache_key(entry.path, section_name)
+      if not self.diff_cache[key] then
+        pending = pending + 1
+
+        local function on_result(diff_lines, err)
+          if not err then
+            vim.schedule(function()
+              self.diff_cache[key] = parse_diff(diff_lines or {})
+            end)
+          end
+          pending = pending - 1
+          if pending == 0 then
+            vim.schedule(function()
+              for _, fkey in ipairs(file_keys) do
+                self.expanded_files[fkey] = true
+              end
+              self:render()
+            end)
+          end
+        end
+
+        if section_name == "untracked" then
+          git.diff_untracked(entry.path, opts, on_result)
+        else
+          local staged = (section_name == "staged")
+          git.diff(entry.path, staged, opts, on_result)
+        end
+      end
+    end
+
+    if pending == 0 then
+      for _, key in ipairs(file_keys) do
+        self.expanded_files[key] = true
+      end
+      self:render()
+    end
+  end
+end
+
+--- Apply visibility level scoped to cursor position (magit-style 1/2/3/4)
+--- - Cursor on file/diff line -> affects only that file's hunks
+--- - Cursor on section header -> affects all files/hunks in that section
+--- - Cursor elsewhere -> affects entire buffer
+---@param self StatusBuffer
+---@param level number Visibility level (1-4)
+local function apply_scoped_visibility_level(self, level)
+  level = math.max(1, math.min(4, level)) -- Clamp to 1-4
+
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+
+  -- Check if on a section header
+  local section_info = self.section_lines[line]
+  if section_info then
+    apply_visibility_level_to_section(self, section_info.section, level)
+    return
+  end
+
+  -- Check if on a file entry or diff line
+  local line_info = self.line_map[line]
+  if line_info and line_info.type == "file" then
+    apply_visibility_level_to_file(self, line_info.path, line_info.section, level)
+    return
+  end
+
+  -- Default: apply globally
+  apply_visibility_level(self, level)
+end
+
+--- Toggle all top-level sections (magit-style Shift-Tab behavior)
+--- If any section is collapsed -> expand all (preserving nested expansion states)
+--- If all sections are expanded -> collapse all (preserving nested expansion states)
+---@param self StatusBuffer
+local function toggle_all_sections(self)
+  -- Check if any collapsible section is collapsed
+  local any_collapsed = false
+  for section_name, _ in pairs(COLLAPSIBLE_SECTIONS) do
+    if self.collapsed_sections[section_name] then
+      any_collapsed = true
+      break
+    end
+  end
+
+  if any_collapsed then
+    -- Expand all sections - restore remembered states
+    for section_name, _ in pairs(COLLAPSIBLE_SECTIONS) do
+      if self.collapsed_sections[section_name] then
+        self.collapsed_sections[section_name] = false
+        -- Restore remembered file expansion states for this section
+        local remembered = self.remembered_section_states[section_name]
+        if remembered and remembered.files then
+          for file_key, state in pairs(remembered.files) do
+            self.expanded_files[file_key] = vim.deepcopy(state)
+          end
+        end
+      end
+    end
+  else
+    -- Collapse all sections - save current states first
+    for section_name, _ in pairs(COLLAPSIBLE_SECTIONS) do
+      if not self.collapsed_sections[section_name] then
+        -- Save expansion states for files in this section
+        local files_in_section = {}
+        for key, state in pairs(self.expanded_files) do
+          -- Match section prefix (e.g., "stashes:" prefix)
+          if key:match("^" .. section_name .. ":") then
+            files_in_section[key] = vim.deepcopy(state)
+          end
+        end
+        -- Only save if there were expanded files
+        if next(files_in_section) then
+          self.remembered_section_states[section_name] = { files = files_in_section }
+        end
+        self.collapsed_sections[section_name] = true
+      end
+    end
+  end
+
+  self:render()
+end
+
 --- Attach diff methods to StatusBuffer class
 ---@param StatusBuffer table The StatusBuffer class
 function M.setup(StatusBuffer)
@@ -478,7 +806,9 @@ function M.setup(StatusBuffer)
   StatusBuffer._toggle_diff = toggle_diff
   StatusBuffer._expand_all_files = expand_all_files
   StatusBuffer._apply_visibility_level = apply_visibility_level
+  StatusBuffer._apply_scoped_visibility_level = apply_scoped_visibility_level
   StatusBuffer._cycle_visibility_level = cycle_visibility_level
+  StatusBuffer._toggle_all_sections = toggle_all_sections
 end
 
 return M

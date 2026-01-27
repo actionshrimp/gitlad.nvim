@@ -60,6 +60,9 @@ local status_navigation = require("gitlad.ui.views.status_navigation")
 ---@field path string File path to move cursor to
 ---@field section string Section the file should be in
 
+---@class RememberedSectionState
+---@field files table<string, boolean|table<number, boolean>> Map of "section:path" to expansion state
+
 ---@class StatusBuffer
 ---@field bufnr number Buffer number
 ---@field winnr number|nil Window number if open
@@ -74,6 +77,8 @@ local status_navigation = require("gitlad.ui.views.status_navigation")
 ---@field status_line_num number|nil Line number of the status indicator line
 ---@field pending_cursor_target CursorTarget|nil Target for cursor positioning after render
 ---@field visibility_level number Current visibility level (1-4, default 2)
+---@field remembered_file_states table<string, table<number, boolean>> Saved hunk states when files collapse (for restoring on re-expand)
+---@field remembered_section_states table<string, RememberedSectionState> Saved file states when sections collapse (for restoring on re-expand)
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
 
@@ -106,6 +111,8 @@ local function get_or_create_buffer(repo_state)
   self.collapsed_sections = {} -- Tracks which commit sections are collapsed
   self.diff_cache = {} -- Caches fetched diff lines
   self.visibility_level = 2 -- Current visibility level (1=headers, 2=items, 3=diffs, 4=all)
+  self.remembered_file_states = {} -- Saved hunk states when files collapse
+  self.remembered_section_states = {} -- Saved file states when sections collapse
   self.status_line_num = nil -- Line number of the status indicator
   -- Initialize submodules section visibility from config
   local cfg = require("gitlad.config").get()

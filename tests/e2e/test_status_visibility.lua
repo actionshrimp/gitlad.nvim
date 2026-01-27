@@ -121,40 +121,40 @@ T["visibility keybindings"]["<S-Tab> keymap is set up"] = function()
   eq(has_keymap(child, "<S-Tab>"), true, "<S-Tab> should be mapped")
 end
 
-T["visibility keybindings"]["g1 keymap is set up"] = function()
+T["visibility keybindings"]["1 keymap is set up"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
-  eq(has_keymap(child, "g1"), true, "g1 should be mapped")
+  eq(has_keymap(child, "1"), true, "1 should be mapped")
 end
 
-T["visibility keybindings"]["g2 keymap is set up"] = function()
+T["visibility keybindings"]["2 keymap is set up"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
-  eq(has_keymap(child, "g2"), true, "g2 should be mapped")
+  eq(has_keymap(child, "2"), true, "2 should be mapped")
 end
 
-T["visibility keybindings"]["g3 keymap is set up"] = function()
+T["visibility keybindings"]["3 keymap is set up"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
-  eq(has_keymap(child, "g3"), true, "g3 should be mapped")
+  eq(has_keymap(child, "3"), true, "3 should be mapped")
 end
 
-T["visibility keybindings"]["g4 keymap is set up"] = function()
+T["visibility keybindings"]["4 keymap is set up"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
-  eq(has_keymap(child, "g4"), true, "g4 should be mapped")
+  eq(has_keymap(child, "4"), true, "4 should be mapped")
 end
 
 -- =============================================================================
@@ -188,7 +188,7 @@ T["visibility levels"]["default visibility level is 2"] = function()
   eq(level, 2, "Default visibility level should be 2")
 end
 
-T["visibility levels"]["<S-Tab> cycles through levels"] = function()
+T["visibility levels"]["<S-Tab> toggles all sections"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -196,52 +196,65 @@ T["visibility levels"]["<S-Tab> cycles through levels"] = function()
   git(child, repo, "add .")
   git(child, repo, 'commit -m "Initial"')
 
-  create_file(child, repo, "file.txt", "content")
+  -- Create more commits to have collapsible sections
+  create_file(child, repo, "file2.txt", "content2")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Second"')
+
+  -- Create a stash to have a collapsible stash section
+  create_file(child, repo, "file3.txt", "content3")
+  git(child, repo, "stash push -m 'test stash'")
+
   open_gitlad(child, repo)
+  wait(child, 200)
 
-  -- Get initial level (should be 2)
+  -- Initially no collapsible sections should be collapsed
   child.lua([[
     local status = require("gitlad.ui.views.status")
-    _G.test_level = status.get_buffer().visibility_level
+    local buffer = status.get_buffer()
+    local count = 0
+    for _ in pairs(buffer.collapsed_sections) do count = count + 1 end
+    _G.test_collapsed_count = count
   ]])
-  local initial_level = child.lua_get("_G.test_level")
-  eq(initial_level, 2)
+  local initial_collapsed = child.lua_get("_G.test_collapsed_count")
+  eq(initial_collapsed, 0, "Initially no sections should be collapsed")
 
-  -- Press <S-Tab> to cycle to level 3
+  -- Press <S-Tab> to collapse all collapsible sections
   child.type_keys("<S-Tab>")
-  wait(child, 300)
+  wait(child, 200)
 
+  -- Check that sections are now collapsed
   child.lua([[
     local status = require("gitlad.ui.views.status")
-    _G.test_level = status.get_buffer().visibility_level
+    local buffer = status.get_buffer()
+    local count = 0
+    for _, collapsed in pairs(buffer.collapsed_sections) do
+      if collapsed then count = count + 1 end
+    end
+    _G.test_collapsed_count = count
   ]])
-  local after_first = child.lua_get("_G.test_level")
-  eq(after_first, 3, "Should cycle to level 3")
+  local after_collapse = child.lua_get("_G.test_collapsed_count")
+  assert_truthy(after_collapse > 0, "Should have collapsed sections after <S-Tab>")
 
-  -- Press <S-Tab> again to cycle to level 4
+  -- Press <S-Tab> again to expand all
   child.type_keys("<S-Tab>")
-  wait(child, 300)
+  wait(child, 200)
 
+  -- Check that sections are now expanded
   child.lua([[
     local status = require("gitlad.ui.views.status")
-    _G.test_level = status.get_buffer().visibility_level
+    local buffer = status.get_buffer()
+    local count = 0
+    for _, collapsed in pairs(buffer.collapsed_sections) do
+      if collapsed then count = count + 1 end
+    end
+    _G.test_collapsed_count = count
   ]])
-  local after_second = child.lua_get("_G.test_level")
-  eq(after_second, 4, "Should cycle to level 4")
-
-  -- Press <S-Tab> again to wrap to level 1
-  child.type_keys("<S-Tab>")
-  wait(child, 300)
-
-  child.lua([[
-    local status = require("gitlad.ui.views.status")
-    _G.test_level = status.get_buffer().visibility_level
-  ]])
-  local after_third = child.lua_get("_G.test_level")
-  eq(after_third, 1, "Should wrap to level 1")
+  local after_expand = child.lua_get("_G.test_collapsed_count")
+  eq(after_expand, 0, "All sections should be expanded after second <S-Tab>")
 end
 
-T["visibility levels"]["g1 sets level 1 (headers only)"] = function()
+T["visibility levels"]["1 sets level 1 (headers only)"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -253,8 +266,8 @@ T["visibility levels"]["g1 sets level 1 (headers only)"] = function()
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
-  -- Press g1 to set level 1
-  child.type_keys("g1")
+  -- Press 1 to set level 1
+  child.type_keys("1")
   wait(child, 300)
 
   child.lua([[
@@ -265,7 +278,7 @@ T["visibility levels"]["g1 sets level 1 (headers only)"] = function()
   eq(level, 1, "Should be at level 1")
 end
 
-T["visibility levels"]["g2 sets level 2 (items visible)"] = function()
+T["visibility levels"]["2 sets level 2 (items visible)"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -273,9 +286,9 @@ T["visibility levels"]["g2 sets level 2 (items visible)"] = function()
   open_gitlad(child, repo)
 
   -- First set level 1, then level 2
-  child.type_keys("g1")
+  child.type_keys("1")
   wait(child, 200)
-  child.type_keys("g2")
+  child.type_keys("2")
   wait(child, 300)
 
   child.lua([[
@@ -297,7 +310,7 @@ T["visibility levels"]["g2 sets level 2 (items visible)"] = function()
   eq(collapsed_count, 0, "All sections should be expanded at level 2")
 end
 
-T["visibility levels"]["g3 shows diff headers only"] = function()
+T["visibility levels"]["3 shows diff headers only"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -311,8 +324,8 @@ T["visibility levels"]["g3 shows diff headers only"] = function()
 
   open_gitlad(child, repo)
 
-  -- Press g3 to show diff headers
-  child.type_keys("g3")
+  -- Press 3 to show diff headers
+  child.type_keys("3")
   wait(child, 500) -- Wait for async diff fetching
 
   child.lua([[
@@ -345,7 +358,7 @@ T["visibility levels"]["g3 shows diff headers only"] = function()
   eq(has_plus_line, nil, "Should NOT show hunk content at level 3 (headers only)")
 end
 
-T["visibility levels"]["g4 expands everything including hunk content"] = function()
+T["visibility levels"]["4 expands everything including hunk content"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -359,8 +372,8 @@ T["visibility levels"]["g4 expands everything including hunk content"] = functio
 
   open_gitlad(child, repo)
 
-  -- Press g4 to expand everything
-  child.type_keys("g4")
+  -- Press 4 to expand everything
+  child.type_keys("4")
   wait(child, 500)
 
   child.lua([[
