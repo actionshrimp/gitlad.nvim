@@ -1,6 +1,11 @@
 ---@mod gitlad.git Git operations interface
 ---@brief [[
 --- High-level git operations built on the CLI wrapper.
+--- This module re-exports operations from submodules:
+--- - git_branches: branch operations (checkout, create, delete, rename)
+--- - git_commits: commit operations (commit, amend, log, cherry-pick, revert)
+--- - git_rebase: rebase operations (rebase, reset)
+--- - git_stash: stash operations (push, pop, apply, drop)
 ---@brief ]]
 
 local M = {}
@@ -8,6 +13,71 @@ local M = {}
 local cli = require("gitlad.git.cli")
 local parse = require("gitlad.git.parse")
 local errors = require("gitlad.utils.errors")
+
+-- Re-export from submodules
+local git_branches = require("gitlad.git.git_branches")
+local git_commits = require("gitlad.git.git_commits")
+local git_rebase = require("gitlad.git.git_rebase")
+local git_stash = require("gitlad.git.git_stash")
+
+-- Branch operations
+M.branches = git_branches.branches
+M.checkout = git_branches.checkout
+M.checkout_new_branch = git_branches.checkout_new_branch
+M.create_branch = git_branches.create_branch
+M.delete_branch = git_branches.delete_branch
+M.rename_branch = git_branches.rename_branch
+M.remote_branches = git_branches.remote_branches
+M.set_upstream = git_branches.set_upstream
+M.get_upstream = git_branches.get_upstream
+M.get_push_remote = git_branches.get_push_remote
+M.set_push_remote = git_branches.set_push_remote
+M.delete_remote_branch = git_branches.delete_remote_branch
+
+-- Commit operations
+M.commit = git_commits.commit
+M.commit_amend_no_edit = git_commits.commit_amend_no_edit
+M.commit_fixup = git_commits.commit_fixup
+M.commit_streaming = git_commits.commit_streaming
+M.commit_amend_no_edit_streaming = git_commits.commit_amend_no_edit_streaming
+M.get_commit_subject = git_commits.get_commit_subject
+M.get_commits_between = git_commits.get_commits_between
+M.log = git_commits.log
+M.log_detailed = git_commits.log_detailed
+M.show_commit = git_commits.show_commit
+M.cherry_pick = git_commits.cherry_pick
+M.cherry_pick_continue = git_commits.cherry_pick_continue
+M.cherry_pick_abort = git_commits.cherry_pick_abort
+M.cherry_pick_skip = git_commits.cherry_pick_skip
+M.revert = git_commits.revert
+M.revert_continue = git_commits.revert_continue
+M.revert_abort = git_commits.revert_abort
+M.revert_skip = git_commits.revert_skip
+M.cherry = git_commits.cherry
+M.rev_list_count = git_commits.rev_list_count
+
+-- Rebase operations
+M.rebase = git_rebase.rebase
+M.rebase_continue = git_rebase.rebase_continue
+M.rebase_abort = git_rebase.rebase_abort
+M.rebase_skip = git_rebase.rebase_skip
+M.rebase_in_progress = git_rebase.rebase_in_progress
+M.rebase_instantly = git_rebase.rebase_instantly
+M.reset = git_rebase.reset
+M.reset_keep = git_rebase.reset_keep
+M.reset_index = git_rebase.reset_index
+M.reset_worktree = git_rebase.reset_worktree
+
+-- Stash operations
+M.stash_push = git_stash.stash_push
+M.stash_pop = git_stash.stash_pop
+M.stash_apply = git_stash.stash_apply
+M.stash_drop = git_stash.stash_drop
+M.stash_list = git_stash.stash_list
+
+-- =============================================================================
+-- Core operations (kept in this file)
+-- =============================================================================
 
 --- Get repository status
 ---@param opts? GitCommandOptions
@@ -131,19 +201,6 @@ function M.diff_untracked(path, opts, callback)
   end)
 end
 
---- Get list of branches
----@param opts? GitCommandOptions
----@param callback fun(branches: table[]|nil, err: string|nil)
-function M.branches(opts, callback)
-  cli.run_async({ "branch" }, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    callback(parse.parse_branches(result.stdout), nil)
-  end)
-end
-
 --- Stage all files
 ---@param opts? GitCommandOptions
 ---@param callback fun(success: boolean, err: string|nil)
@@ -247,111 +304,6 @@ function M.apply_patch(patch_lines, reverse, opts, callback)
   end)
 end
 
---- Create a commit with a message
----@param message_lines string[] Commit message lines
----@param args string[] Extra arguments (from popup switches/options)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.commit(message_lines, args, opts, callback)
-  -- Build commit args: commit -F - <extra_args>
-  -- Using -F - to read message from stdin avoids shell escaping issues
-  local commit_args = { "commit", "-F", "-" }
-  vim.list_extend(commit_args, args)
-
-  cli.run_async_with_stdin(commit_args, message_lines, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Amend the current commit without editing the message
----@param args string[] Extra arguments (from popup switches/options)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.commit_amend_no_edit(args, opts, callback)
-  local commit_args = { "commit", "--amend", "--no-edit" }
-  vim.list_extend(commit_args, args)
-
-  cli.run_async(commit_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Create a fixup or squash commit (message is auto-generated)
---- Used for --fixup=<commit> or --squash=<commit> which generate their own message
----@param args string[] Arguments including --fixup=<hash> or --squash=<hash>
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.commit_fixup(args, opts, callback)
-  local commit_args = { "commit" }
-  vim.list_extend(commit_args, args)
-
-  cli.run_async(commit_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Create a commit with streaming output viewer
---- Shows a floating window with real-time hook output
----@param message_lines string[] Commit message lines
----@param args string[] Extra arguments (from popup switches/options)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.commit_streaming(message_lines, args, opts, callback)
-  local output_viewer = require("gitlad.ui.views.output")
-
-  -- Build display command for the viewer
-  local display_cmd = "git commit " .. table.concat(args, " ")
-
-  local viewer = output_viewer.open({
-    title = "Commit",
-    command = display_cmd,
-  })
-
-  -- Build commit args: commit -F - <extra_args>
-  local commit_args = { "commit", "-F", "-" }
-  vim.list_extend(commit_args, args)
-
-  cli.run_async_with_stdin(commit_args, message_lines, {
-    cwd = opts and opts.cwd,
-    on_output_line = function(line, is_stderr)
-      viewer:append(line, is_stderr)
-    end,
-  }, function(result)
-    viewer:complete(result.code)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Amend the current commit without editing the message, with streaming output viewer
---- Shows a floating window with real-time hook output
----@param args string[] Extra arguments (from popup switches/options)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.commit_amend_no_edit_streaming(args, opts, callback)
-  local output_viewer = require("gitlad.ui.views.output")
-
-  -- Build display command for the viewer
-  local display_cmd = "git commit --amend --no-edit " .. table.concat(args, " ")
-
-  local viewer = output_viewer.open({
-    title = "Amend",
-    command = display_cmd,
-  })
-
-  local commit_args = { "commit", "--amend", "--no-edit" }
-  vim.list_extend(commit_args, args)
-
-  cli.run_async(commit_args, {
-    cwd = opts and opts.cwd,
-    on_output_line = function(line, is_stderr)
-      viewer:append(line, is_stderr)
-    end,
-  }, function(result)
-    viewer:complete(result.code)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
 --- Check if path is inside a git repository
 ---@param path? string Path to check (defaults to cwd)
 ---@return boolean
@@ -430,176 +382,6 @@ function M.pull(args, opts, callback)
   end)
 end
 
---- Checkout a branch
----@param branch string Branch name to checkout
----@param args string[] Extra arguments (from popup switches)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.checkout(branch, args, opts, callback)
-  local checkout_args = { "checkout" }
-  vim.list_extend(checkout_args, args)
-  table.insert(checkout_args, branch)
-
-  cli.run_async(checkout_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Create and checkout a new branch
----@param name string New branch name
----@param base string|nil Base ref (defaults to HEAD if nil)
----@param args string[] Extra arguments (e.g., --track)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.checkout_new_branch(name, base, args, opts, callback)
-  local checkout_args = { "checkout", "-b", name }
-  vim.list_extend(checkout_args, args)
-  if base and base ~= "" then
-    table.insert(checkout_args, base)
-  end
-
-  cli.run_async(checkout_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Create a branch (without checking it out)
----@param name string New branch name
----@param base string|nil Base ref (defaults to HEAD if nil)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.create_branch(name, base, opts, callback)
-  local branch_args = { "branch", name }
-  if base and base ~= "" then
-    table.insert(branch_args, base)
-  end
-
-  cli.run_async(branch_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Delete a branch
----@param name string Branch name to delete
----@param force boolean Whether to force delete (git branch -D vs -d)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.delete_branch(name, force, opts, callback)
-  local flag = force and "-D" or "-d"
-  local branch_args = { "branch", flag, name }
-
-  cli.run_async(branch_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Rename a branch
----@param old_name string Current branch name
----@param new_name string New branch name
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.rename_branch(old_name, new_name, opts, callback)
-  local branch_args = { "branch", "-m", old_name, new_name }
-
-  cli.run_async(branch_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Get the commit subject for a ref
----@param ref string Git ref (branch, tag, commit hash)
----@param opts? GitCommandOptions
----@param callback fun(subject: string|nil, err: string|nil)
-function M.get_commit_subject(ref, opts, callback)
-  cli.run_async({ "log", "-1", "--format=%s", ref }, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    callback(result.stdout[1] or "", nil)
-  end)
-end
-
---- Get commits between two refs
----@param base string Base ref (the older end)
----@param target string Target ref (the newer end)
----@param opts? GitCommandOptions
----@param callback fun(commits: GitCommitInfo[]|nil, err: string|nil)
-function M.get_commits_between(base, target, opts, callback)
-  -- git log base..target shows commits reachable from target but not from base
-  -- Use --decorate to get refs (branches, tags) on commits
-  cli.run_async({ "log", "--oneline", "--decorate", base .. ".." .. target }, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    callback(parse.parse_log_oneline(result.stdout), nil)
-  end)
-end
-
---- Get push remote for a branch
----@param branch string Branch name
----@param opts? GitCommandOptions
----@param callback fun(remote: string|nil, err: string|nil)
-function M.get_push_remote(branch, opts, callback)
-  -- First try branch.<branch>.pushRemote
-  cli.run_async({ "config", "--get", "branch." .. branch .. ".pushRemote" }, opts, function(result)
-    if result.code == 0 and result.stdout[1] and result.stdout[1] ~= "" then
-      callback(result.stdout[1], nil)
-      return
-    end
-
-    -- Fallback to remote.pushDefault
-    cli.run_async({ "config", "--get", "remote.pushDefault" }, opts, function(fallback_result)
-      if
-        fallback_result.code == 0
-        and fallback_result.stdout[1]
-        and fallback_result.stdout[1] ~= ""
-      then
-        callback(fallback_result.stdout[1], nil)
-      else
-        -- No push remote configured
-        callback(nil, nil)
-      end
-    end)
-  end)
-end
-
---- Set upstream (tracking branch) for a branch
----@param branch string Branch name
----@param upstream_ref string Upstream ref (e.g., "origin/main")
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.set_upstream(branch, upstream_ref, opts, callback)
-  cli.run_async({ "branch", "--set-upstream-to=" .. upstream_ref, branch }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Set push remote for a branch
----@param branch string Branch name
----@param remote string Remote name (e.g., "origin")
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.set_push_remote(branch, remote, opts, callback)
-  cli.run_async({ "config", "branch." .. branch .. ".pushRemote", remote }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Get list of remote branches
----@param opts? GitCommandOptions
----@param callback fun(branches: string[]|nil, err: string|nil)
-function M.remote_branches(opts, callback)
-  cli.run_async({ "branch", "-r" }, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    callback(parse.parse_remote_branches(result.stdout), nil)
-  end)
-end
-
 --- Get list of remote names
 ---@param opts? GitCommandOptions
 ---@param callback fun(remotes: string[]|nil, err: string|nil)
@@ -610,287 +392,6 @@ function M.remote_names(opts, callback)
       return
     end
     callback(result.stdout, nil)
-  end)
-end
-
---- Get commit log (basic oneline format)
----@param args string[] Additional log arguments (e.g., { "-20" }, { "main..HEAD" })
----@param opts? GitCommandOptions
----@param callback fun(commits: GitCommitInfo[]|nil, err: string|nil)
-function M.log(args, opts, callback)
-  -- Use --decorate to get refs (branches, tags) on commits
-  local log_args = { "log", "--oneline", "--decorate" }
-  vim.list_extend(log_args, args)
-
-  cli.run_async(log_args, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    callback(parse.parse_log_oneline(result.stdout), nil)
-  end)
-end
-
---- Get commit log with detailed info (author, date)
----@param args string[] Additional log arguments (e.g., { "-20" }, { "main..HEAD" })
----@param opts? GitCommandOptions
----@param callback fun(commits: GitCommitInfo[]|nil, err: string|nil)
-function M.log_detailed(args, opts, callback)
-  local format = parse.get_log_format_string()
-  local log_args = { "log", "--format=" .. format }
-  vim.list_extend(log_args, args)
-
-  cli.run_async(log_args, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    callback(parse.parse_log_format(table.concat(result.stdout, "\n")), nil)
-  end)
-end
-
---- Get commit message body
----@param hash string Commit hash
----@param opts? GitCommandOptions
----@param callback fun(body: string|nil, err: string|nil)
-function M.show_commit(hash, opts, callback)
-  -- Get just the commit body (message after subject)
-  local args = { "log", "-1", "--format=%b", hash }
-
-  cli.run_async(args, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    local body = table.concat(result.stdout, "\n")
-    -- Trim trailing whitespace
-    body = body:gsub("%s+$", "")
-    callback(body ~= "" and body or nil, nil)
-  end)
-end
-
---- Create a new stash
----@param message string|nil Optional stash message
----@param args string[] Extra arguments (from popup switches, e.g., {"--include-untracked"})
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.stash_push(message, args, opts, callback)
-  local stash_args = { "stash", "push" }
-  -- Add switches before message (standard git convention)
-  vim.list_extend(stash_args, args)
-  if message and message ~= "" then
-    table.insert(stash_args, "-m")
-    table.insert(stash_args, message)
-  end
-
-  cli.run_async(stash_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Pop a stash (apply and remove)
----@param stash_ref string|nil Stash ref (e.g., "stash@{0}"), nil for most recent
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.stash_pop(stash_ref, opts, callback)
-  local stash_args = { "stash", "pop" }
-  if stash_ref and stash_ref ~= "" then
-    table.insert(stash_args, stash_ref)
-  end
-
-  cli.run_async(stash_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Apply a stash (without removing it)
----@param stash_ref string|nil Stash ref (e.g., "stash@{0}"), nil for most recent
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.stash_apply(stash_ref, opts, callback)
-  local stash_args = { "stash", "apply" }
-  if stash_ref and stash_ref ~= "" then
-    table.insert(stash_args, stash_ref)
-  end
-
-  cli.run_async(stash_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Drop a stash (remove without applying)
----@param stash_ref string Stash ref (e.g., "stash@{0}")
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.stash_drop(stash_ref, opts, callback)
-  local stash_args = { "stash", "drop", stash_ref }
-
-  cli.run_async(stash_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- List all stashes
----@param opts? GitCommandOptions
----@param callback fun(stashes: StashEntry[]|nil, err: string|nil)
-function M.stash_list(opts, callback)
-  cli.run_async({ "stash", "list" }, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    callback(parse.parse_stash_list(result.stdout), nil)
-  end)
-end
-
---- Reset current branch to a ref
----@param ref string The ref to reset to (e.g., "origin/main", "HEAD~1")
----@param mode string Reset mode: "soft", "mixed", or "hard"
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.reset(ref, mode, opts, callback)
-  local reset_args = { "reset", "--" .. mode, ref }
-
-  cli.run_async(reset_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Reset current branch to a ref with --keep (preserves uncommitted changes)
----@param ref string The ref to reset to (e.g., "origin/main", "HEAD~1")
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.reset_keep(ref, opts, callback)
-  local reset_args = { "reset", "--keep", ref }
-
-  cli.run_async(reset_args, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Reset index only (unstage all files, equivalent to git reset HEAD .)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.reset_index(opts, callback)
-  cli.run_async({ "reset", "HEAD", "." }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Reset worktree only to a ref (checkout all files without changing HEAD or index)
----@param ref string The ref to reset worktree to
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.reset_worktree(ref, opts, callback)
-  -- Use git checkout to restore worktree from the specified ref
-  -- --force overwrites local changes
-  cli.run_async({ "checkout", "--force", ref, "--", "." }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Get the upstream ref for a branch
----@param branch string Branch name
----@param opts? GitCommandOptions
----@param callback fun(upstream: string|nil, err: string|nil)
-function M.get_upstream(branch, opts, callback)
-  cli.run_async({ "rev-parse", "--abbrev-ref", branch .. "@{upstream}" }, opts, function(result)
-    if result.code ~= 0 then
-      -- No upstream configured
-      callback(nil, nil)
-      return
-    end
-    callback(result.stdout[1], nil)
-  end)
-end
-
---- Cherry-pick one or more commits
----@param commits string[] Commit hashes to cherry-pick
----@param args string[] Extra arguments (from popup switches, e.g., {"-x", "--signoff"})
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, output: string|nil, err: string|nil)
-function M.cherry_pick(commits, args, opts, callback)
-  local cherry_pick_args = { "cherry-pick" }
-  vim.list_extend(cherry_pick_args, args)
-  vim.list_extend(cherry_pick_args, commits)
-
-  cli.run_async(cherry_pick_args, opts, function(result)
-    local stdout = table.concat(result.stdout, "\n")
-    local stderr = table.concat(result.stderr, "\n")
-    local output = stdout ~= "" and stdout or stderr
-    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
-  end)
-end
-
---- Continue an in-progress cherry-pick
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.cherry_pick_continue(opts, callback)
-  cli.run_async({ "cherry-pick", "--continue" }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Abort an in-progress cherry-pick
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.cherry_pick_abort(opts, callback)
-  cli.run_async({ "cherry-pick", "--abort" }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Skip the current commit during cherry-pick
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.cherry_pick_skip(opts, callback)
-  cli.run_async({ "cherry-pick", "--skip" }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Revert one or more commits
----@param commits string[] Commit hashes to revert
----@param args string[] Extra arguments (from popup switches, e.g., {"--no-edit", "--signoff"})
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, output: string|nil, err: string|nil)
-function M.revert(commits, args, opts, callback)
-  local revert_args = { "revert" }
-  vim.list_extend(revert_args, args)
-  vim.list_extend(revert_args, commits)
-
-  cli.run_async(revert_args, opts, function(result)
-    local stdout = table.concat(result.stdout, "\n")
-    local stderr = table.concat(result.stderr, "\n")
-    local output = stdout ~= "" and stdout or stderr
-    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
-  end)
-end
-
---- Continue an in-progress revert
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.revert_continue(opts, callback)
-  cli.run_async({ "revert", "--continue" }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Abort an in-progress revert
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.revert_abort(opts, callback)
-  cli.run_async({ "revert", "--abort" }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Skip the current commit during revert
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.revert_skip(opts, callback)
-  cli.run_async({ "revert", "--skip" }, opts, function(result)
-    callback(errors.result_to_callback(result))
   end)
 end
 
@@ -958,93 +459,6 @@ function M.get_sequencer_state(opts, callback)
   callback(state)
 end
 
---- Rebase current branch onto a target
----@param target string Target ref to rebase onto (e.g., "origin/main")
----@param args string[] Extra arguments (from popup switches, e.g., {"--autostash"})
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, output: string|nil, err: string|nil)
-function M.rebase(target, args, opts, callback)
-  local rebase_args = { "rebase" }
-  vim.list_extend(rebase_args, args)
-  table.insert(rebase_args, target)
-
-  cli.run_async(rebase_args, opts, function(result)
-    local stdout = table.concat(result.stdout, "\n")
-    local stderr = table.concat(result.stderr, "\n")
-    local output = stdout ~= "" and stdout or stderr
-    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
-  end)
-end
-
---- Continue an in-progress rebase
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.rebase_continue(opts, callback)
-  cli.run_async({ "rebase", "--continue" }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Abort an in-progress rebase
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.rebase_abort(opts, callback)
-  cli.run_async({ "rebase", "--abort" }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Skip the current commit during rebase
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.rebase_skip(opts, callback)
-  cli.run_async({ "rebase", "--skip" }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
-end
-
---- Check if a rebase is in progress (synchronous)
----@param opts? GitCommandOptions
----@return boolean
-function M.rebase_in_progress(opts)
-  local git_dir = cli.find_git_dir(opts and opts.cwd or nil)
-  if not git_dir then
-    return false
-  end
-
-  local rebase_merge = git_dir .. "/rebase-merge"
-  local rebase_apply = git_dir .. "/rebase-apply"
-  return vim.fn.isdirectory(rebase_merge) == 1 or vim.fn.isdirectory(rebase_apply) == 1
-end
-
---- Run an instant rebase (non-interactive, autosquash)
---- Used for instant fixup/squash operations.
---- Sets GIT_SEQUENCE_EDITOR to ":" to auto-apply the todo without user interaction.
----@param commit string Base commit for rebase (parent of commits to squash)
----@param args string[] Extra arguments
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, output: string|nil, err: string|nil)
-function M.rebase_instantly(commit, args, opts, callback)
-  local rebase_args = { "rebase", "--interactive", "--autosquash", "--autostash", "--keep-empty" }
-  vim.list_extend(rebase_args, args or {})
-  table.insert(rebase_args, commit)
-
-  -- Use ":" as sequence editor to auto-apply todo (no-op editor)
-  local env = vim.tbl_extend("force", opts and opts.env or {}, {
-    GIT_SEQUENCE_EDITOR = ":",
-    GIT_EDITOR = ":",
-  })
-
-  local run_opts = vim.tbl_extend("force", opts or {}, { env = env })
-
-  cli.run_async(rebase_args, run_opts, function(result)
-    local stdout = table.concat(result.stdout, "\n")
-    local stderr = table.concat(result.stderr, "\n")
-    local output = stdout ~= "" and stdout or stderr
-    callback(result.code == 0, output, result.code ~= 0 and stderr or nil)
-  end)
-end
-
 --- Get all refs (branches and tags) using git for-each-ref
 ---@param opts? GitCommandOptions
 ---@param callback fun(refs: RefInfo[]|nil, err: string|nil)
@@ -1061,57 +475,6 @@ function M.refs(opts, callback)
       callback(parse.parse_for_each_ref(result.stdout), nil)
     end
   )
-end
-
---- Get cherry commits between ref and upstream (commits unique to ref)
---- Shows commits in ref that are not in upstream, with equivalence markers
----@param ref string The ref to check (e.g., "feature-branch")
----@param upstream string The upstream to compare against (e.g., "main")
----@param opts? GitCommandOptions
----@param callback fun(commits: CherryCommit[]|nil, err: string|nil)
-function M.cherry(ref, upstream, opts, callback)
-  -- git cherry -v <upstream> <ref> shows commits in ref not in upstream
-  -- + means unique to ref, - means equivalent (cherry-picked) commit exists in upstream
-  cli.run_async({ "cherry", "-v", upstream, ref }, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    callback(parse.parse_cherry(result.stdout), nil)
-  end)
-end
-
---- Get ahead/behind count between ref and another ref
----@param ref string The ref to check
----@param compare_to string The ref to compare against
----@param opts? GitCommandOptions
----@param callback fun(ahead: number, behind: number, err: string|nil)
-function M.rev_list_count(ref, compare_to, opts, callback)
-  -- git rev-list --left-right --count ref...compare_to
-  -- Output: "ahead\tbehind"
-  cli.run_async(
-    { "rev-list", "--left-right", "--count", ref .. "..." .. compare_to },
-    opts,
-    function(result)
-      if result.code ~= 0 then
-        callback(0, 0, table.concat(result.stderr, "\n"))
-        return
-      end
-      local ahead, behind = parse.parse_rev_list_count(result.stdout)
-      callback(ahead, behind, nil)
-    end
-  )
-end
-
---- Delete a remote branch
----@param remote string Remote name (e.g., "origin")
----@param branch string Branch name (without remote/ prefix)
----@param opts? GitCommandOptions
----@param callback fun(success: boolean, err: string|nil)
-function M.delete_remote_branch(remote, branch, opts, callback)
-  cli.run_async({ "push", remote, "--delete", branch }, opts, function(result)
-    callback(errors.result_to_callback(result))
-  end)
 end
 
 --- Delete a tag (local)

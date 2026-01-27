@@ -169,7 +169,8 @@ end
 
 T["render()"]["parentheses in subject not mistaken for author"] = function()
   -- This tests that commit messages with parentheses won't have author highlighting
-  local commits = { make_commit("abc1234", "feat: make <CR> on commit show diff (shortcut for d d)") }
+  local commits =
+    { make_commit("abc1234", "feat: make <CR> on commit show diff (shortcut for d d)") }
 
   -- No show_author option = has_author should be false
   local result = log_list.render(commits, nil, {})
