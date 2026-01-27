@@ -66,7 +66,14 @@ function M.apply(state, cmd)
   elseif cmd.type == "set_file_expansion" then
     return M._apply_set_file_expansion(new_state, cmd.file_key, cmd.value)
   elseif cmd.type == "set_visibility_level" then
-    return M._apply_set_visibility_level(new_state, cmd.level, cmd.scope)
+    return M._apply_set_visibility_level(
+      new_state,
+      cmd.level,
+      cmd.scope,
+      cmd.sections,
+      cmd.file_keys,
+      cmd.commit_hashes
+    )
   elseif cmd.type == "toggle_all_sections" then
     return M._apply_toggle_all_sections(new_state, cmd.sections, cmd.all_collapsed)
   end
@@ -201,12 +208,224 @@ function M._apply_set_file_expansion(state, file_key, value)
 end
 
 --- Apply set_visibility_level command
+--- Applies a visibility level to the given scope
+--- Level 1: Collapse sections, clear file/commit expansions
+--- Level 2: Expand sections, clear file/commit expansions
+--- Level 3: Expand sections, set files to headers mode
+--- Level 4: Expand sections, fully expand files and commits
+---@param state ExpansionState (already copied)
+---@param level number (1-4)
+---@param scope Scope
+---@param sections? string[] Section keys to operate on
+---@param file_keys? string[] File keys to operate on
+---@param commit_hashes? string[] Commit hashes to operate on
+---@return ExpansionState
+function M._apply_set_visibility_level(state, level, scope, sections, file_keys, commit_hashes)
+  level = math.max(1, math.min(4, level)) -- Clamp to 1-4
+  state.visibility_level = level
+
+  if scope.type == "global" then
+    return M._apply_visibility_level_global(state, level, sections, file_keys, commit_hashes)
+  elseif scope.type == "section" then
+    return M._apply_visibility_level_section(
+      state,
+      level,
+      scope.section_key,
+      file_keys,
+      commit_hashes
+    )
+  elseif scope.type == "file" then
+    return M._apply_visibility_level_file(state, level, scope.file_key)
+  end
+  -- Hunk scope falls through to file
+  if scope.type == "hunk" and scope.file_key then
+    return M._apply_visibility_level_file(state, level, scope.file_key)
+  end
+
+  return state
+end
+
+--- Apply visibility level globally
 ---@param state ExpansionState (already copied)
 ---@param level number
----@param scope Scope
+---@param sections? string[]
+---@param file_keys? string[]
+---@param commit_hashes? string[]
 ---@return ExpansionState
-function M._apply_set_visibility_level(state, level, scope)
-  -- TODO: Implement in Step 3
+function M._apply_visibility_level_global(state, level, sections, file_keys, commit_hashes)
+  sections = sections or {}
+  file_keys = file_keys or {}
+  commit_hashes = commit_hashes or {}
+
+  if level == 1 then
+    -- Collapse all sections, clear all expansions
+    for _, section_key in ipairs(sections) do
+      state.sections[section_key] = {
+        collapsed = true,
+        remembered_files = state.sections[section_key]
+          and state.sections[section_key].remembered_files,
+      }
+    end
+    state.files = {}
+    state.commits = {}
+  elseif level == 2 then
+    -- Expand all sections, clear file diffs and commit details
+    for _, section_key in ipairs(sections) do
+      state.sections[section_key] = {
+        collapsed = false,
+        remembered_files = state.sections[section_key]
+          and state.sections[section_key].remembered_files,
+      }
+    end
+    state.files = {}
+    state.commits = {}
+  elseif level == 3 then
+    -- Expand all sections, set files to headers mode
+    for _, section_key in ipairs(sections) do
+      state.sections[section_key] = {
+        collapsed = false,
+        remembered_files = state.sections[section_key]
+          and state.sections[section_key].remembered_files,
+      }
+    end
+    for _, file_key in ipairs(file_keys) do
+      local existing = state.files[file_key] or {}
+      state.files[file_key] = {
+        expanded = "headers",
+        hunks = {},
+        remembered = existing.remembered,
+      }
+    end
+    state.commits = {}
+  elseif level == 4 then
+    -- Expand everything
+    for _, section_key in ipairs(sections) do
+      state.sections[section_key] = {
+        collapsed = false,
+        remembered_files = state.sections[section_key]
+          and state.sections[section_key].remembered_files,
+      }
+    end
+    for _, file_key in ipairs(file_keys) do
+      local existing = state.files[file_key] or {}
+      state.files[file_key] = {
+        expanded = true,
+        remembered = existing.remembered,
+      }
+    end
+    for _, hash in ipairs(commit_hashes) do
+      state.commits[hash] = true
+    end
+  end
+
+  return state
+end
+
+--- Apply visibility level to a single section
+---@param state ExpansionState (already copied)
+---@param level number
+---@param section_key string
+---@param file_keys? string[]
+---@param commit_hashes? string[]
+---@return ExpansionState
+function M._apply_visibility_level_section(state, level, section_key, file_keys, commit_hashes)
+  file_keys = file_keys or {}
+  commit_hashes = commit_hashes or {}
+
+  if level == 1 then
+    -- Collapse the section
+    state.sections[section_key] = {
+      collapsed = true,
+      remembered_files = state.sections[section_key]
+        and state.sections[section_key].remembered_files,
+    }
+    -- Clear file expansions for this section
+    for _, file_key in ipairs(file_keys) do
+      state.files[file_key] = nil
+    end
+    -- Clear commit expansions for this section
+    for _, hash in ipairs(commit_hashes) do
+      state.commits[hash] = nil
+    end
+  elseif level == 2 then
+    -- Expand section, clear file diffs
+    state.sections[section_key] = {
+      collapsed = false,
+      remembered_files = state.sections[section_key]
+        and state.sections[section_key].remembered_files,
+    }
+    for _, file_key in ipairs(file_keys) do
+      state.files[file_key] = nil
+    end
+    for _, hash in ipairs(commit_hashes) do
+      state.commits[hash] = nil
+    end
+  elseif level == 3 then
+    -- Expand section, set files to headers mode
+    state.sections[section_key] = {
+      collapsed = false,
+      remembered_files = state.sections[section_key]
+        and state.sections[section_key].remembered_files,
+    }
+    for _, file_key in ipairs(file_keys) do
+      local existing = state.files[file_key] or {}
+      state.files[file_key] = {
+        expanded = "headers",
+        hunks = {},
+        remembered = existing.remembered,
+      }
+    end
+  elseif level == 4 then
+    -- Expand section and everything in it
+    state.sections[section_key] = {
+      collapsed = false,
+      remembered_files = state.sections[section_key]
+        and state.sections[section_key].remembered_files,
+    }
+    for _, file_key in ipairs(file_keys) do
+      local existing = state.files[file_key] or {}
+      state.files[file_key] = {
+        expanded = true,
+        remembered = existing.remembered,
+      }
+    end
+    for _, hash in ipairs(commit_hashes) do
+      state.commits[hash] = true
+    end
+  end
+
+  return state
+end
+
+--- Apply visibility level to a single file
+---@param state ExpansionState (already copied)
+---@param level number
+---@param file_key string
+---@return ExpansionState
+function M._apply_visibility_level_file(state, level, file_key)
+  local existing = state.files[file_key] or {}
+
+  if level == 1 or level == 2 then
+    -- Collapse file diff
+    state.files[file_key] = {
+      expanded = false,
+      remembered = existing.remembered,
+    }
+  elseif level == 3 then
+    -- Headers mode
+    state.files[file_key] = {
+      expanded = "headers",
+      hunks = {},
+      remembered = existing.remembered,
+    }
+  elseif level == 4 then
+    -- Fully expand
+    state.files[file_key] = {
+      expanded = true,
+      remembered = existing.remembered,
+    }
+  end
+
   return state
 end
 

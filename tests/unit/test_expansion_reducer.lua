@@ -418,4 +418,219 @@ T["expansion.reducer"]["set_file_expansion preserves remembered state"] = functi
   eq(new_state.files["unstaged:file.txt"].remembered[1], true)
 end
 
+-- Visibility level tests (global scope)
+T["expansion.reducer"]["set_visibility_level 1 global collapses all sections"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+  state.sections["staged"] = { collapsed = false }
+  state.sections["unstaged"] = { collapsed = false }
+
+  local cmd = commands.set_visibility_level(1, scope.global(), {
+    sections = { "staged", "unstaged" },
+  })
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.visibility_level, 1)
+  eq(new_state.sections["staged"].collapsed, true)
+  eq(new_state.sections["unstaged"].collapsed, true)
+end
+
+T["expansion.reducer"]["set_visibility_level 1 global clears file expansions"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+  state.files["unstaged:file.txt"] = { expanded = true }
+  state.commits["abc123"] = true
+
+  local cmd = commands.set_visibility_level(1, scope.global(), {
+    sections = {},
+  })
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.files, {})
+  eq(new_state.commits, {})
+end
+
+T["expansion.reducer"]["set_visibility_level 2 global expands sections"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+  state.sections["staged"] = { collapsed = true }
+  state.sections["unstaged"] = { collapsed = true }
+
+  local cmd = commands.set_visibility_level(2, scope.global(), {
+    sections = { "staged", "unstaged" },
+  })
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.visibility_level, 2)
+  eq(new_state.sections["staged"].collapsed, false)
+  eq(new_state.sections["unstaged"].collapsed, false)
+end
+
+T["expansion.reducer"]["set_visibility_level 3 global sets files to headers mode"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+
+  local cmd = commands.set_visibility_level(3, scope.global(), {
+    sections = { "unstaged" },
+    file_keys = { "unstaged:file1.txt", "unstaged:file2.txt" },
+  })
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.visibility_level, 3)
+  eq(new_state.files["unstaged:file1.txt"].expanded, "headers")
+  eq(new_state.files["unstaged:file2.txt"].expanded, "headers")
+end
+
+T["expansion.reducer"]["set_visibility_level 4 global fully expands everything"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+
+  local cmd = commands.set_visibility_level(4, scope.global(), {
+    sections = { "unstaged" },
+    file_keys = { "unstaged:file.txt" },
+    commit_hashes = { "abc123", "def456" },
+  })
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.visibility_level, 4)
+  eq(new_state.sections["unstaged"].collapsed, false)
+  eq(new_state.files["unstaged:file.txt"].expanded, true)
+  eq(new_state.commits["abc123"], true)
+  eq(new_state.commits["def456"], true)
+end
+
+-- Visibility level tests (section scope)
+T["expansion.reducer"]["set_visibility_level 1 section collapses that section"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+  state.sections["unstaged"] = { collapsed = false }
+  state.files["unstaged:file.txt"] = { expanded = true }
+
+  local cmd = commands.set_visibility_level(1, scope.section("unstaged"), {
+    file_keys = { "unstaged:file.txt" },
+  })
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.sections["unstaged"].collapsed, true)
+  eq(new_state.files["unstaged:file.txt"], nil)
+end
+
+T["expansion.reducer"]["set_visibility_level 4 section expands only that section"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+  state.sections["staged"] = { collapsed = true }
+
+  local cmd = commands.set_visibility_level(4, scope.section("unstaged"), {
+    file_keys = { "unstaged:file.txt" },
+    commit_hashes = { "abc123" },
+  })
+  local new_state = reducer.apply(state, cmd)
+
+  -- Only unstaged section is affected
+  eq(new_state.sections["unstaged"].collapsed, false)
+  eq(new_state.sections["staged"].collapsed, true) -- Unchanged
+  eq(new_state.files["unstaged:file.txt"].expanded, true)
+  eq(new_state.commits["abc123"], true)
+end
+
+-- Visibility level tests (file scope)
+T["expansion.reducer"]["set_visibility_level 1 file collapses that file"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+  state.files["unstaged:file.txt"] = { expanded = true }
+
+  local cmd = commands.set_visibility_level(1, scope.file("unstaged", "unstaged:file.txt"))
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.files["unstaged:file.txt"].expanded, false)
+end
+
+T["expansion.reducer"]["set_visibility_level 3 file sets to headers mode"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+
+  local cmd = commands.set_visibility_level(3, scope.file("unstaged", "unstaged:file.txt"))
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.files["unstaged:file.txt"].expanded, "headers")
+end
+
+T["expansion.reducer"]["set_visibility_level 4 file fully expands that file"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+  state.files["unstaged:file.txt"] = { expanded = false }
+
+  local cmd = commands.set_visibility_level(4, scope.file("unstaged", "unstaged:file.txt"))
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.files["unstaged:file.txt"].expanded, true)
+end
+
+T["expansion.reducer"]["set_visibility_level preserves remembered state"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+  state.files["unstaged:file.txt"] = {
+    expanded = true,
+    remembered = { [1] = true, [2] = false },
+  }
+
+  local cmd = commands.set_visibility_level(1, scope.file("unstaged", "unstaged:file.txt"))
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.files["unstaged:file.txt"].expanded, false)
+  eq(new_state.files["unstaged:file.txt"].remembered[1], true)
+  eq(new_state.files["unstaged:file.txt"].remembered[2], false)
+end
+
+T["expansion.reducer"]["set_visibility_level clamps level to 1-4"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local state = reducer.new()
+
+  -- Level 0 should clamp to 1
+  local cmd1 = commands.set_visibility_level(0, scope.global())
+  local new_state1 = reducer.apply(state, cmd1)
+  eq(new_state1.visibility_level, 1)
+
+  -- Level 5 should clamp to 4
+  local cmd2 = commands.set_visibility_level(5, scope.global())
+  local new_state2 = reducer.apply(state, cmd2)
+  eq(new_state2.visibility_level, 4)
+end
+
 return T

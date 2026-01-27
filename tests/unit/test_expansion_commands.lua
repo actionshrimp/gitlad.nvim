@@ -69,6 +69,23 @@ T["expansion.commands"]["set_visibility_level creates correct command"] = functi
   eq(cmd.scope.file_key, "unstaged:file.txt")
 end
 
+T["expansion.commands"]["set_visibility_level includes context when provided"] = function()
+  local commands = require("gitlad.state.expansion.commands")
+  local scope = require("gitlad.state.expansion.scope")
+
+  local cmd = commands.set_visibility_level(4, scope.global(), {
+    sections = { "staged", "unstaged" },
+    file_keys = { "unstaged:file.txt" },
+    commit_hashes = { "abc123" },
+  })
+
+  eq(cmd.type, "set_visibility_level")
+  eq(cmd.level, 4)
+  eq(cmd.sections, { "staged", "unstaged" })
+  eq(cmd.file_keys, { "unstaged:file.txt" })
+  eq(cmd.commit_hashes, { "abc123" })
+end
+
 T["expansion.commands"]["toggle_all_sections creates correct command"] = function()
   local commands = require("gitlad.state.expansion.commands")
 

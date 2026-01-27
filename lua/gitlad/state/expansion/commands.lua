@@ -31,6 +31,8 @@ local M = {}
 ---@field value? FileExpansionValue Explicit value for set_file_expansion
 ---@field sections? string[] List of section keys for toggle_all_sections
 ---@field all_collapsed? boolean Whether all sections are currently collapsed (for toggle_all_sections)
+---@field file_keys? string[] List of file keys to operate on (for visibility level)
+---@field commit_hashes? string[] List of commit hashes to operate on (for visibility level)
 
 --- Create a toggle_file command
 ---@param file_key string "section:path" key
@@ -78,15 +80,25 @@ function M.set_file_expansion(file_key, value)
   }
 end
 
+---@class VisibilityLevelContext
+---@field sections? string[] Section keys to operate on (for global/section scope)
+---@field file_keys? string[] File keys to operate on
+---@field commit_hashes? string[] Commit hashes to operate on
+
 --- Create a set_visibility_level command
 ---@param level number Visibility level (1-4)
 ---@param scope Scope Scope to apply the level to
+---@param context? VisibilityLevelContext Additional context for bulk operations
 ---@return ExpansionCommand
-function M.set_visibility_level(level, scope)
+function M.set_visibility_level(level, scope, context)
+  context = context or {}
   return {
     type = "set_visibility_level",
     level = level,
     scope = scope,
+    sections = context.sections,
+    file_keys = context.file_keys,
+    commit_hashes = context.commit_hashes,
   }
 end
 
