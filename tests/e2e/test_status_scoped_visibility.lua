@@ -160,7 +160,7 @@ T["scoped visibility on file"]["4 on file line expands only that file"] = functi
   eq(has_file2_diff, nil, "Should NOT show file2 diff content")
 end
 
-T["scoped visibility on file"]["1 on expanded file collapses only that file"] = function()
+T["scoped visibility on file"]["1 on file collapses parent section (hierarchical)"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -189,25 +189,31 @@ T["scoped visibility on file"]["1 on expanded file collapses only that file"] = 
   child.type_keys("<Tab>") -- Expand file2
   wait(child, 200)
 
-  -- Navigate back to file1 and press 1 to collapse
+  -- Navigate back to file1 and press 1
+  -- Since level 1 would hide the file (section collapsed), it should collapse the section
   lines = get_buffer_lines(child)
   file1_line = find_line_with(lines, "file1.txt")
   child.cmd(tostring(file1_line))
   child.type_keys("1")
   wait(child, 200)
 
-  -- Verify file1 is collapsed but file2 is still expanded
+  -- Verify the Unstaged section is collapsed (files should not be visible)
   child.lua([[
     local status = require("gitlad.ui.views.status")
     local buffer = status.get_buffer()
-    _G.test_file1_state = buffer.expanded_files["unstaged:file1.txt"]
-    _G.test_file2_state = buffer.expanded_files["unstaged:file2.txt"]
+    _G.test_section_collapsed = buffer.collapsed_sections["unstaged"]
   ]])
-  local file1_state = child.lua_get("_G.test_file1_state")
-  local file2_state = child.lua_get("_G.test_file2_state")
+  local section_collapsed = child.lua_get("_G.test_section_collapsed")
 
-  eq(file1_state, false, "file1.txt should be collapsed")
-  eq(file2_state, true, "file2.txt should still be expanded")
+  eq(section_collapsed, true, "Unstaged section should be collapsed")
+
+  -- Verify file lines are not visible in the buffer
+  lines = get_buffer_lines(child)
+  local file1_visible = find_line_with(lines, "file1.txt")
+  local file2_visible = find_line_with(lines, "file2.txt")
+
+  eq(file1_visible, nil, "file1.txt should not be visible when section is collapsed")
+  eq(file2_visible, nil, "file2.txt should not be visible when section is collapsed")
 end
 
 T["scoped visibility on file"]["3 on file shows headers only for that file"] = function()

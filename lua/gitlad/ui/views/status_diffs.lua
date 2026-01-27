@@ -866,9 +866,11 @@ local function apply_visibility_level_to_section(self, section_name, level)
 end
 
 --- Apply visibility level scoped to cursor position (magit-style 1/2/3/4)
---- - Cursor on file/diff line -> affects only that file's hunks
---- - Cursor on section header -> affects all files/hunks in that section
---- - Cursor elsewhere -> affects entire buffer
+--- Hierarchical scoping: if level would hide current item, apply to parent instead
+--- - Level 1 on file/diff -> collapses parent section (file would be invisible)
+--- - Level 2+ on file/diff -> affects that file
+--- - On section header -> affects that section
+--- - Elsewhere -> affects entire buffer
 ---@param self StatusBuffer
 ---@param level number Visibility level (1-4)
 local function apply_scoped_visibility_level(self, level)
@@ -887,7 +889,12 @@ local function apply_scoped_visibility_level(self, level)
   -- Check if on a file entry or diff line
   local line_info = self.line_map[line]
   if line_info and line_info.type == "file" then
-    apply_visibility_level_to_file(self, line_info.path, line_info.section, level)
+    -- Level 1 would hide the file (collapses section), so apply to section instead
+    if level == 1 then
+      apply_visibility_level_to_section(self, line_info.section, level)
+    else
+      apply_visibility_level_to_file(self, line_info.path, line_info.section, level)
+    end
     return
   end
 
