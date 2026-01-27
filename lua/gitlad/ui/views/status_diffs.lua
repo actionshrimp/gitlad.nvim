@@ -865,12 +865,26 @@ local function apply_visibility_level_to_section(self, section_name, level)
   end
 end
 
+--- Find the line number of a section header
+---@param self StatusBuffer
+---@param section_name string Section name to find
+---@return number|nil line_num Line number of section header, or nil if not found
+local function find_section_header_line(self, section_name)
+  for line_num, info in pairs(self.section_lines) do
+    if info.section == section_name then
+      return line_num
+    end
+  end
+  return nil
+end
+
 --- Apply visibility level scoped to cursor position (magit-style 1/2/3/4)
 --- Hierarchical scoping: if level would hide current item, apply to parent instead
 --- - Level 1 on file/diff -> collapses parent section (file would be invisible)
 --- - Level 2+ on file/diff -> affects that file
 --- - On section header -> affects that section
 --- - Elsewhere -> affects entire buffer
+--- When collapsing a parent, cursor moves to that parent for easy reopening.
 ---@param self StatusBuffer
 ---@param level number Visibility level (1-4)
 local function apply_scoped_visibility_level(self, level)
@@ -891,7 +905,21 @@ local function apply_scoped_visibility_level(self, level)
   if line_info and line_info.type == "file" then
     -- Level 1 would hide the file (collapses section), so apply to section instead
     if level == 1 then
-      apply_visibility_level_to_section(self, line_info.section, level)
+      -- Find the section header line BEFORE we collapse (line numbers change after render)
+      local section_name = line_info.section
+      local section_line = find_section_header_line(self, section_name)
+
+      apply_visibility_level_to_section(self, section_name, level)
+
+      -- Move cursor to section header so user can easily reopen
+      -- After render, section header should be at the same line since it's still visible
+      if section_line and self.winnr and vim.api.nvim_win_is_valid(self.winnr) then
+        -- Find the new section header line after render
+        local new_section_line = find_section_header_line(self, section_name)
+        if new_section_line then
+          vim.api.nvim_win_set_cursor(self.winnr, { new_section_line, 0 })
+        end
+      end
     else
       apply_visibility_level_to_file(self, line_info.path, line_info.section, level)
     end

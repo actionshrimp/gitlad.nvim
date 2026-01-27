@@ -160,7 +160,7 @@ T["scoped visibility on file"]["4 on file line expands only that file"] = functi
   eq(has_file2_diff, nil, "Should NOT show file2 diff content")
 end
 
-T["scoped visibility on file"]["1 on file collapses parent section (hierarchical)"] = function()
+T["scoped visibility on file"]["1 on file collapses parent section and moves cursor"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -214,6 +214,19 @@ T["scoped visibility on file"]["1 on file collapses parent section (hierarchical
 
   eq(file1_visible, nil, "file1.txt should not be visible when section is collapsed")
   eq(file2_visible, nil, "file2.txt should not be visible when section is collapsed")
+
+  -- Verify cursor moved to section header for easy reopening
+  local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  local section_header_line = find_line_with(lines, "Unstaged")
+  eq(cursor_line, section_header_line, "Cursor should move to section header after collapse")
+
+  -- Verify we can easily reopen with Tab
+  child.type_keys("<Tab>")
+  wait(child, 200)
+
+  lines = get_buffer_lines(child)
+  file1_visible = find_line_with(lines, "file1.txt")
+  assert_truthy(file1_visible, "file1.txt should be visible after reopening section with Tab")
 end
 
 T["scoped visibility on file"]["3 on file shows headers only for that file"] = function()
