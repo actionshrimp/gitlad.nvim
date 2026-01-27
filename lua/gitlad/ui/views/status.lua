@@ -14,6 +14,7 @@ local M = {}
 local state = require("gitlad.state")
 local utils = require("gitlad.utils")
 local spinner_util = require("gitlad.ui.utils.spinner")
+local expansion = require("gitlad.state.expansion")
 
 -- Import component modules
 local status_render = require("gitlad.ui.views.status_render")
@@ -79,6 +80,7 @@ local status_navigation = require("gitlad.ui.views.status_navigation")
 ---@field visibility_level number Current visibility level (1-4, default 2)
 ---@field remembered_file_states table<string, table<number, boolean>> Saved hunk states when files collapse (for restoring on re-expand)
 ---@field remembered_section_states table<string, RememberedSectionState> Saved file states when sections collapse (for restoring on re-expand)
+---@field expansion ExpansionState Elm-style expansion state (source of truth)
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
 
@@ -113,6 +115,8 @@ local function get_or_create_buffer(repo_state)
   self.visibility_level = 2 -- Current visibility level (1=headers, 2=items, 3=diffs, 4=all)
   self.remembered_file_states = {} -- Saved hunk states when files collapse
   self.remembered_section_states = {} -- Saved file states when sections collapse
+  -- Initialize Elm-style expansion state
+  self.expansion = expansion.reducer.new(2)
   self.status_line_num = nil -- Line number of the status indicator
   -- Initialize submodules section visibility from config
   local cfg = require("gitlad.config").get()
@@ -246,6 +250,136 @@ function StatusBuffer:close()
   end
 
   self.winnr = nil
+end
+
+--- Apply an expansion command and sync state to legacy fields
+--- This is the bridge between the new Elm-style state and the existing code
+---@param cmd ExpansionCommand
+function StatusBuffer:apply_expansion_cmd(cmd)
+  self.expansion = expansion.reducer.apply(self.expansion, cmd)
+  self:_sync_expansion_to_legacy()
+end
+
+--- Sync expansion state to legacy fields for backward compatibility
+--- This allows gradual migration of rendering code
+function StatusBuffer:_sync_expansion_to_legacy()
+  -- Sync visibility level
+  self.visibility_level = self.expansion.visibility_level
+
+  -- Sync collapsed sections
+  self.collapsed_sections = {}
+  for section_key, section_state in pairs(self.expansion.sections) do
+    if section_state.collapsed then
+      self.collapsed_sections[section_key] = true
+    end
+  end
+
+  -- Sync expanded files (convert from new format to old format)
+  self.expanded_files = {}
+  for file_key, file_state in pairs(self.expansion.files) do
+    if file_state.expanded == true then
+      self.expanded_files[file_key] = true
+    elseif file_state.expanded == "headers" then
+      -- Headers mode: empty table or table with per-hunk states
+      if file_state.hunks and next(file_state.hunks) then
+        self.expanded_files[file_key] = vim.deepcopy(file_state.hunks)
+      else
+        self.expanded_files[file_key] = {}
+      end
+    else
+      self.expanded_files[file_key] = false
+    end
+  end
+
+  -- Sync expanded commits
+  self.expanded_commits = vim.deepcopy(self.expansion.commits)
+
+  -- Sync remembered file states (from file.remembered)
+  self.remembered_file_states = {}
+  for file_key, file_state in pairs(self.expansion.files) do
+    if file_state.remembered then
+      self.remembered_file_states[file_key] = vim.deepcopy(file_state.remembered)
+    end
+  end
+
+  -- Sync remembered section states
+  self.remembered_section_states = {}
+  for section_key, section_state in pairs(self.expansion.sections) do
+    if section_state.remembered_files then
+      -- Convert to old format
+      local files = {}
+      for file_key, file_exp in pairs(section_state.remembered_files) do
+        if file_exp.expanded == true then
+          files[file_key] = true
+        elseif file_exp.expanded == "headers" then
+          files[file_key] = file_exp.hunks and vim.deepcopy(file_exp.hunks) or {}
+        else
+          files[file_key] = false
+        end
+      end
+      if next(files) then
+        self.remembered_section_states[section_key] = { files = files }
+      end
+    end
+  end
+end
+
+--- Sync legacy fields back to expansion state
+--- Used when legacy code directly modifies fields (until fully migrated)
+function StatusBuffer:_sync_legacy_to_expansion()
+  -- This allows legacy code to still work by syncing its changes back
+  self.expansion.visibility_level = self.visibility_level
+
+  -- Sync sections
+  self.expansion.sections = {}
+  for section_key, is_collapsed in pairs(self.collapsed_sections) do
+    if is_collapsed then
+      local remembered = nil
+      if self.remembered_section_states[section_key] then
+        -- Convert old format to new format
+        remembered = {}
+        for file_key, state in pairs(self.remembered_section_states[section_key].files or {}) do
+          if state == true then
+            remembered[file_key] = { expanded = true }
+          elseif type(state) == "table" then
+            remembered[file_key] = { expanded = "headers", hunks = vim.deepcopy(state) }
+          else
+            remembered[file_key] = { expanded = false }
+          end
+        end
+      end
+      self.expansion.sections[section_key] = {
+        collapsed = true,
+        remembered_files = remembered,
+      }
+    end
+  end
+
+  -- Sync files
+  self.expansion.files = {}
+  for file_key, state in pairs(self.expanded_files) do
+    local remembered = self.remembered_file_states[file_key]
+    if state == true then
+      self.expansion.files[file_key] = {
+        expanded = true,
+        remembered = remembered and vim.deepcopy(remembered) or nil,
+      }
+    elseif type(state) == "table" then
+      self.expansion.files[file_key] = {
+        expanded = "headers",
+        hunks = vim.deepcopy(state),
+        remembered = remembered and vim.deepcopy(remembered) or nil,
+      }
+    elseif state == false then
+      self.expansion.files[file_key] = {
+        expanded = false,
+        remembered = remembered and vim.deepcopy(remembered) or nil,
+      }
+    end
+  end
+
+  -- Sync commits
+  self.expansion.commits = vim.deepcopy(self.expanded_commits)
 end
 
 --- Open status view for current repository

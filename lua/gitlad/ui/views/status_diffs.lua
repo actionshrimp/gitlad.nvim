@@ -7,6 +7,7 @@
 local M = {}
 
 local git = require("gitlad.git")
+local expansion = require("gitlad.state.expansion")
 
 -- Import shared constants
 local status_render = require("gitlad.ui.views.status_render")
@@ -221,9 +222,11 @@ local function toggle_diff(self)
   if section_info then
     -- Check if this is a collapsible section (commit sections, stashes, submodules)
     if COLLAPSIBLE_SECTIONS[section_info.section] then
-      -- Toggle the section collapsed state
+      -- Toggle the section collapsed state using Elm-style command
       local section_key = section_info.section
-      self.collapsed_sections[section_key] = not self.collapsed_sections[section_key]
+      -- Sync legacy state to expansion before applying command
+      self:_sync_legacy_to_expansion()
+      self:apply_expansion_cmd(expansion.commands.toggle_section(section_key))
       self:render()
       return
     end
@@ -935,49 +938,26 @@ end
 --- If all sections are expanded -> collapse all (preserving nested expansion states)
 ---@param self StatusBuffer
 local function toggle_all_sections(self)
-  -- Check if any collapsible section is collapsed
-  local any_collapsed = false
+  -- Build list of collapsible section keys
+  local section_keys = {}
   for section_name, _ in pairs(COLLAPSIBLE_SECTIONS) do
+    table.insert(section_keys, section_name)
+  end
+
+  -- Check if any section is collapsed
+  local any_collapsed = false
+  for _, section_name in ipairs(section_keys) do
     if self.collapsed_sections[section_name] then
       any_collapsed = true
       break
     end
   end
 
-  if any_collapsed then
-    -- Expand all sections - restore remembered states
-    for section_name, _ in pairs(COLLAPSIBLE_SECTIONS) do
-      if self.collapsed_sections[section_name] then
-        self.collapsed_sections[section_name] = false
-        -- Restore remembered file expansion states for this section
-        local remembered = self.remembered_section_states[section_name]
-        if remembered and remembered.files then
-          for file_key, state in pairs(remembered.files) do
-            self.expanded_files[file_key] = vim.deepcopy(state)
-          end
-        end
-      end
-    end
-  else
-    -- Collapse all sections - save current states first
-    for section_name, _ in pairs(COLLAPSIBLE_SECTIONS) do
-      if not self.collapsed_sections[section_name] then
-        -- Save expansion states for files in this section
-        local files_in_section = {}
-        for key, state in pairs(self.expanded_files) do
-          -- Match section prefix (e.g., "stashes:" prefix)
-          if key:match("^" .. section_name .. ":") then
-            files_in_section[key] = vim.deepcopy(state)
-          end
-        end
-        -- Only save if there were expanded files
-        if next(files_in_section) then
-          self.remembered_section_states[section_name] = { files = files_in_section }
-        end
-        self.collapsed_sections[section_name] = true
-      end
-    end
-  end
+  -- Sync current state to expansion before applying command
+  self:_sync_legacy_to_expansion()
+
+  -- Apply the command using Elm-style reducer
+  self:apply_expansion_cmd(expansion.commands.toggle_all_sections(section_keys, any_collapsed))
 
   self:render()
 end
