@@ -15,13 +15,20 @@ local signs_util = require("gitlad.ui.utils.signs")
 -- Namespace for sign column indicators
 local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 
--- Sections that can be collapsed (commit sections, stashes, submodules)
+-- Sections that can be collapsed (file sections, commit sections, stashes, submodules)
 local COLLAPSIBLE_SECTIONS = {
+  -- File sections (top-level sections like magit)
+  untracked = true,
+  unstaged = true,
+  staged = true,
+  conflicted = true,
+  -- Commit sections
   unpulled_upstream = true,
   unpushed_upstream = true,
   unpulled_push = true,
   unpushed_push = true,
   recent = true,
+  -- Other sections
   stashes = true,
   submodules = true,
 }
@@ -100,9 +107,16 @@ local function render(self)
   self.sign_lines = {} -- Reset sign lines
 
   -- Helper to add a section header and track its line number
+  -- Returns true if section is expanded (content should be rendered)
   local function add_section_header(name, section, count)
+    local is_collapsed = self.collapsed_sections[section]
     table.insert(lines, string.format("%s (%d)", name, count))
     self.section_lines[#lines] = { name = name, section = section }
+    -- Add sign for collapsible sections
+    if COLLAPSIBLE_SECTIONS[section] then
+      self.sign_lines[#lines] = { expanded = not is_collapsed }
+    end
+    return not is_collapsed
   end
 
   -- Helper to add a file entry and track its line number
@@ -285,36 +299,44 @@ local function render(self)
 
   -- Untracked files
   if #status.untracked > 0 then
-    add_section_header("Untracked", "untracked", #status.untracked)
-    for _, entry in ipairs(status.untracked) do
-      add_file_line(entry, "untracked", cfg.signs.untracked, nil, false)
+    local is_expanded = add_section_header("Untracked", "untracked", #status.untracked)
+    if is_expanded then
+      for _, entry in ipairs(status.untracked) do
+        add_file_line(entry, "untracked", cfg.signs.untracked, nil, false)
+      end
     end
     table.insert(lines, "")
   end
 
   -- Unstaged changes
   if #status.unstaged > 0 then
-    add_section_header("Unstaged", "unstaged", #status.unstaged)
-    for _, entry in ipairs(status.unstaged) do
-      add_file_line(entry, "unstaged", cfg.signs.unstaged, entry.worktree_status, false)
+    local is_expanded = add_section_header("Unstaged", "unstaged", #status.unstaged)
+    if is_expanded then
+      for _, entry in ipairs(status.unstaged) do
+        add_file_line(entry, "unstaged", cfg.signs.unstaged, entry.worktree_status, false)
+      end
     end
     table.insert(lines, "")
   end
 
   -- Staged changes
   if #status.staged > 0 then
-    add_section_header("Staged", "staged", #status.staged)
-    for _, entry in ipairs(status.staged) do
-      add_file_line(entry, "staged", cfg.signs.staged, entry.index_status, true)
+    local is_expanded = add_section_header("Staged", "staged", #status.staged)
+    if is_expanded then
+      for _, entry in ipairs(status.staged) do
+        add_file_line(entry, "staged", cfg.signs.staged, entry.index_status, true)
+      end
     end
     table.insert(lines, "")
   end
 
   -- Conflicted files
   if #status.conflicted > 0 then
-    add_section_header("Conflicted", "conflicted", #status.conflicted)
-    for _, entry in ipairs(status.conflicted) do
-      add_file_line(entry, "conflicted", cfg.signs.conflict, nil, false)
+    local is_expanded = add_section_header("Conflicted", "conflicted", #status.conflicted)
+    if is_expanded then
+      for _, entry in ipairs(status.conflicted) do
+        add_file_line(entry, "conflicted", cfg.signs.conflict, nil, false)
+      end
     end
     table.insert(lines, "")
   end

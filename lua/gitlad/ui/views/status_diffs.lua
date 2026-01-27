@@ -13,6 +13,14 @@ local status_render = require("gitlad.ui.views.status_render")
 local COLLAPSIBLE_SECTIONS = status_render.COLLAPSIBLE_SECTIONS
 local diff_cache_key = status_render.diff_cache_key
 
+-- File sections (have files with diffs, different from commit sections)
+local FILE_SECTIONS = {
+  untracked = true,
+  unstaged = true,
+  staged = true,
+  conflicted = true,
+}
+
 --- Parse a git diff into structured data with header and hunks
 ---@param lines string[]
 ---@return DiffData
@@ -267,15 +275,26 @@ local function toggle_diff(self)
     -- We're on a hunk header - toggle this specific hunk
     local key = diff_cache_key(line_info.path, line_info.section)
     local expansion_state = self.expanded_files[key]
+    local hunk_index = line_info.hunk_index
+    local diff_data = self.diff_cache[key]
 
-    -- Only toggle individual hunks when in headers mode (table)
     if type(expansion_state) == "table" then
-      local hunk_index = line_info.hunk_index
+      -- Headers mode: toggle individual hunk
       expansion_state[hunk_index] = not expansion_state[hunk_index]
       self:render()
       return
+    elseif expansion_state == true and diff_data then
+      -- Fully expanded: collapse just this hunk (transition to table mode)
+      -- Create a table with all hunks expanded except this one
+      local new_state = {}
+      for i = 1, #diff_data.hunks do
+        new_state[i] = (i ~= hunk_index)
+      end
+      self.expanded_files[key] = new_state
+      self:render()
+      return
     end
-    -- If fully expanded (true), don't toggle individual hunks - fall through to file toggle
+    -- If no diff data yet, fall through to file toggle
   end
 
   local path, section = self:_get_current_file()
@@ -570,7 +589,137 @@ end
 ---@param section_name string Section name
 ---@param level number Visibility level (1-4)
 local function apply_visibility_level_to_section(self, section_name, level)
-  -- For collapsible sections (commits, stashes, submodules)
+  -- Handle file sections (staged, unstaged, untracked, conflicted) specially
+  -- These have files with diffs that need expanding/collapsing
+  if FILE_SECTIONS[section_name] then
+    local file_keys = get_files_in_section(self, section_name)
+
+    if level == 1 then
+      -- Collapse the section header
+      self.collapsed_sections[section_name] = true
+      -- Clear file diffs
+      for _, key in ipairs(file_keys) do
+        self.expanded_files[key] = false
+        self.diff_cache[key] = nil
+      end
+      self:render()
+    elseif level == 2 then
+      -- Expand section, but collapse file diffs
+      self.collapsed_sections[section_name] = false
+      for _, key in ipairs(file_keys) do
+        self.expanded_files[key] = false
+        self.diff_cache[key] = nil
+      end
+      self:render()
+    elseif level == 3 then
+      -- Expand section, show diff headers only
+      self.collapsed_sections[section_name] = false
+      local status = self.repo_state.status
+      local section_files = status and status[section_name] or {}
+
+      if #section_files == 0 then
+        self:render()
+        return
+      end
+
+      -- Batch fetch diffs and then set headers mode
+      local pending = 0
+      local opts = { cwd = self.repo_state.repo_root }
+
+      for _, entry in ipairs(section_files) do
+        local key = diff_cache_key(entry.path, section_name)
+        if not self.diff_cache[key] then
+          pending = pending + 1
+
+          local function on_result(diff_lines, err)
+            if not err then
+              vim.schedule(function()
+                self.diff_cache[key] = parse_diff(diff_lines or {})
+              end)
+            end
+            pending = pending - 1
+            if pending == 0 then
+              vim.schedule(function()
+                for _, fkey in ipairs(file_keys) do
+                  self.expanded_files[fkey] = {} -- headers mode
+                end
+                self:render()
+              end)
+            end
+          end
+
+          if section_name == "untracked" then
+            git.diff_untracked(entry.path, opts, on_result)
+          else
+            local staged = (section_name == "staged")
+            git.diff(entry.path, staged, opts, on_result)
+          end
+        end
+      end
+
+      if pending == 0 then
+        for _, key in ipairs(file_keys) do
+          self.expanded_files[key] = {} -- headers mode
+        end
+        self:render()
+      end
+    elseif level == 4 then
+      -- Expand section and fully expand all file diffs
+      self.collapsed_sections[section_name] = false
+      local status = self.repo_state.status
+      local section_files = status and status[section_name] or {}
+
+      if #section_files == 0 then
+        self:render()
+        return
+      end
+
+      -- Batch fetch diffs and then fully expand
+      local pending = 0
+      local opts = { cwd = self.repo_state.repo_root }
+
+      for _, entry in ipairs(section_files) do
+        local key = diff_cache_key(entry.path, section_name)
+        if not self.diff_cache[key] then
+          pending = pending + 1
+
+          local function on_result(diff_lines, err)
+            if not err then
+              vim.schedule(function()
+                self.diff_cache[key] = parse_diff(diff_lines or {})
+              end)
+            end
+            pending = pending - 1
+            if pending == 0 then
+              vim.schedule(function()
+                for _, fkey in ipairs(file_keys) do
+                  self.expanded_files[fkey] = true
+                end
+                self:render()
+              end)
+            end
+          end
+
+          if section_name == "untracked" then
+            git.diff_untracked(entry.path, opts, on_result)
+          else
+            local staged = (section_name == "staged")
+            git.diff(entry.path, staged, opts, on_result)
+          end
+        end
+      end
+
+      if pending == 0 then
+        for _, key in ipairs(file_keys) do
+          self.expanded_files[key] = true
+        end
+        self:render()
+      end
+    end
+    return
+  end
+
+  -- For other collapsible sections (commits, stashes, submodules)
   if COLLAPSIBLE_SECTIONS[section_name] then
     if level == 1 then
       self.collapsed_sections[section_name] = true
@@ -601,7 +750,7 @@ local function apply_visibility_level_to_section(self, section_name, level)
     return
   end
 
-  -- For file sections (staged, unstaged, untracked, conflicted)
+  -- Fallback for non-collapsible sections (shouldn't happen)
   local file_keys = get_files_in_section(self, section_name)
 
   if level == 1 or level == 2 then
