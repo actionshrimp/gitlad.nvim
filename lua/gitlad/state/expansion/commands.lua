@@ -33,6 +33,7 @@ local M = {}
 ---@field all_collapsed? boolean Whether all sections are currently collapsed (for toggle_all_sections)
 ---@field file_keys? string[] List of file keys to operate on (for visibility level)
 ---@field commit_hashes? string[] List of commit hashes to operate on (for visibility level)
+---@field current_files? table<string, FileExpansion> Current file states (for toggle_all_sections)
 
 --- Create a toggle_file command
 ---@param file_key string "section:path" key
@@ -102,15 +103,22 @@ function M.set_visibility_level(level, scope, context)
   }
 end
 
+---@class ToggleAllSectionsContext
+---@field current_files table<string, FileExpansion> Current file expansion states (for saving)
+
 --- Create a toggle_all_sections command
----@param sections string[] List of section keys that exist
----@param all_collapsed boolean Whether all sections are currently collapsed
+--- If any section is collapsed → expand all (restore remembered states)
+--- If all sections are expanded → collapse all (save current states)
+---@param sections string[] List of section keys that can be toggled
+---@param any_collapsed boolean Whether any section is currently collapsed
+---@param current_files? table<string, FileExpansion> Current file expansion states (for save on collapse)
 ---@return ExpansionCommand
-function M.toggle_all_sections(sections, all_collapsed)
+function M.toggle_all_sections(sections, any_collapsed, current_files)
   return {
     type = "toggle_all_sections",
     sections = sections,
-    all_collapsed = all_collapsed,
+    all_collapsed = any_collapsed, -- Field name kept for compatibility
+    current_files = current_files,
   }
 end
 

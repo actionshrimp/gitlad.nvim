@@ -93,7 +93,19 @@ T["expansion.commands"]["toggle_all_sections creates correct command"] = functio
 
   eq(cmd.type, "toggle_all_sections")
   eq(cmd.sections, { "staged", "unstaged" })
-  eq(cmd.all_collapsed, false)
+  eq(cmd.all_collapsed, false) -- any_collapsed flag
+end
+
+T["expansion.commands"]["toggle_all_sections includes current_files when provided"] = function()
+  local commands = require("gitlad.state.expansion.commands")
+
+  local current_files = {
+    ["stashes:stash@{0}"] = { expanded = true },
+  }
+  local cmd = commands.toggle_all_sections({ "stashes" }, false, current_files)
+
+  eq(cmd.type, "toggle_all_sections")
+  eq(cmd.current_files["stashes:stash@{0}"].expanded, true)
 end
 
 T["expansion.commands"]["reset creates correct command"] = function()

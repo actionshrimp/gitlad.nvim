@@ -75,7 +75,12 @@ function M.apply(state, cmd)
       cmd.commit_hashes
     )
   elseif cmd.type == "toggle_all_sections" then
-    return M._apply_toggle_all_sections(new_state, cmd.sections, cmd.all_collapsed)
+    return M._apply_toggle_all_sections(
+      new_state,
+      cmd.sections,
+      cmd.all_collapsed,
+      cmd.current_files
+    )
   end
 
   return new_state
@@ -430,12 +435,66 @@ function M._apply_visibility_level_file(state, level, file_key)
 end
 
 --- Apply toggle_all_sections command
+--- If any_collapsed is true → expand all sections, restore remembered file states
+--- If any_collapsed is false → collapse all sections, save current file states
 ---@param state ExpansionState (already copied)
----@param sections string[]
----@param all_collapsed boolean
+---@param sections string[] Section keys to toggle
+---@param any_collapsed boolean Whether any section is currently collapsed
+---@param current_files? table<string, FileExpansion> Current file states (for save on collapse)
 ---@return ExpansionState
-function M._apply_toggle_all_sections(state, sections, all_collapsed)
-  -- TODO: Implement in Step 6
+function M._apply_toggle_all_sections(state, sections, any_collapsed, current_files)
+  sections = sections or {}
+  current_files = current_files or state.files
+
+  if any_collapsed then
+    -- Expand all sections - restore remembered file states
+    for _, section_key in ipairs(sections) do
+      local section = state.sections[section_key] or {}
+      if section.collapsed then
+        -- Restore remembered file states for this section
+        if section.remembered_files then
+          for file_key, file_state in pairs(section.remembered_files) do
+            state.files[file_key] = vim.deepcopy(file_state)
+          end
+        end
+      end
+      -- Expand the section
+      state.sections[section_key] = {
+        collapsed = false,
+        remembered_files = section.remembered_files,
+      }
+    end
+  else
+    -- Collapse all sections - save current file states first
+    for _, section_key in ipairs(sections) do
+      local section = state.sections[section_key] or {}
+      if not section.collapsed then
+        -- Find files belonging to this section (key starts with "section_key:")
+        local files_in_section = {}
+        local pattern = "^" .. vim.pesc(section_key) .. ":"
+        for file_key, file_state in pairs(current_files) do
+          if file_key:match(pattern) then
+            files_in_section[file_key] = vim.deepcopy(file_state)
+          end
+        end
+        -- Save if there were any files
+        local remembered = nil
+        if next(files_in_section) then
+          remembered = files_in_section
+        end
+        -- Collapse the section with remembered state
+        state.sections[section_key] = {
+          collapsed = true,
+          remembered_files = remembered,
+        }
+        -- Clear file states for this section
+        for file_key in pairs(files_in_section) do
+          state.files[file_key] = nil
+        end
+      end
+    end
+  end
+
   return state
 end
 

@@ -633,4 +633,143 @@ T["expansion.reducer"]["set_visibility_level clamps level to 1-4"] = function()
   eq(new_state2.visibility_level, 4)
 end
 
+-- toggle_all_sections tests
+T["expansion.reducer"]["toggle_all_sections collapses all when none collapsed"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+
+  local state = reducer.new()
+  state.sections["stashes"] = { collapsed = false }
+  state.sections["recent"] = { collapsed = false }
+
+  local cmd = commands.toggle_all_sections({ "stashes", "recent" }, false)
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.sections["stashes"].collapsed, true)
+  eq(new_state.sections["recent"].collapsed, true)
+end
+
+T["expansion.reducer"]["toggle_all_sections expands all when any collapsed"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+
+  local state = reducer.new()
+  state.sections["stashes"] = { collapsed = true }
+  state.sections["recent"] = { collapsed = false }
+
+  local cmd = commands.toggle_all_sections({ "stashes", "recent" }, true)
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.sections["stashes"].collapsed, false)
+  eq(new_state.sections["recent"].collapsed, false)
+end
+
+T["expansion.reducer"]["toggle_all_sections saves file states when collapsing"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+
+  local state = reducer.new()
+  state.sections["stashes"] = { collapsed = false }
+  state.files["stashes:stash@{0}"] = { expanded = true }
+  state.files["stashes:stash@{1}"] = { expanded = "headers", hunks = { [1] = true } }
+
+  local cmd = commands.toggle_all_sections({ "stashes" }, false)
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.sections["stashes"].collapsed, true)
+  -- File states should be saved in remembered_files
+  eq(new_state.sections["stashes"].remembered_files["stashes:stash@{0}"].expanded, true)
+  eq(new_state.sections["stashes"].remembered_files["stashes:stash@{1}"].expanded, "headers")
+  -- File states should be cleared from files table
+  eq(new_state.files["stashes:stash@{0}"], nil)
+  eq(new_state.files["stashes:stash@{1}"], nil)
+end
+
+T["expansion.reducer"]["toggle_all_sections restores file states when expanding"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+
+  local state = reducer.new()
+  state.sections["stashes"] = {
+    collapsed = true,
+    remembered_files = {
+      ["stashes:stash@{0}"] = { expanded = true },
+      ["stashes:stash@{1}"] = { expanded = "headers", hunks = { [1] = true } },
+    },
+  }
+
+  local cmd = commands.toggle_all_sections({ "stashes" }, true)
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.sections["stashes"].collapsed, false)
+  -- File states should be restored
+  eq(new_state.files["stashes:stash@{0}"].expanded, true)
+  eq(new_state.files["stashes:stash@{1}"].expanded, "headers")
+  eq(new_state.files["stashes:stash@{1}"].hunks[1], true)
+end
+
+T["expansion.reducer"]["toggle_all_sections only affects sections in list"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+
+  local state = reducer.new()
+  state.sections["stashes"] = { collapsed = false }
+  state.sections["recent"] = { collapsed = false }
+  state.sections["other"] = { collapsed = false }
+
+  -- Only toggle stashes and recent, not other
+  local cmd = commands.toggle_all_sections({ "stashes", "recent" }, false)
+  local new_state = reducer.apply(state, cmd)
+
+  eq(new_state.sections["stashes"].collapsed, true)
+  eq(new_state.sections["recent"].collapsed, true)
+  eq(new_state.sections["other"].collapsed, false) -- Unchanged
+end
+
+T["expansion.reducer"]["toggle_all_sections preserves remembered when already collapsed"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+
+  local state = reducer.new()
+  -- stashes is already collapsed with remembered state
+  state.sections["stashes"] = {
+    collapsed = true,
+    remembered_files = { ["stashes:stash@{0}"] = { expanded = true } },
+  }
+  -- recent is expanded
+  state.sections["recent"] = { collapsed = false }
+  state.files["recent:commit1"] = { expanded = true }
+
+  -- Collapse all (any_collapsed = false means all are expanded, but stashes is already collapsed)
+  -- Wait, if stashes is collapsed, any_collapsed should be true
+  -- Let me re-think: the caller determines any_collapsed by checking all sections in the list
+  -- If any section in the list is collapsed, any_collapsed = true
+  -- Here stashes IS collapsed, so any_collapsed should be true
+
+  -- Let's expand them instead
+  local cmd = commands.toggle_all_sections({ "stashes", "recent" }, true)
+  local new_state = reducer.apply(state, cmd)
+
+  -- stashes should restore its remembered state
+  eq(new_state.sections["stashes"].collapsed, false)
+  eq(new_state.files["stashes:stash@{0}"].expanded, true)
+  -- recent should also expand (but had no remembered state)
+  eq(new_state.sections["recent"].collapsed, false)
+end
+
+T["expansion.reducer"]["toggle_all_sections handles sections not in state"] = function()
+  local reducer = require("gitlad.state.expansion.reducer")
+  local commands = require("gitlad.state.expansion.commands")
+
+  local state = reducer.new()
+  -- No sections in state yet
+
+  local cmd = commands.toggle_all_sections({ "stashes", "recent" }, false)
+  local new_state = reducer.apply(state, cmd)
+
+  -- Should create collapsed sections
+  eq(new_state.sections["stashes"].collapsed, true)
+  eq(new_state.sections["recent"].collapsed, true)
+end
+
 return T
