@@ -282,10 +282,22 @@ function M.apply_highlights(bufnr, start_line, result)
 
         -- Highlight subject and author using tracked column positions
         if subject_start <= #line then
-          if info.has_author and info.subject_end_col and info.author_start_col and info.author_end_col then
+          if
+            info.has_author
+            and info.subject_end_col
+            and info.author_start_col
+            and info.author_end_col
+          then
             -- Use exact column positions tracked during render
             hl.set(bufnr, ns, line_idx, subject_start - 1, info.subject_end_col, "GitladCommitMsg")
-            hl.set(bufnr, ns, line_idx, info.author_start_col, info.author_end_col, "GitladCommitAuthor")
+            hl.set(
+              bufnr,
+              ns,
+              line_idx,
+              info.author_start_col,
+              info.author_end_col,
+              "GitladCommitAuthor"
+            )
           else
             -- No author info, subject goes to end of line
             hl.set(bufnr, ns, line_idx, subject_start - 1, #line, "GitladCommitMsg")

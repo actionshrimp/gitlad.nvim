@@ -107,7 +107,15 @@ end
 ---@param ns_status number Status namespace
 ---@param ns_diff_markers number Diff markers namespace
 ---@param hl_module table Reference to the hl module for set/set_line/clear functions
-function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_status, ns_diff_markers, hl_module)
+function M.apply_status_highlights(
+  bufnr,
+  lines,
+  line_map,
+  section_lines,
+  ns_status,
+  ns_diff_markers,
+  hl_module
+)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
@@ -128,7 +136,14 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
       if branch_start then
         local branch_end = line:find("%s", branch_start)
         if branch_end then
-          hl_module.set(bufnr, ns_status, line_idx, branch_start - 1, branch_end - 1, "GitladRefCombined")
+          hl_module.set(
+            bufnr,
+            ns_status,
+            line_idx,
+            branch_start - 1,
+            branch_end - 1,
+            "GitladRefCombined"
+          )
           -- Rest is commit message
           local msg_start = line:find("%S", branch_end)
           if msg_start then
@@ -174,7 +189,14 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
             )
           else
             -- Not in sync or no slash: all green
-            hl_module.set(bufnr, ns_status, line_idx, remote_start - 1, remote_end - 1, "GitladRefRemote")
+            hl_module.set(
+              bufnr,
+              ns_status,
+              line_idx,
+              remote_start - 1,
+              remote_end - 1,
+              "GitladRefRemote"
+            )
           end
 
           if ahead_behind then
@@ -190,7 +212,14 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
             -- Commit message is between remote and ahead/behind
             local msg_start = line:find("%S", remote_end)
             if msg_start and msg_start < ab_start then
-              hl_module.set(bufnr, ns_status, line_idx, msg_start - 1, ab_start - 2, "GitladCommitMsg")
+              hl_module.set(
+                bufnr,
+                ns_status,
+                line_idx,
+                msg_start - 1,
+                ab_start - 2,
+                "GitladCommitMsg"
+              )
             end
           else
             -- Commit message goes to end
@@ -238,7 +267,14 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
             )
           else
             -- Not in sync or no slash: all green
-            hl_module.set(bufnr, ns_status, line_idx, remote_start - 1, remote_end - 1, "GitladRefRemote")
+            hl_module.set(
+              bufnr,
+              ns_status,
+              line_idx,
+              remote_start - 1,
+              remote_end - 1,
+              "GitladRefRemote"
+            )
           end
 
           if ahead_behind then
@@ -253,7 +289,14 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
             )
             local msg_start = line:find("%S", remote_end)
             if msg_start and msg_start < ab_start then
-              hl_module.set(bufnr, ns_status, line_idx, msg_start - 1, ab_start - 2, "GitladCommitMsg")
+              hl_module.set(
+                bufnr,
+                ns_status,
+                line_idx,
+                msg_start - 1,
+                ab_start - 2,
+                "GitladCommitMsg"
+              )
             end
           else
             local msg_start = line:find("%S", remote_end)
@@ -291,7 +334,14 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
       local path = file_info.path
       local path_start = line:find(vim.pesc(path), 1, true)
       if path_start then
-        hl_module.set(bufnr, ns_status, line_idx, path_start - 1, path_start - 1 + #path, "GitladFilePath")
+        hl_module.set(
+          bufnr,
+          ns_status,
+          line_idx,
+          path_start - 1,
+          path_start - 1 + #path,
+          "GitladFilePath"
+        )
       end
 
       -- Find and highlight status character (A, M, D, etc.)
@@ -328,7 +378,14 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
       elseif section == "untracked" then
         local sign_pos = line:find("[●○✦]")
         if sign_pos then
-          hl_module.set(bufnr, ns_status, line_idx, sign_pos - 1, sign_pos + 2, "GitladSectionUntracked")
+          hl_module.set(
+            bufnr,
+            ns_status,
+            line_idx,
+            sign_pos - 1,
+            sign_pos + 2,
+            "GitladSectionUntracked"
+          )
         end
       end
 
@@ -344,19 +401,43 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
       if line:match("^@@") then
         -- Hunk header line - use text highlight for the whole line
         -- Priority 150 to override treesitter (125) since headers aren't code
-        hl_module.set(bufnr, ns_diff_markers, line_idx, 0, #line, "GitladDiffHeader", { priority = 150 })
+        hl_module.set(
+          bufnr,
+          ns_diff_markers,
+          line_idx,
+          0,
+          #line,
+          "GitladDiffHeader",
+          { priority = 150 }
+        )
       elseif first_char == "+" then
         -- Added line - use line background for diff color
         -- Priority 100 for background, treesitter (125) overrides for syntax colors
         hl_module.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffAdd", { priority = 100 })
         -- Highlight the + sign - priority 150 to stay visible over treesitter
-        hl_module.set(bufnr, ns_diff_markers, line_idx, 0, 1, "GitladDiffAddSign", { priority = 150 })
+        hl_module.set(
+          bufnr,
+          ns_diff_markers,
+          line_idx,
+          0,
+          1,
+          "GitladDiffAddSign",
+          { priority = 150 }
+        )
       elseif first_char == "-" then
         -- Deleted line - use line background for diff color
         -- Priority 100 for background, treesitter (125) overrides for syntax colors
         hl_module.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffDelete", { priority = 100 })
         -- Highlight the - sign - priority 150 to stay visible over treesitter
-        hl_module.set(bufnr, ns_diff_markers, line_idx, 0, 1, "GitladDiffDeleteSign", { priority = 150 })
+        hl_module.set(
+          bufnr,
+          ns_diff_markers,
+          line_idx,
+          0,
+          1,
+          "GitladDiffDeleteSign",
+          { priority = 150 }
+        )
       end
       -- Context lines (starting with space) don't need special highlighting
 
@@ -364,10 +445,26 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
     elseif line_map[i] and line_map[i].type == "submodule_diff" then
       if line_map[i].diff_type == "add" then
         hl_module.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffAdd", { priority = 100 })
-        hl_module.set(bufnr, ns_diff_markers, line_idx, 0, 1, "GitladDiffAddSign", { priority = 150 })
+        hl_module.set(
+          bufnr,
+          ns_diff_markers,
+          line_idx,
+          0,
+          1,
+          "GitladDiffAddSign",
+          { priority = 150 }
+        )
       elseif line_map[i].diff_type == "delete" then
         hl_module.set_line(bufnr, ns_diff_markers, line_idx, "GitladDiffDelete", { priority = 100 })
-        hl_module.set(bufnr, ns_diff_markers, line_idx, 0, 1, "GitladDiffDeleteSign", { priority = 150 })
+        hl_module.set(
+          bufnr,
+          ns_diff_markers,
+          line_idx,
+          0,
+          1,
+          "GitladDiffDeleteSign",
+          { priority = 150 }
+        )
       end
 
       -- Commit lines in unpulled/unpushed sections: "hash subject" (no indent)
@@ -397,7 +494,14 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
       if status_match then
         local status_start = line:find("[%+%-U]")
         if status_start then
-          hl_module.set(bufnr, ns_status, line_idx, status_start - 1, status_start, "GitladSubmoduleStatus")
+          hl_module.set(
+            bufnr,
+            ns_status,
+            line_idx,
+            status_start - 1,
+            status_start,
+            "GitladSubmoduleStatus"
+          )
         end
       end
       -- Find path (before the parentheses)
@@ -405,7 +509,14 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_sta
       if path_start then
         -- Adjust to not include the space and paren
         local actual_end = line:find("%s+%(", path_start) or path_end
-        hl_module.set(bufnr, ns_status, line_idx, path_start - 1, actual_end - 1, "GitladSubmodulePath")
+        hl_module.set(
+          bufnr,
+          ns_status,
+          line_idx,
+          path_start - 1,
+          actual_end - 1,
+          "GitladSubmodulePath"
+        )
       end
       -- Find info in parentheses
       local info_start, info_end = line:find("%(.-%)$")
@@ -457,7 +568,14 @@ function M.apply_history_highlights(bufnr, lines, ns_history, hl_module)
       if cmd_start then
         local cmd_end = line:find("%s%(", cmd_start)
         if cmd_end then
-          hl_module.set(bufnr, ns_history, line_idx, cmd_start - 1, cmd_end - 1, "GitladHistoryCommand")
+          hl_module.set(
+            bufnr,
+            ns_history,
+            line_idx,
+            cmd_start - 1,
+            cmd_end - 1,
+            "GitladHistoryCommand"
+          )
         end
       end
 
@@ -495,7 +613,16 @@ end
 ---@param action_positions? table<number, table<string, {col: number, len: number}>> Optional position metadata
 ---@param ns_popup number Popup namespace
 ---@param hl_module table Reference to the hl module for set/clear functions
-function M.apply_popup_highlights(bufnr, lines, switches, options, actions, action_positions, ns_popup, hl_module)
+function M.apply_popup_highlights(
+  bufnr,
+  lines,
+  switches,
+  options,
+  actions,
+  action_positions,
+  ns_popup,
+  hl_module
+)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
@@ -561,7 +688,14 @@ function M.apply_popup_highlights(bufnr, lines, switches, options, actions, acti
       -- Highlight the -key part
       local key_start = line:find("%-")
       if key_start then
-        hl_module.set(bufnr, ns_popup, line_idx, key_start - 1, key_start + 1, "GitladPopupSwitchKey")
+        hl_module.set(
+          bufnr,
+          ns_popup,
+          line_idx,
+          key_start - 1,
+          key_start + 1,
+          "GitladPopupSwitchKey"
+        )
       end
       -- Highlight the (--flag) part at the end
       local cli_start = line:find("%(%-%-")

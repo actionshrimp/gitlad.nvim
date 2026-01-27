@@ -241,7 +241,15 @@ function M.highlight_diff_content(bufnr, diff_lines, start_line, file_path, ns_d
 
         -- Apply highlight with priority higher than diff backgrounds (100)
         -- but lower than diff sign markers (150)
-        hl_module.set(bufnr, ns_diff_lang, buf_line, hl_start_col, hl_end_col, hl_group, { priority = 125 })
+        hl_module.set(
+          bufnr,
+          ns_diff_lang,
+          buf_line,
+          hl_start_col,
+          hl_end_col,
+          hl_group,
+          { priority = 125 }
+        )
       end
       ::continue::
     end
@@ -258,7 +266,14 @@ end
 ---@param diff_cache table<string, DiffData> Map of cache keys to diff data
 ---@param ns_diff_lang number Namespace for diff language highlights
 ---@param hl_module table Reference to the hl module for set/clear functions
-function M.apply_diff_treesitter_highlights(bufnr, lines, line_map, diff_cache, ns_diff_lang, hl_module)
+function M.apply_diff_treesitter_highlights(
+  bufnr,
+  lines,
+  line_map,
+  diff_cache,
+  ns_diff_lang,
+  hl_module
+)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
@@ -282,7 +297,14 @@ function M.apply_diff_treesitter_highlights(bufnr, lines, line_map, diff_cache, 
       -- This is a file entry line (not diff content)
       -- If we were collecting diff lines for a previous file, process them
       if current_file and #diff_lines_for_file > 0 then
-        M.highlight_diff_content(bufnr, diff_lines_for_file, diff_start_line, current_file, ns_diff_lang, hl_module)
+        M.highlight_diff_content(
+          bufnr,
+          diff_lines_for_file,
+          diff_start_line,
+          current_file,
+          ns_diff_lang,
+          hl_module
+        )
       end
 
       -- Start tracking new file
@@ -300,7 +322,14 @@ function M.apply_diff_treesitter_highlights(bufnr, lines, line_map, diff_cache, 
 
   -- Process the last file if any
   if current_file and #diff_lines_for_file > 0 then
-    M.highlight_diff_content(bufnr, diff_lines_for_file, diff_start_line, current_file, ns_diff_lang, hl_module)
+    M.highlight_diff_content(
+      bufnr,
+      diff_lines_for_file,
+      diff_start_line,
+      current_file,
+      ns_diff_lang,
+      hl_module
+    )
   end
 end
 

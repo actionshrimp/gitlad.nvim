@@ -289,7 +289,15 @@ end
 ---@param line_map table<number, LineInfo> Map of line numbers to file info (1-indexed)
 ---@param section_lines table<number, SectionInfo> Map of line numbers to section info (1-indexed)
 function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
-  hl_status.apply_status_highlights(bufnr, lines, line_map, section_lines, ns_status, ns_diff_markers, M)
+  hl_status.apply_status_highlights(
+    bufnr,
+    lines,
+    line_map,
+    section_lines,
+    ns_status,
+    ns_diff_markers,
+    M
+  )
 end
 
 --- Apply treesitter syntax highlighting to diff content
@@ -328,7 +336,16 @@ end
 ---@param actions table[] Action definitions
 ---@param action_positions? table<number, table<string, {col: number, len: number}>> Optional position metadata
 function M.apply_popup_highlights(bufnr, lines, switches, options, actions, action_positions)
-  hl_status.apply_popup_highlights(bufnr, lines, switches, options, actions, action_positions, ns_popup, M)
+  hl_status.apply_popup_highlights(
+    bufnr,
+    lines,
+    switches,
+    options,
+    actions,
+    action_positions,
+    ns_popup,
+    M
+  )
 end
 
 return M
