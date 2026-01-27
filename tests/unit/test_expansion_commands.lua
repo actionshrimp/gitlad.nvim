@@ -32,6 +32,18 @@ T["expansion.commands"]["toggle_hunk creates correct command"] = function()
   eq(cmd.type, "toggle_hunk")
   eq(cmd.file_key, "unstaged:file.txt")
   eq(cmd.hunk_index, 2)
+  eq(cmd.total_hunks, nil)
+end
+
+T["expansion.commands"]["toggle_hunk includes total_hunks when provided"] = function()
+  local commands = require("gitlad.state.expansion.commands")
+
+  local cmd = commands.toggle_hunk("unstaged:file.txt", 2, 5)
+
+  eq(cmd.type, "toggle_hunk")
+  eq(cmd.file_key, "unstaged:file.txt")
+  eq(cmd.hunk_index, 2)
+  eq(cmd.total_hunks, 5)
 end
 
 T["expansion.commands"]["set_file_expansion creates correct command"] = function()

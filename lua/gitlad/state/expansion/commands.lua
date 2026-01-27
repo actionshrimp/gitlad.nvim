@@ -25,6 +25,7 @@ local M = {}
 ---@field file_key? string "section:path" key for file operations
 ---@field section_key? string Section key for section operations
 ---@field hunk_index? number Hunk index for hunk operations
+---@field total_hunks? number Total number of hunks (for toggle_hunk when file is fully expanded)
 ---@field level? number Visibility level (1-4) for set_visibility_level
 ---@field scope? Scope Scope for scoped operations
 ---@field value? FileExpansionValue Explicit value for set_file_expansion
@@ -54,12 +55,14 @@ end
 --- Create a toggle_hunk command
 ---@param file_key string "section:path" key
 ---@param hunk_index number Index of the hunk to toggle
+---@param total_hunks? number Total number of hunks (needed when file is fully expanded)
 ---@return ExpansionCommand
-function M.toggle_hunk(file_key, hunk_index)
+function M.toggle_hunk(file_key, hunk_index, total_hunks)
   return {
     type = "toggle_hunk",
     file_key = file_key,
     hunk_index = hunk_index,
+    total_hunks = total_hunks,
   }
 end
 

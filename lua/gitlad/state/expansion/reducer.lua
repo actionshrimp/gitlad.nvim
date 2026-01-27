@@ -62,7 +62,7 @@ function M.apply(state, cmd)
   elseif cmd.type == "toggle_section" then
     return M._apply_toggle_section(new_state, cmd.section_key)
   elseif cmd.type == "toggle_hunk" then
-    return M._apply_toggle_hunk(new_state, cmd.file_key, cmd.hunk_index)
+    return M._apply_toggle_hunk(new_state, cmd.file_key, cmd.hunk_index, cmd.total_hunks)
   elseif cmd.type == "set_file_expansion" then
     return M._apply_set_file_expansion(new_state, cmd.file_key, cmd.value)
   elseif cmd.type == "set_visibility_level" then
@@ -75,40 +75,128 @@ function M.apply(state, cmd)
 end
 
 --- Apply toggle_file command
+--- Toggles between expanded (true/headers) and collapsed (false)
+--- When collapsing: saves current state to remembered for later restoration
+--- When expanding: restores from remembered or defaults to true
 ---@param state ExpansionState (already copied)
 ---@param file_key string
 ---@return ExpansionState
 function M._apply_toggle_file(state, file_key)
-  -- TODO: Implement in Step 2
+  local file = state.files[file_key] or { expanded = false }
+
+  if file.expanded then
+    -- Currently expanded -> collapse
+    -- Save current state for restoration
+    local new_file = {
+      expanded = false,
+      remembered = nil,
+    }
+    -- Save hunk state if we're in headers mode with per-hunk expansion
+    if file.expanded == "headers" and file.hunks then
+      new_file.remembered = vim.deepcopy(file.hunks)
+    elseif file.expanded == true then
+      -- Was fully expanded, remember that (nil means "was fully expanded")
+      new_file.remembered = nil
+    end
+    state.files[file_key] = new_file
+  else
+    -- Currently collapsed -> expand
+    -- Restore from remembered state or default to fully expanded
+    local new_file = { expanded = true }
+    if file.remembered then
+      new_file.expanded = "headers"
+      new_file.hunks = vim.deepcopy(file.remembered)
+    end
+    state.files[file_key] = new_file
+  end
+
   return state
 end
 
 --- Apply toggle_section command
+--- Toggles between collapsed (true) and expanded (false)
 ---@param state ExpansionState (already copied)
 ---@param section_key string
 ---@return ExpansionState
 function M._apply_toggle_section(state, section_key)
-  -- TODO: Implement in Step 2
+  local section = state.sections[section_key] or { collapsed = false }
+
+  state.sections[section_key] = {
+    collapsed = not section.collapsed,
+    remembered_files = section.remembered_files,
+  }
+
   return state
 end
 
 --- Apply toggle_hunk command
+--- Toggles a specific hunk's expansion when file is in headers mode
+--- If file is fully expanded, transitions to headers mode with this hunk collapsed
 ---@param state ExpansionState (already copied)
 ---@param file_key string
 ---@param hunk_index number
+---@param total_hunks? number Total number of hunks (needed when transitioning from fully expanded)
 ---@return ExpansionState
-function M._apply_toggle_hunk(state, file_key, hunk_index)
-  -- TODO: Implement in Step 2
+function M._apply_toggle_hunk(state, file_key, hunk_index, total_hunks)
+  local file = state.files[file_key]
+  if not file then
+    return state
+  end
+
+  if file.expanded == "headers" then
+    -- Already in headers mode: toggle the specific hunk
+    local hunks = file.hunks or {}
+    hunks[hunk_index] = not hunks[hunk_index]
+    state.files[file_key] = {
+      expanded = "headers",
+      hunks = hunks,
+      remembered = file.remembered,
+    }
+  elseif file.expanded == true and total_hunks then
+    -- Fully expanded: transition to headers mode with this hunk collapsed
+    local hunks = {}
+    for i = 1, total_hunks do
+      hunks[i] = (i ~= hunk_index) -- All expanded except this one
+    end
+    state.files[file_key] = {
+      expanded = "headers",
+      hunks = hunks,
+      remembered = file.remembered,
+    }
+  end
+  -- If file is collapsed or no total_hunks provided, do nothing
+
   return state
 end
 
 --- Apply set_file_expansion command
+--- Directly sets a file's expansion state to a specific value
 ---@param state ExpansionState (already copied)
 ---@param file_key string
 ---@param value FileExpansionValue
 ---@return ExpansionState
 function M._apply_set_file_expansion(state, file_key, value)
-  -- TODO: Implement in Step 3
+  local file = state.files[file_key] or {}
+
+  if value == false then
+    -- Collapsing: preserve remembered state from before
+    state.files[file_key] = {
+      expanded = false,
+      remembered = file.remembered,
+    }
+  elseif value == "headers" then
+    state.files[file_key] = {
+      expanded = "headers",
+      hunks = {}, -- No hunks expanded initially
+      remembered = file.remembered,
+    }
+  else -- value == true
+    state.files[file_key] = {
+      expanded = true,
+      remembered = file.remembered,
+    }
+  end
+
   return state
 end
 
