@@ -109,6 +109,16 @@ function M.open(repo_state)
     :action("L", "Log all branches", function(popup_data)
       M._log_all(repo_state, popup_data)
     end)
+    :group_heading("Reflog")
+    :action("r", "Reflog current branch", function(_)
+      M._reflog_current(repo_state)
+    end)
+    :action("O", "Reflog other ref", function(_)
+      M._reflog_other(repo_state)
+    end)
+    :action("H", "Reflog HEAD", function(_)
+      M._reflog_head(repo_state)
+    end)
     :group_heading("Toggle")
     :action("t", tags_label, function(_)
       M._toggle_tags(repo_state)
@@ -178,6 +188,60 @@ function M._log_all(repo_state, popup_data)
   -- The --all switch should already be set, but ensure it's included
   local args = build_log_args(popup_data, { "--all" })
   open_log_view(repo_state, args)
+end
+
+--- Open reflog view with given entries
+---@param repo_state RepoState
+---@param ref string Git ref (e.g., "HEAD", branch name)
+local function open_reflog_view(repo_state, ref)
+  vim.notify("[gitlad] Fetching reflog for " .. ref .. "...", vim.log.levels.INFO)
+
+  git.reflog(ref, { cwd = repo_state.repo_root }, function(entries, err)
+    vim.schedule(function()
+      if err then
+        vim.notify("[gitlad] Reflog failed: " .. err, vim.log.levels.ERROR)
+        return
+      end
+
+      if not entries or #entries == 0 then
+        vim.notify("[gitlad] No reflog entries found for " .. ref, vim.log.levels.INFO)
+        return
+      end
+
+      -- Open the reflog view
+      local reflog_view = require("gitlad.ui.views.reflog")
+      reflog_view.open(repo_state, ref, entries)
+    end)
+  end)
+end
+
+--- Reflog current branch
+---@param repo_state RepoState
+function M._reflog_current(repo_state)
+  local status = repo_state:get_status()
+  if status and status.branch and status.branch ~= "" then
+    open_reflog_view(repo_state, status.branch)
+  else
+    vim.notify("[gitlad] No current branch found", vim.log.levels.WARN)
+  end
+end
+
+--- Reflog other ref (prompts for ref selection)
+---@param repo_state RepoState
+function M._reflog_other(repo_state)
+  -- Use prompt utility to get ref input
+  local prompt = require("gitlad.utils.prompt")
+  prompt.prompt_for_ref({ prompt = "Reflog for ref: " }, function(ref)
+    if ref and ref ~= "" then
+      open_reflog_view(repo_state, ref)
+    end
+  end)
+end
+
+--- Reflog HEAD
+---@param repo_state RepoState
+function M._reflog_head(repo_state)
+  open_reflog_view(repo_state, "HEAD")
 end
 
 --- Toggle showing tags in refs

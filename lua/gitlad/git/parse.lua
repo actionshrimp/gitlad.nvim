@@ -423,6 +423,13 @@ end
 ---@field status "clean"|"modified"|"uninitialized"|"merge_conflict" Submodule status
 ---@field describe? string Output of git describe in submodule
 
+---@class ReflogEntry
+---@field hash string Short commit hash
+---@field author string Author name
+---@field selector string Reflog selector (e.g., "HEAD@{0}", "main@{2}")
+---@field subject string Full reflog subject (e.g., "commit: message", "checkout: moving from X to Y")
+---@field action_type string Extracted action type (e.g., "commit", "checkout", "reset")
+
 ---@class GitRemote
 ---@field name string Remote name (e.g., "origin")
 ---@field fetch_url string Fetch URL
@@ -778,6 +785,101 @@ function M.parse_submodule_status(lines)
   end
 
   return submodules
+end
+
+-- Separator used in git reflog format for parsing
+local REFLOG_FORMAT_SEP = "\30" -- ASCII record separator %x1E
+
+--- Extract action type from reflog subject
+--- Examples:
+---   "commit: Initial commit" -> "commit"
+---   "commit (amend): Fix typo" -> "amend"
+---   "commit (initial): Initial commit" -> "initial"
+---   "checkout: moving from main to feature" -> "checkout"
+---   "reset: moving to HEAD~1" -> "reset"
+---   "pull: Fast-forward" -> "pull"
+---   "rebase (start): checkout abc1234" -> "rebase"
+---   "rebase (continue): message" -> "rebase"
+---   "rebase (finish): refs/heads/feature onto abc1234" -> "rebase"
+---   "rebase -i (start): checkout abc1234" -> "rebase"
+---   "merge branch-name: Fast-forward" -> "merge"
+---   "branch: Created from HEAD" -> "branch"
+---@param subject string Reflog subject
+---@return string action_type
+function M.extract_reflog_action_type(subject)
+  if not subject or subject == "" then
+    return "unknown"
+  end
+
+  -- Check for "merge <branch>: message" pattern (special case)
+  -- Merge reflog entries look like: "merge feature-branch: Fast-forward"
+  if subject:match("^merge%s+[^:]+:") then
+    return "merge"
+  end
+
+  -- Check for "rebase ..." patterns (with or without -i flag and subtype)
+  -- e.g., "rebase (start):", "rebase -i (start):", "rebase (interactive) (start):"
+  if subject:match("^rebase") then
+    return "rebase"
+  end
+
+  -- Check for "command (type): message" pattern
+  -- e.g., "commit (amend): message", "checkout (detached): message"
+  local command, subtype = subject:match("^(%S+)%s*%(([^)]+)%)")
+  if command and subtype then
+    -- For commit, the subtype is more descriptive (amend, initial)
+    if command == "commit" then
+      return subtype
+    end
+    -- For other commands, use the command itself
+    return command
+  end
+
+  -- Check for "command: message" pattern
+  -- e.g., "commit: message", "checkout: moving from X to Y"
+  local action = subject:match("^(%S+):")
+  if action then
+    -- Normalize some actions
+    if action:match("^pull") then
+      return "pull"
+    elseif action:match("^cherry%-pick") then
+      return "cherry-pick"
+    end
+    return action
+  end
+
+  return "unknown"
+end
+
+--- Parse git reflog output with custom format
+--- Format: hash<RS>author<RS>selector<RS>subject
+--- where <RS> is ASCII record separator (\30)
+---@param lines string[] Output lines from git reflog show
+---@return ReflogEntry[]
+function M.parse_reflog(lines)
+  local entries = {}
+
+  for _, line in ipairs(lines) do
+    -- Split by record separator
+    local parts = vim.split(line, REFLOG_FORMAT_SEP, { plain = true })
+    if #parts >= 4 then
+      local hash = parts[1]
+      local author = parts[2]
+      local selector = parts[3]
+      local subject = parts[4]
+      local action_type = M.extract_reflog_action_type(subject)
+
+      table.insert(entries, {
+        hash = hash,
+        author = author,
+        selector = selector,
+        subject = subject,
+        action_type = action_type,
+      })
+    end
+  end
+
+  return entries
 end
 
 return M

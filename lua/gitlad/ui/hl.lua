@@ -139,6 +139,14 @@ local highlight_groups = {
   GitladOutputCommand = { link = "Comment" },
   GitladOutputSeparator = { link = "Comment" },
   GitladOutputStderr = { link = "DiagnosticError" },
+
+  -- Reflog action type highlights (matching magit color scheme)
+  GitladReflogCommit = { link = "DiagnosticOk" }, -- Green: commit, merge, cherry-pick, initial
+  GitladReflogAmend = { link = "Special" }, -- Magenta: amend, rebase, rewritten
+  GitladReflogCheckout = { link = "DiagnosticInfo" }, -- Blue: checkout, branch
+  GitladReflogReset = { link = "DiagnosticError" }, -- Red: reset, restart
+  GitladReflogPull = { link = "DiagnosticHint" }, -- Cyan: pull, clone
+  GitladReflogSelector = { link = "Comment" }, -- For HEAD@{0} selectors
 }
 
 -- Section header definition: single style for all section headers (like magit/neogit)
