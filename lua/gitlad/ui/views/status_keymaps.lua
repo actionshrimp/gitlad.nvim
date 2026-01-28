@@ -442,6 +442,12 @@ local function setup_keymaps(self)
     local context = #paths > 0 and { paths = paths } or nil
     submodule_popup.open(self.repo_state, context)
   end, "Submodule popup (selection)")
+
+  -- Remote popup (magit style: M for remote management)
+  keymap.set(bufnr, "n", "M", function()
+    local remote_popup = require("gitlad.popups.remote")
+    remote_popup.open(self.repo_state)
+  end, "Remote popup")
 end
 
 --- Attach keymap methods to StatusBuffer class

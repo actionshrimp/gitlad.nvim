@@ -20,6 +20,7 @@ local git_commits = require("gitlad.git.git_commits")
 local git_rebase = require("gitlad.git.git_rebase")
 local git_stash = require("gitlad.git.git_stash")
 local git_reflog = require("gitlad.git.git_reflog")
+local git_remotes = require("gitlad.git.git_remotes")
 
 -- Branch operations
 M.branches = git_branches.branches
@@ -78,6 +79,14 @@ M.stash_list = git_stash.stash_list
 
 -- Reflog operations
 M.reflog = git_reflog.reflog
+
+-- Remote operations
+M.remote_add = git_remotes.remote_add
+M.remote_rename = git_remotes.remote_rename
+M.remote_remove = git_remotes.remote_remove
+M.remote_prune = git_remotes.remote_prune
+M.remote_set_url = git_remotes.remote_set_url
+M.remote_get_url = git_remotes.remote_get_url
 
 -- =============================================================================
 -- Core operations (kept in this file)

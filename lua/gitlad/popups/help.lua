@@ -378,6 +378,13 @@ local function create_sections(status_buffer)
           end,
         },
         {
+          key = "M",
+          desc = "Remotes",
+          action = function()
+            require("gitlad.popups.remote").open(repo_state)
+          end,
+        },
+        {
           key = "yr",
           desc = "References",
           action = function()
