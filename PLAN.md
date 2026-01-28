@@ -76,7 +76,8 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Cherry-pick popup** - `A` keybinding with conflict detection
 - **Revert popup** - `_` keybinding with conflict detection
 - **Reset popup** - `X` keybinding with mixed, soft, hard, keep modes
-- Test infrastructure with mini.test (440+ tests across 49 test files)
+- **Merge popup** - `m` keybinding with full magit-style switches (mutually exclusive ff options, whitespace, gpg-sign) and choice options (strategy, strategy-option, diff-algorithm)
+- Test infrastructure with mini.test (540+ tests across 71 test files)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -378,15 +379,28 @@ This feature is implemented in **3 PRs** for incremental delivery:
 - `lua/gitlad/ui/views/status.lua` - Header display, `m` keybinding, staging conflicted files, `e` keybinding, diffview integration
 - `lua/gitlad/popups/help.lua` - Add `m` (Merge), `e` (Edit) entries
 
-#### PR 2: Full Merge Popup Options
+#### PR 2: Full Merge Popup Options - COMPLETE
 
 **Scope:** Add all magit-style switches and options.
 
-- [ ] Additional switches: `-b` (`-Xignore-space-change`), `-w` (`-Xignore-all-space`), `-S` (`--gpg-sign`)
-- [ ] Strategy option (`--strategy=`): resolve, recursive, octopus, ours, subtree
-- [ ] Strategy-option (`--strategy-option=`): ours, theirs, patience
-- [ ] Diff algorithm (`-Xdiff-algorithm=`): default, minimal, patience, histogram
-- [ ] Mark `--ff-only` and `--no-ff` as mutually exclusive
+- [x] Additional switches: `-b` (`-Xignore-space-change`), `-w` (`-Xignore-all-space`), `-S` (`--gpg-sign`)
+- [x] Strategy option (`--strategy=`): resolve, recursive, octopus, ours, subtree
+- [x] Strategy-option (`--strategy-option=`): ours, theirs, patience
+- [x] Diff algorithm (`-Xdiff-algorithm=`): default, minimal, patience, histogram
+- [x] Mark `--ff-only` and `--no-ff` as mutually exclusive
+
+**Implementation notes:**
+- Added `exclusive_with` option to PopupBuilder switches for mutual exclusivity
+- Added `choice_option()` method to PopupBuilder for constrained choice options using `vim.ui.select`
+- Also updated Pull popup to use mutual exclusivity for `--ff-only` and `--no-ff`
+
+**Files modified:**
+- `lua/gitlad/ui/popup/init.lua` - Added `exclusive_with`, `choice_option()`, updated `=` handler
+- `lua/gitlad/popups/merge.lua` - Added new switches and choice options
+- `lua/gitlad/popups/pull.lua` - Added `exclusive_with` to ff switches
+- `tests/unit/test_popup.lua` - Tests for PopupBuilder extensions
+- `tests/unit/test_merge_popup.lua` - Tests for new merge popup features
+- `tests/e2e/test_merge.lua` - E2E tests for merge popup
 
 #### PR 3: Conflict Resolution Workflow - COMPLETE (merged into PR 1)
 

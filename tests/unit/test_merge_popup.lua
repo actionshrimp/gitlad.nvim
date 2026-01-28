@@ -13,16 +13,28 @@ T["merge popup"]["creates popup with correct switches"] = function()
   local data = popup
     .builder()
     :name("Merge")
-    :switch("f", "ff-only", "Fast-forward only")
-    :switch("n", "no-ff", "Create merge commit even if fast-forward possible")
+    :switch("f", "ff-only", "Fast-forward only", { exclusive_with = { "no-ff" } })
+    :switch("n", "no-ff", "No fast-forward", { exclusive_with = { "ff-only" } })
+    :switch("b", "Xignore-space-change", "Ignore whitespace changes", { cli_prefix = "-" })
+    :switch("w", "Xignore-all-space", "Ignore all whitespace", { cli_prefix = "-" })
+    :switch("S", "gpg-sign", "GPG sign commit")
     :build()
 
   eq(data.name, "Merge")
-  eq(#data.switches, 2)
+  eq(#data.switches, 5)
   eq(data.switches[1].key, "f")
   eq(data.switches[1].cli, "ff-only")
+  eq(data.switches[1].exclusive_with[1], "no-ff")
   eq(data.switches[2].key, "n")
   eq(data.switches[2].cli, "no-ff")
+  eq(data.switches[2].exclusive_with[1], "ff-only")
+  eq(data.switches[3].key, "b")
+  eq(data.switches[3].cli, "Xignore-space-change")
+  eq(data.switches[3].cli_prefix, "-")
+  eq(data.switches[4].key, "w")
+  eq(data.switches[4].cli, "Xignore-all-space")
+  eq(data.switches[5].key, "S")
+  eq(data.switches[5].cli, "gpg-sign")
 end
 
 T["merge popup"]["get_arguments returns enabled switches with double dash"] = function()
@@ -150,33 +162,44 @@ T["merge popup"]["creates actions for in-progress mode with correct structure"] 
   eq(abort_called, true)
 end
 
-T["merge popup"]["toggle_switch works correctly"] = function()
+T["merge popup"]["toggle_switch works correctly for independent switches"] = function()
   local popup = require("gitlad.ui.popup")
 
   local data = popup
     .builder()
-    :switch("f", "ff-only", "Fast-forward only")
-    :switch("n", "no-ff", "No fast-forward")
+    :switch("b", "Xignore-space-change", "Ignore whitespace", { cli_prefix = "-" })
+    :switch("w", "Xignore-all-space", "Ignore all whitespace", { cli_prefix = "-" })
+    :switch("S", "gpg-sign", "GPG sign commit")
     :build()
 
   -- Initially not enabled
   eq(data.switches[1].enabled, false)
   eq(data.switches[2].enabled, false)
+  eq(data.switches[3].enabled, false)
 
   -- Toggle first switch
-  data:toggle_switch("f")
+  data:toggle_switch("b")
   eq(data.switches[1].enabled, true)
   eq(data.switches[2].enabled, false)
+  eq(data.switches[3].enabled, false)
 
-  -- Toggle second switch
-  data:toggle_switch("n")
+  -- Toggle second switch - both can be enabled (not mutually exclusive)
+  data:toggle_switch("w")
   eq(data.switches[1].enabled, true)
   eq(data.switches[2].enabled, true)
+  eq(data.switches[3].enabled, false)
+
+  -- Toggle third switch
+  data:toggle_switch("S")
+  eq(data.switches[1].enabled, true)
+  eq(data.switches[2].enabled, true)
+  eq(data.switches[3].enabled, true)
 
   -- Toggle first switch off
-  data:toggle_switch("f")
+  data:toggle_switch("b")
   eq(data.switches[1].enabled, false)
   eq(data.switches[2].enabled, true)
+  eq(data.switches[3].enabled, true)
 end
 
 T["merge popup"]["ff-only and no-ff switches produce correct args"] = function()
@@ -203,6 +226,138 @@ T["merge popup"]["ff-only and no-ff switches produce correct args"] = function()
   local args2 = data2:get_arguments()
   eq(#args2, 1)
   eq(args2[1], "--no-ff")
+end
+
+T["merge popup"]["ff-only and no-ff are mutually exclusive"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup
+    .builder()
+    :switch("f", "ff-only", "Fast-forward only", { exclusive_with = { "no-ff" } })
+    :switch("n", "no-ff", "No fast-forward", { exclusive_with = { "ff-only" } })
+    :build()
+
+  -- Enable ff-only
+  data:toggle_switch("f")
+  eq(data.switches[1].enabled, true)
+  eq(data.switches[2].enabled, false)
+
+  -- Enable no-ff should disable ff-only
+  data:toggle_switch("n")
+  eq(data.switches[1].enabled, false)
+  eq(data.switches[2].enabled, true)
+
+  -- Enable ff-only should disable no-ff
+  data:toggle_switch("f")
+  eq(data.switches[1].enabled, true)
+  eq(data.switches[2].enabled, false)
+end
+
+T["merge popup"]["whitespace switches use correct cli_prefix"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup
+    .builder()
+    :switch("b", "Xignore-space-change", "Ignore whitespace", { cli_prefix = "-", enabled = true })
+    :switch("w", "Xignore-all-space", "Ignore all whitespace", { cli_prefix = "-", enabled = true })
+    :build()
+
+  local args = data:get_arguments()
+  eq(#args, 2)
+  eq(args[1], "-Xignore-space-change")
+  eq(args[2], "-Xignore-all-space")
+end
+
+-- Choice option tests for merge popup
+T["merge popup choice options"] = MiniTest.new_set()
+
+T["merge popup choice options"]["creates popup with choice options"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup
+    .builder()
+    :name("Merge")
+    :choice_option(
+      "s",
+      "strategy",
+      { "resolve", "recursive", "octopus", "ours", "subtree" },
+      "Strategy"
+    )
+    :choice_option("X", "strategy-option", { "ours", "theirs", "patience" }, "Strategy option")
+    :choice_option(
+      "A",
+      "Xdiff-algorithm",
+      { "default", "minimal", "patience", "histogram" },
+      "Diff algorithm",
+      { cli_prefix = "-", separator = "=" }
+    )
+    :build()
+
+  eq(#data.options, 3)
+  -- Strategy option
+  eq(data.options[1].key, "s")
+  eq(data.options[1].cli, "strategy")
+  eq(#data.options[1].choices, 5)
+  eq(data.options[1].choices[1], "resolve")
+  -- Strategy-option
+  eq(data.options[2].key, "X")
+  eq(data.options[2].cli, "strategy-option")
+  eq(#data.options[2].choices, 3)
+  -- Diff algorithm with custom cli_prefix
+  eq(data.options[3].key, "A")
+  eq(data.options[3].cli, "Xdiff-algorithm")
+  eq(data.options[3].cli_prefix, "-")
+  eq(data.options[3].separator, "=")
+end
+
+T["merge popup choice options"]["strategy option produces correct args"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data =
+    popup.builder():choice_option("s", "strategy", { "resolve", "recursive" }, "Strategy"):build()
+
+  data:set_option("s", "ours")
+  local args = data:get_arguments()
+  eq(#args, 1)
+  eq(args[1], "--strategy=ours")
+end
+
+T["merge popup choice options"]["diff algorithm produces correct args"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup
+    .builder()
+    :choice_option(
+      "A",
+      "Xdiff-algorithm",
+      { "default", "minimal", "patience", "histogram" },
+      "Diff algorithm",
+      { cli_prefix = "-", separator = "=" }
+    )
+    :build()
+
+  data:set_option("A", "patience")
+  local args = data:get_arguments()
+  eq(#args, 1)
+  eq(args[1], "-Xdiff-algorithm=patience")
+end
+
+T["merge popup choice options"]["combined args from switches and options"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local data = popup
+    .builder()
+    :switch("n", "no-ff", "No fast-forward", { enabled = true })
+    :switch("b", "Xignore-space-change", "Ignore whitespace", { cli_prefix = "-", enabled = true })
+    :choice_option("s", "strategy", { "resolve", "recursive" }, "Strategy")
+    :build()
+
+  data:set_option("s", "recursive")
+  local args = data:get_arguments()
+  eq(#args, 3)
+  eq(args[1], "--no-ff")
+  eq(args[2], "-Xignore-space-change")
+  eq(args[3], "--strategy=recursive")
 end
 
 return T

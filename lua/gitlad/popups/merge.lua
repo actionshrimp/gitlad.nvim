@@ -35,9 +35,32 @@ function M._open_normal_popup(repo_state, context)
   local merge_popup = popup
     .builder()
     :name("Merge")
-    -- Switches
-    :switch("f", "ff-only", "Fast-forward only")
-    :switch("n", "no-ff", "Create merge commit even if fast-forward possible")
+    -- Switches (mutually exclusive ff options)
+    :switch(
+      "f",
+      "ff-only",
+      "Fast-forward only",
+      { exclusive_with = { "no-ff" } }
+    )
+    :switch("n", "no-ff", "No fast-forward", { exclusive_with = { "ff-only" } })
+    :switch("b", "Xignore-space-change", "Ignore whitespace changes", { cli_prefix = "-" })
+    :switch("w", "Xignore-all-space", "Ignore all whitespace", { cli_prefix = "-" })
+    :switch("S", "gpg-sign", "GPG sign commit")
+    -- Options with choices
+    :choice_option(
+      "s",
+      "strategy",
+      { "resolve", "recursive", "octopus", "ours", "subtree" },
+      "Strategy"
+    )
+    :choice_option("X", "strategy-option", { "ours", "theirs", "patience" }, "Strategy option")
+    :choice_option(
+      "A",
+      "Xdiff-algorithm",
+      { "default", "minimal", "patience", "histogram" },
+      "Diff algorithm",
+      { cli_prefix = "-", separator = "=" }
+    )
     -- Actions
     :group_heading("Merge")
     :action("m", "Merge", function(popup_data)
