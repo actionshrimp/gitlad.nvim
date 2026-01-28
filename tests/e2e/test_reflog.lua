@@ -286,9 +286,10 @@ T["reflog view"]["yanks hash with y"] = function()
   child.type_keys("y")
   child.lua("vim.wait(100, function() end)")
 
-  -- Check clipboard contains a hash (7+ hex chars)
-  local clipboard = child.lua_get('vim.fn.getreg("+")')
-  assert(clipboard:match("^%x%x%x%x%x%x%x"), "Clipboard should contain commit hash")
+  -- Check unnamed register contains a hash (7+ hex chars)
+  -- Use unnamed register '"' instead of '+' since system clipboard may not work on CI
+  local register = child.lua_get('vim.fn.getreg([["]])')
+  assert(register:match("^%x%x%x%x%x%x%x"), "Register should contain commit hash")
 
   cleanup_test_repo(child, repo)
 end
