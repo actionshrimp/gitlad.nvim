@@ -189,12 +189,15 @@ lua/gitlad/
 │   ├── fetch.lua         # Fetch popup
 │   ├── help.lua          # Help popup showing all keybindings
 │   ├── log.lua           # Log popup and view
+│   ├── merge.lua         # Merge popup with conflict resolution
 │   ├── pull.lua          # Pull popup with rebase/ff options
 │   ├── push.lua          # Push popup with force/upstream options
 │   ├── rebase.lua        # Rebase popup (interactive, onto, continue, abort)
+│   ├── refs.lua          # References popup for branch/tag comparison
 │   ├── reset.lua         # Reset popup (mixed, soft, hard, keep)
 │   ├── revert.lua        # Revert popup with conflict detection
-│   └── stash.lua         # Stash popup (push, pop, apply, drop)
+│   ├── stash.lua         # Stash popup (push, pop, apply, drop)
+│   └── submodule.lua     # Submodule popup (init, update, add, deinit)
 └── ui/
     ├── popup/
     │   └── init.lua      # PopupBuilder - transient-style popup system
@@ -204,7 +207,10 @@ lua/gitlad/
     └── views/
         ├── status.lua        # Main status buffer view
         ├── log.lua           # Log view buffer
+        ├── refs.lua          # References view buffer
         ├── commit_editor.lua # Commit message editor buffer
+        ├── rebase_editor.lua # Interactive rebase todo editor
+        ├── output.lua        # Streaming output viewer (git hooks)
         └── history.lua       # Git command history view
 ```
 
@@ -308,6 +314,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `_` | Revert |
 | `X` | Reset |
 | `'` | Submodule |
+| `yr` | References |
 | `t` | Tag (not yet implemented) |
 | `!` | Run git command (not yet implemented) |
 
@@ -357,7 +364,7 @@ This makes the plugin more comfortable for vim/evil users.
 
 See **PLAN.md** for the detailed development roadmap with specific tasks, files to create/modify, and implementation notes.
 
-### Current Status: Phase 3 Complete, Phase 4 Partial
+### Current Status: Phase 4 Nearly Complete
 
 **What's built:**
 - Async git CLI wrapper with porcelain v2 parsing
@@ -373,7 +380,10 @@ See **PLAN.md** for the detailed development roadmap with specific tasks, files 
 - Interactive rebase editor with p/r/e/s/f/d keybindings (evil-collection style)
 - Instant fixup/squash (`c F` / `c S`) - creates fixup commit and rebases immediately
 - Sequencer state detection (shows cherry-pick/revert in progress)
-- 440+ tests across 49 test files, CI configured
+- Submodule popup (`'` keybinding) - init, update, add, deinit
+- Refs popup and view (`yr` keybinding) - branch/tag comparison
+- Streaming output viewer for git hook output
+- 940+ tests across 73 test files, CI configured
 
 **Next up:**
 - Tag popup
