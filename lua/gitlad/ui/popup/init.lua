@@ -15,6 +15,7 @@ local hl = require("gitlad.ui.hl")
 ---@field description string User-facing description
 ---@field enabled boolean Current state
 ---@field cli_prefix string Prefix for CLI flag (default "--")
+---@field exclusive_with? string[] CLI names of switches that are mutually exclusive
 
 ---@class PopupOption
 ---@field key string Single character key binding
@@ -23,6 +24,7 @@ local hl = require("gitlad.ui.hl")
 ---@field description string User-facing description
 ---@field cli_prefix string Prefix for CLI flag (default "--")
 ---@field separator string Separator between flag and value (default "=")
+---@field choices? string[] If set, use vim.ui.select instead of vim.ui.input
 
 ---@class PopupAction
 ---@field type "heading"|"action"
@@ -84,7 +86,7 @@ end
 ---@param key string Single character key
 ---@param cli string CLI flag name (without --)
 ---@param description string User-facing description
----@param opts? { enabled?: boolean, cli_prefix?: string }
+---@param opts? { enabled?: boolean, cli_prefix?: string, exclusive_with?: string[] }
 ---@return PopupBuilder
 function PopupBuilder:switch(key, cli, description, opts)
   opts = opts or {}
@@ -94,6 +96,7 @@ function PopupBuilder:switch(key, cli, description, opts)
     description = description,
     enabled = opts.enabled or false,
     cli_prefix = opts.cli_prefix or "--",
+    exclusive_with = opts.exclusive_with,
   })
   return self
 end
@@ -114,6 +117,27 @@ function PopupBuilder:option(key, cli, value, description, opts)
     description = description,
     cli_prefix = opts.cli_prefix or "--",
     separator = opts.separator or "=",
+  })
+  return self
+end
+
+--- Add an option with constrained choices (uses vim.ui.select)
+---@param key string Single character key
+---@param cli string CLI flag name (without --)
+---@param choices string[] List of valid choices
+---@param description string User-facing description
+---@param opts? { cli_prefix?: string, separator?: string, default?: string }
+---@return PopupBuilder
+function PopupBuilder:choice_option(key, cli, choices, description, opts)
+  opts = opts or {}
+  table.insert(self._options, {
+    key = key,
+    cli = cli,
+    value = opts.default or "",
+    description = description,
+    cli_prefix = opts.cli_prefix or "--",
+    separator = opts.separator or "=",
+    choices = choices,
   })
   return self
 end
@@ -193,6 +217,16 @@ function PopupData:toggle_switch(key)
   for _, sw in ipairs(self.switches) do
     if sw.key == key then
       sw.enabled = not sw.enabled
+      -- Disable mutually exclusive switches when enabling
+      if sw.enabled and sw.exclusive_with then
+        for _, other in ipairs(self.switches) do
+          for _, excl_cli in ipairs(sw.exclusive_with) do
+            if other.cli == excl_cli then
+              other.enabled = false
+            end
+          end
+        end
+      end
       return
     end
   end
@@ -595,14 +629,23 @@ function PopupData:_setup_keymaps()
       return
     end
 
-    -- Prompt for value
-    local current = opt.value ~= "" and opt.value or ""
-    vim.ui.input({ prompt = opt.description .. ": ", default = current }, function(input)
-      if input ~= nil then
-        self:set_option(char, input)
-        self:refresh()
-      end
-    end)
+    -- Use vim.ui.select for choice options, vim.ui.input for free-form
+    if opt.choices then
+      vim.ui.select(opt.choices, { prompt = opt.description .. ":" }, function(choice)
+        if choice then
+          self:set_option(char, choice)
+          self:refresh()
+        end
+      end)
+    else
+      local current = opt.value ~= "" and opt.value or ""
+      vim.ui.input({ prompt = opt.description .. ": ", default = current }, function(input)
+        if input ~= nil then
+          self:set_option(char, input)
+          self:refresh()
+        end
+      end)
+    end
   end, "Set option", nowait_opts)
 
   -- Action keymaps (direct keys)

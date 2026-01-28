@@ -331,4 +331,164 @@ T["popup two column layout"]["balances groups between columns"] = function()
   eq(#lines < 9, true)
 end
 
+-- Mutually exclusive switches tests
+T["exclusive_with"] = MiniTest.new_set()
+
+T["exclusive_with"]["switch() accepts exclusive_with option"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder =
+    popup.builder():switch("f", "ff-only", "Fast-forward only", { exclusive_with = { "no-ff" } })
+  eq(builder._switches[1].exclusive_with[1], "no-ff")
+end
+
+T["exclusive_with"]["toggle_switch() disables exclusive switches when enabling"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :switch("f", "ff-only", "Fast-forward only", { exclusive_with = { "no-ff" } })
+    :switch("n", "no-ff", "No fast-forward", { exclusive_with = { "ff-only" } })
+    :build()
+
+  -- Enable ff-only
+  data:toggle_switch("f")
+  eq(data.switches[1].enabled, true) -- ff-only
+  eq(data.switches[2].enabled, false) -- no-ff
+
+  -- Enable no-ff should disable ff-only
+  data:toggle_switch("n")
+  eq(data.switches[1].enabled, false) -- ff-only disabled
+  eq(data.switches[2].enabled, true) -- no-ff enabled
+end
+
+T["exclusive_with"]["toggle_switch() does not affect non-exclusive switches"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :switch("f", "ff-only", "Fast-forward only", { exclusive_with = { "no-ff" } })
+    :switch("n", "no-ff", "No fast-forward", { exclusive_with = { "ff-only" } })
+    :switch("v", "verbose", "Verbose output")
+    :build()
+
+  -- Enable verbose
+  data:toggle_switch("v")
+  eq(data.switches[3].enabled, true)
+
+  -- Enable ff-only should not affect verbose
+  data:toggle_switch("f")
+  eq(data.switches[1].enabled, true)
+  eq(data.switches[3].enabled, true) -- verbose still enabled
+end
+
+T["exclusive_with"]["disabling a switch does not affect others"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :switch("f", "ff-only", "Fast-forward only", { exclusive_with = { "no-ff" }, enabled = true })
+    :switch("n", "no-ff", "No fast-forward", { exclusive_with = { "ff-only" } })
+    :build()
+
+  -- Disable ff-only (toggle off)
+  data:toggle_switch("f")
+  eq(data.switches[1].enabled, false)
+  eq(data.switches[2].enabled, false) -- no-ff should remain disabled
+end
+
+-- Choice option tests
+T["choice_option"] = MiniTest.new_set()
+
+T["choice_option"]["choice_option() adds an option with choices"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup
+    .builder()
+    :choice_option("s", "strategy", { "resolve", "recursive", "octopus" }, "Strategy")
+
+  eq(#builder._options, 1)
+  eq(builder._options[1].key, "s")
+  eq(builder._options[1].cli, "strategy")
+  eq(builder._options[1].description, "Strategy")
+  eq(builder._options[1].choices[1], "resolve")
+  eq(builder._options[1].choices[2], "recursive")
+  eq(builder._options[1].choices[3], "octopus")
+end
+
+T["choice_option"]["choice_option() uses default cli_prefix and separator"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup.builder():choice_option("s", "strategy", { "resolve" }, "Strategy"):build()
+
+  eq(data.options[1].cli_prefix, "--")
+  eq(data.options[1].separator, "=")
+end
+
+T["choice_option"]["choice_option() accepts custom cli_prefix and separator"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :choice_option("A", "Xdiff-algorithm", { "default" }, "Diff algorithm", {
+      cli_prefix = "-",
+      separator = "=",
+    })
+    :build()
+
+  eq(data.options[1].cli_prefix, "-")
+  eq(data.options[1].separator, "=")
+end
+
+T["choice_option"]["choice_option() with default value"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :choice_option(
+      "s",
+      "strategy",
+      { "resolve", "recursive" },
+      "Strategy",
+      { default = "recursive" }
+    )
+    :build()
+
+  eq(data.options[1].value, "recursive")
+end
+
+T["choice_option"]["get_arguments() includes choice option with value"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :choice_option("s", "strategy", { "resolve", "recursive" }, "Strategy", { default = "ours" })
+    :build()
+
+  local args = data:get_arguments()
+  eq(#args, 1)
+  eq(args[1], "--strategy=ours")
+end
+
+T["choice_option"]["set_option() works for choice options"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data =
+    popup.builder():choice_option("s", "strategy", { "resolve", "recursive" }, "Strategy"):build()
+
+  eq(data.options[1].value, "")
+  data:set_option("s", "recursive")
+  eq(data.options[1].value, "recursive")
+end
+
+T["choice_option"]["render_lines() shows choice option"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :choice_option("s", "strategy", { "resolve", "recursive" }, "Strategy", { default = "ours" })
+    :build()
+
+  local lines = data:render_lines()
+
+  local found_option = false
+  for _, line in ipairs(lines) do
+    if line:match("=s.*Strategy.*%(%-%-strategy=ours%)") then
+      found_option = true
+      break
+    end
+  end
+
+  eq(found_option, true)
+end
+
 return T
