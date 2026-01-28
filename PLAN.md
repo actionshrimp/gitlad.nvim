@@ -44,7 +44,7 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 
 ---
 
-## Current State (Phase 3 Complete, Phase 4 Partial)
+## Current State (Phase 4 Nearly Complete)
 
 ### What's Built
 - Project structure with proper module organization
@@ -77,7 +77,10 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Revert popup** - `_` keybinding with conflict detection
 - **Reset popup** - `X` keybinding with mixed, soft, hard, keep modes
 - **Merge popup** - `m` keybinding with full magit-style switches (mutually exclusive ff options, whitespace, gpg-sign) and choice options (strategy, strategy-option, diff-algorithm)
-- Test infrastructure with mini.test (540+ tests across 71 test files)
+- **Submodule popup** - `'` keybinding for init, update, add, deinit operations
+- **Refs popup and view** - `yr` keybinding for branch/tag reference comparison
+- **Streaming output viewer** - floating window for real-time git hook output
+- Test infrastructure with mini.test (940+ tests across 73 test files)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -452,6 +455,18 @@ This feature is implemented in **3 PRs** for incremental delivery:
 - `tests/unit/test_reset_popup.lua` - Reset popup tests
 - `tests/e2e/test_reset.lua` - E2E tests for reset operations
 
+### 4.6 Refs Popup and View (COMPLETE)
+- [x] `yr` opens refs popup
+- [x] Actions: show refs at HEAD, at current branch, at other ref
+- [x] Refs view buffer shows all branches and tags
+- [x] Grouped by: local branches, remote branches (per-remote), tags
+- [x] Expandable refs showing ahead/behind info and cherry commits
+- [x] Base ref comparison (configurable)
+
+**Files created:**
+- `lua/gitlad/popups/refs.lua` - Refs popup with actions
+- `lua/gitlad/ui/views/refs.lua` - Refs view buffer
+
 ---
 
 ## Phase 5: Polish & Optional Features
@@ -468,10 +483,16 @@ For users who want auto-refresh and don't have large repo concerns.
 **Files to create:**
 - `lua/gitlad/watcher.lua` (new)
 
-### 5.2 Submodule Support
-- [ ] Show submodule status (async, non-blocking!)
-- [ ] Config to disable submodule checking
-- [ ] Actions: update, init, sync
+### 5.2 Submodule Support - COMPLETE
+- [x] Show submodule status in status buffer (with status indicators)
+- [x] `'` keybinding opens submodule popup
+- [x] Actions: init, update (with fetch options), add, deinit
+- [x] Switches: `--force`, `--recursive`, `--no-fetch`
+- [ ] Config to disable submodule checking (future enhancement)
+
+**Files created:**
+- `lua/gitlad/popups/submodule.lua` - Submodule popup with switches and actions
+- `lua/gitlad/ui/views/status.lua` - Submodules section rendering
 
 ### 5.3 User Configuration
 - [ ] Customizable keybindings
