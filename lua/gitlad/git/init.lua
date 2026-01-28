@@ -19,6 +19,7 @@ local git_branches = require("gitlad.git.git_branches")
 local git_commits = require("gitlad.git.git_commits")
 local git_rebase = require("gitlad.git.git_rebase")
 local git_stash = require("gitlad.git.git_stash")
+local git_reflog = require("gitlad.git.git_reflog")
 
 -- Branch operations
 M.branches = git_branches.branches
@@ -74,6 +75,9 @@ M.stash_pop = git_stash.stash_pop
 M.stash_apply = git_stash.stash_apply
 M.stash_drop = git_stash.stash_drop
 M.stash_list = git_stash.stash_list
+
+-- Reflog operations
+M.reflog = git_reflog.reflog
 
 -- =============================================================================
 -- Core operations (kept in this file)

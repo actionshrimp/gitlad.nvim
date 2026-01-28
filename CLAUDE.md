@@ -318,6 +318,25 @@ This makes the plugin more comfortable for vim/evil users.
 | `t` | Tag (not yet implemented) |
 | `!` | Run git command (not yet implemented) |
 
+### Log Popup Reflog Actions
+| Key | Action |
+|-----|--------|
+| `l r` | Reflog current branch |
+| `l O` | Reflog other ref (prompts) |
+| `l H` | Reflog HEAD |
+
+### Reflog View
+| Key | Action |
+|-----|--------|
+| `gj` / `gk` | Next/previous entry |
+| `<CR>` | Show commit diff |
+| `y` | Yank commit hash |
+| `gr` | Refresh |
+| `q` | Close |
+| `A` | Cherry-pick popup |
+| `X` | Reset popup |
+| `b` / `c` / `r` / `d` | Branch/Commit/Rebase/Diff popups |
+
 ### Rebase Editor (when editing git-rebase-todo)
 | Key | Action |
 |-----|--------|

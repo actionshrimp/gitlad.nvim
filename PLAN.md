@@ -79,8 +79,9 @@ This keeps gitlad.nvim focused on the status/staging workflow while leveraging d
 - **Merge popup** - `m` keybinding with full magit-style switches (mutually exclusive ff options, whitespace, gpg-sign) and choice options (strategy, strategy-option, diff-algorithm)
 - **Submodule popup** - `'` keybinding for init, update, add, deinit operations
 - **Refs popup and view** - `yr` keybinding for branch/tag reference comparison
+- **Reflog view** - `l r/O/H` keybindings for viewing reflog history
 - **Streaming output viewer** - floating window for real-time git hook output
-- Test infrastructure with mini.test (940+ tests across 73 test files)
+- Test infrastructure with mini.test (970+ tests across 75 test files)
 - CI workflow for Neovim stable/nightly
 
 ### Architecture Decisions Made
@@ -466,6 +467,28 @@ This feature is implemented in **3 PRs** for incremental delivery:
 **Files created:**
 - `lua/gitlad/popups/refs.lua` - Refs popup with actions
 - `lua/gitlad/ui/views/refs.lua` - Refs view buffer
+
+### 4.7 Reflog View (COMPLETE)
+- [x] Reflog actions in log popup (`l r`, `l O`, `l H`)
+- [x] Actions: reflog current branch, reflog HEAD, reflog other ref
+- [x] Reflog view buffer with entry list
+- [x] Action type highlighting (green: commit, red: reset, blue: checkout, etc.)
+- [x] Navigation (gj/gk), yank hash (y), diff (<CR>)
+- [x] Popup integrations (cherry-pick, reset, rebase, etc.)
+
+**Files created:**
+- `lua/gitlad/git/git_reflog.lua` - Reflog git operations
+- `lua/gitlad/ui/components/reflog_list.lua` - Reusable reflog entry list component
+- `lua/gitlad/ui/views/reflog.lua` - Reflog buffer view
+- `tests/unit/test_reflog_parse.lua` - Unit tests for reflog parsing
+- `tests/unit/test_reflog_list.lua` - Unit tests for reflog list component
+- `tests/e2e/test_reflog.lua` - E2E tests for reflog functionality
+
+**Files modified:**
+- `lua/gitlad/git/init.lua` - Re-export reflog function
+- `lua/gitlad/git/parse.lua` - Add reflog parsing (parse_reflog, extract_reflog_action_type)
+- `lua/gitlad/popups/log.lua` - Add Reflog group with r/O/H actions
+- `lua/gitlad/ui/hl.lua` - Add reflog highlight groups
 
 ---
 
