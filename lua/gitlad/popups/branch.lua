@@ -89,46 +89,126 @@ end
 function M.open(repo_state, context)
   context = context or {}
 
-  local branch_popup = popup
-    .builder()
-    :name("Branch")
-    -- Switches
-    :switch("f", "force", "Force delete (even if not merged)")
-    -- Actions - Checkout group
+  local current_branch = get_current_branch(repo_state)
+
+  local builder = popup.builder():name("Branch"):repo_root(repo_state.repo_root)
+
+  -- Only show branch-specific config if we have a current branch
+  if current_branch then
+    builder
+      :branch_scope(current_branch)
+      -- Configure <branch> section
+      :config_heading("Configure %s")
+      :config_var("d", "branch.%s.description", "branch.%s.description", { type = "text" })
+      :config_var("u", "branch.%s.merge", "branch.%s.merge", { type = "text" })
+      :config_var("r", "branch.%s.rebase", "branch.%s.rebase", {
+        type = "cycle",
+        choices = { "true", "false", "" },
+        default_display = "default:false",
+      })
+      :config_var("p", "branch.%s.pushRemote", "branch.%s.pushRemote", { type = "text" })
+  end
+
+  -- Configure repository defaults section
+  builder
+    :config_heading("Configure repository defaults")
+    :config_var("R", "pull.rebase", "pull.rebase", {
+      type = "cycle",
+      choices = { "true", "false", "" },
+      default_display = "default:false",
+    })
+    :config_var("P", "remote.pushDefault", "remote.pushDefault", { type = "text" })
+
+  -- Switches (for delete operation)
+  builder:switch("f", "force", "Force delete (even if not merged)")
+
+  -- Actions in multi-column layout
+  builder
+    :columns(4)
+    -- Checkout group
     :group_heading("Checkout")
-    :action("b", "Checkout branch", function(popup_data)
+    :action("b", "branch/revision", function(popup_data)
       M._checkout_branch(repo_state, popup_data, context.ref, context.ref_type)
     end)
-    :action("c", "Create and checkout", function(popup_data)
+    :action("l", "local branch", function(popup_data)
+      M._checkout_local_branch(repo_state, popup_data)
+    end)
+    -- Create group (middle)
+    :group_heading("")
+    :action("c", "new branch", function(popup_data)
       M._create_and_checkout(repo_state, popup_data)
     end)
-    -- Actions - Create group
-    :group_heading("Create")
-    :action("n", "Create branch", function(popup_data)
-      M._create_branch(repo_state, popup_data)
-    end)
-    -- Actions - Do group
-    :group_heading("Do")
-    :action("m", "Rename", function(popup_data)
-      M._rename_branch(repo_state, popup_data)
-    end)
-    :action("s", "Spin-off", function(popup_data)
+    :action("s", "new spin-off", function(popup_data)
       M._spinoff(repo_state, popup_data)
     end)
-    :action("D", "Delete", function(popup_data)
+    -- Create group
+    :group_heading("Create")
+    :action("n", "new branch", function(popup_data)
+      M._create_branch(repo_state, popup_data)
+    end)
+    -- Do group
+    :group_heading("Do")
+    :action("m", "rename", function(popup_data)
+      M._rename_branch(repo_state, popup_data)
+    end)
+    :action("x", "delete", function(popup_data)
       M._delete_branch(repo_state, popup_data)
     end)
-    -- Actions - Configure group
-    :group_heading("Configure")
-    :action("u", "Set upstream", function(popup_data)
-      M._set_upstream(repo_state, popup_data)
-    end)
-    :action("p", "Configure pushremote", function(popup_data)
-      M._set_push_remote(repo_state, popup_data)
-    end)
-    :build()
 
+  local branch_popup = builder:build()
   branch_popup:show()
+end
+
+--- Checkout a local branch only (no remote branches)
+---@param repo_state RepoState
+---@param popup_data PopupData
+function M._checkout_local_branch(repo_state, popup_data)
+  local current_branch = get_current_branch(repo_state)
+
+  git.branches({ cwd = repo_state.repo_root }, function(branches, err)
+    vim.schedule(function()
+      if err then
+        vim.notify("[gitlad] Failed to get branches: " .. err, vim.log.levels.ERROR)
+        return
+      end
+
+      if not branches or #branches == 0 then
+        vim.notify("[gitlad] No branches found", vim.log.levels.WARN)
+        return
+      end
+
+      -- Get branches excluding current
+      local branch_names = get_other_branch_names(branches, current_branch)
+
+      if #branch_names == 0 then
+        vim.notify("[gitlad] No other local branches to checkout", vim.log.levels.INFO)
+        return
+      end
+
+      vim.ui.select(branch_names, {
+        prompt = "Checkout local branch:",
+      }, function(choice)
+        if not choice then
+          return
+        end
+
+        local args = popup_data:get_arguments()
+        git.checkout(choice, args, { cwd = repo_state.repo_root }, function(success, checkout_err)
+          vim.schedule(function()
+            if success then
+              vim.notify("[gitlad] Switched to branch '" .. choice .. "'", vim.log.levels.INFO)
+              repo_state:refresh_status(true)
+            else
+              vim.notify(
+                "[gitlad] Checkout failed: " .. (checkout_err or "unknown error"),
+                vim.log.levels.ERROR
+              )
+            end
+          end)
+        end)
+      end)
+    end)
+  end)
 end
 
 --- Checkout an existing branch

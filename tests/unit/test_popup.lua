@@ -491,4 +491,205 @@ T["choice_option"]["render_lines() shows choice option"] = function()
   eq(found_option, true)
 end
 
+-- Config var tests
+T["config_var"] = MiniTest.new_set()
+
+T["config_var"]["branch_scope() sets branch name"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():branch_scope("main")
+  eq(builder._branch_scope, "main")
+end
+
+T["config_var"]["repo_root() sets repository root"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():repo_root("/path/to/repo")
+  eq(builder._repo_root, "/path/to/repo")
+end
+
+T["config_var"]["config_heading() adds a heading"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():config_heading("Configure main")
+  eq(#builder._config_vars, 1)
+  eq(builder._config_vars[1].type, "config_heading")
+  eq(builder._config_vars[1].text, "Configure main")
+end
+
+T["config_var"]["config_var() adds a config variable"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder =
+    popup
+      .builder()
+      :config_var("d", "branch.main.description", "branch.main.description", { type = "text" })
+  eq(#builder._config_vars, 1)
+  eq(builder._config_vars[1].type, "config_var")
+  eq(builder._config_vars[1].key, "d")
+  eq(builder._config_vars[1].config_key, "branch.main.description")
+  eq(builder._config_vars[1].label, "branch.main.description")
+  eq(builder._config_vars[1].var_type, "text")
+end
+
+T["config_var"]["config_var() with cycle type"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():config_var("r", "branch.main.rebase", "branch.main.rebase", {
+    type = "cycle",
+    choices = { "true", "false", "" },
+    default_display = "default:false",
+  })
+  eq(builder._config_vars[1].var_type, "cycle")
+  eq(builder._config_vars[1].choices[1], "true")
+  eq(builder._config_vars[1].choices[2], "false")
+  eq(builder._config_vars[1].choices[3], "")
+  eq(builder._config_vars[1].default_display, "default:false")
+end
+
+T["config_var"]["build() substitutes %s in config keys with branch scope"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :branch_scope("feature-branch")
+    :config_var("d", "branch.%s.description", "branch.%s.description", { type = "text" })
+    :build()
+
+  eq(data.config_vars[1].config_key, "branch.feature-branch.description")
+  eq(data.config_vars[1].label, "branch.feature-branch.description")
+end
+
+T["config_var"]["build() substitutes %s in config headings"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup.builder():branch_scope("main"):config_heading("Configure %s"):build()
+
+  eq(data.config_vars[1].text, "Configure main")
+end
+
+T["config_var"]["build() preserves branch_scope and repo_root"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup.builder():branch_scope("main"):repo_root("/path/to/repo"):build()
+
+  eq(data.branch_scope, "main")
+  eq(data.repo_root, "/path/to/repo")
+end
+
+T["config_var"]["render_lines() includes config section before Arguments"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_heading("Configure main")
+    :config_var("d", "test.key", "test.key", { type = "text" })
+    :switch("a", "all", "All")
+    :build()
+
+  local lines = data:render_lines()
+
+  -- Find indices of config heading and Arguments
+  local config_idx = nil
+  local args_idx = nil
+  for i, line in ipairs(lines) do
+    if line:match("Configure main") then
+      config_idx = i
+    end
+    if line:match("Arguments") then
+      args_idx = i
+    end
+  end
+
+  expect.no_equality(config_idx, nil)
+  expect.no_equality(args_idx, nil)
+  -- Config should come before Arguments
+  eq(config_idx < args_idx, true)
+end
+
+T["config_var"]["render_lines() shows unset for nil values"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_heading("Config")
+    :config_var("d", "nonexistent.key", "nonexistent.key", { type = "text" })
+    :build()
+
+  local lines = data:render_lines()
+
+  local found_unset = false
+  for _, line in ipairs(lines) do
+    if line:match("unset") then
+      found_unset = true
+      break
+    end
+  end
+
+  eq(found_unset, true)
+end
+
+T["config_var"]["render_lines() shows choice format for cycle type"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_heading("Config")
+    :config_var("r", "test.rebase", "test.rebase", {
+      type = "cycle",
+      choices = { "true", "false", "" },
+      default_display = "default:false",
+    })
+    :build()
+
+  local lines = data:render_lines()
+
+  local found_choices = false
+  for _, line in ipairs(lines) do
+    if line:match("%[.*true.*false.*default") then
+      found_choices = true
+      break
+    end
+  end
+
+  eq(found_choices, true)
+end
+
+T["config_var"]["tracks config positions for highlighting"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_heading("Config")
+    :config_var("d", "test.key", "test.key", { type = "text" })
+    :build()
+
+  local _ = data:render_lines()
+
+  -- Should have config positions tracked
+  local found_positions = false
+  for _, pos_table in pairs(data.config_positions) do
+    for key, pos in pairs(pos_table) do
+      if key == "d" then
+        expect.no_equality(pos.col, nil)
+        expect.no_equality(pos.len, nil)
+        expect.no_equality(pos.config_key, nil)
+        found_positions = true
+      end
+    end
+  end
+
+  eq(found_positions, true)
+end
+
+T["config_var"]["_find_config_var() finds config var by key"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_heading("Config")
+    :config_var("d", "test.desc", "test.desc", { type = "text" })
+    :config_var("r", "test.rebase", "test.rebase", { type = "cycle" })
+    :build()
+
+  local cv = data:_find_config_var("r")
+  expect.no_equality(cv, nil)
+  eq(cv.config_key, "test.rebase")
+end
+
+T["config_var"]["_find_config_var() returns nil for unknown key"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup.builder():config_var("d", "test.desc", "test.desc", { type = "text" }):build()
+
+  local cv = data:_find_config_var("x")
+  eq(cv, nil)
+end
+
 return T

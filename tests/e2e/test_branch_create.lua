@@ -97,13 +97,14 @@ T["branch popup"]["opens from status buffer with b key"] = function()
   local found_create = false
   local found_delete = false
   for _, line in ipairs(lines) do
-    if line:match("b%s+Checkout branch") then
+    -- New magit-style labels
+    if line:match("b%s+branch/revision") then
       found_checkout = true
     end
-    if line:match("c%s+Create and checkout") then
+    if line:match("c%s+new branch") then
       found_create = true
     end
-    if line:match("D%s+Delete") then
+    if line:match("x%s+delete") then
       found_delete = true
     end
   end
@@ -146,19 +147,20 @@ T["branch popup"]["has all expected actions"] = function()
   local found_delete = false
 
   for _, line in ipairs(lines) do
-    if line:match("b%s+Checkout branch") then
+    -- New magit-style labels
+    if line:match("b%s+branch/revision") then
       found_checkout_branch = true
     end
-    if line:match("c%s+Create and checkout") then
+    if line:match("c%s+new branch") then
       found_create_checkout = true
     end
-    if line:match("n%s+Create branch") then
+    if line:match("n%s+new branch") then
       found_create_branch = true
     end
-    if line:match("m%s+Rename") then
+    if line:match("m%s+rename") then
       found_rename = true
     end
-    if line:match("D%s+Delete") then
+    if line:match("x%s+delete") then
       found_delete = true
     end
   end

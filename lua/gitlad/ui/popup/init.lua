@@ -8,6 +8,7 @@ local M = {}
 
 local keymap = require("gitlad.utils.keymap")
 local hl = require("gitlad.ui.hl")
+local git = require("gitlad.git")
 
 ---@class PopupSwitch
 ---@field key string Single character key binding
@@ -33,15 +34,30 @@ local hl = require("gitlad.ui.hl")
 ---@field description? string User-facing description (for actions)
 ---@field callback? fun(popup: PopupData) Callback function (for actions)
 
+---@class PopupConfigVar
+---@field type "config_heading"|"config_var"
+---@field key? string Single character key binding (for config_var)
+---@field text? string Heading text (for config_heading, supports %s for branch substitution)
+---@field config_key? string Git config key (for config_var, supports %s for branch substitution)
+---@field label? string Display label (for config_var, supports %s for branch substitution)
+---@field var_type? "text"|"cycle" How to handle the value (for config_var)
+---@field choices? string[] For "cycle" type - values to cycle through
+---@field default_display? string What to show for default/unset (e.g., "default:false")
+---@field current_value? string Current value (populated on build)
+
 ---@class PopupData
 ---@field name string Popup identifier
 ---@field switches PopupSwitch[] List of switches
 ---@field options PopupOption[] List of options
 ---@field actions PopupAction[] List of actions and headings
+---@field config_vars PopupConfigVar[] List of config variables and headings
+---@field branch_scope string|nil Branch name for %s substitution in config keys
+---@field repo_root string|nil Repository root for git config operations
 ---@field buffer number|nil Buffer handle when shown
 ---@field window number|nil Window handle when shown
 ---@field columns number Number of columns for action rendering (default 1)
 ---@field action_positions table<number, table<string, {col: number, len: number}>> Line -> key -> position info for highlighting
+---@field config_positions table<number, table<string, {col: number, len: number}>> Line -> key -> position info for config highlighting
 local PopupData = {}
 PopupData.__index = PopupData
 
@@ -50,6 +66,9 @@ PopupData.__index = PopupData
 ---@field _switches PopupSwitch[] Switches being built
 ---@field _options PopupOption[] Options being built
 ---@field _actions PopupAction[] Actions being built
+---@field _config_vars PopupConfigVar[] Config variables being built
+---@field _branch_scope string|nil Branch name for %s substitution
+---@field _repo_root string|nil Repository root for git config operations
 ---@field _columns number Number of columns for action rendering (default 1)
 local PopupBuilder = {}
 PopupBuilder.__index = PopupBuilder
@@ -62,6 +81,9 @@ function M.builder()
   builder._switches = {}
   builder._options = {}
   builder._actions = {}
+  builder._config_vars = {}
+  builder._branch_scope = nil
+  builder._repo_root = nil
   builder._columns = 1
   return builder
 end
@@ -168,6 +190,64 @@ function PopupBuilder:action(key, description, callback)
   return self
 end
 
+--- Set the branch scope for %s substitution in config keys/labels
+---@param branch string Branch name
+---@return PopupBuilder
+function PopupBuilder:branch_scope(branch)
+  self._branch_scope = branch
+  return self
+end
+
+--- Set the repository root for git config operations
+---@param path string Repository root path
+---@return PopupBuilder
+function PopupBuilder:repo_root(path)
+  self._repo_root = path
+  return self
+end
+
+--- Add a config section heading
+---@param text string Heading text (supports %s for branch substitution)
+---@return PopupBuilder
+function PopupBuilder:config_heading(text)
+  table.insert(self._config_vars, {
+    type = "config_heading",
+    text = text,
+  })
+  return self
+end
+
+--- Add a config variable
+---@param key string Single character key binding
+---@param config_key string Git config key (supports %s for branch substitution)
+---@param label string Display label (supports %s for branch substitution)
+---@param opts? { type?: "text"|"cycle", choices?: string[], default_display?: string }
+---@return PopupBuilder
+function PopupBuilder:config_var(key, config_key, label, opts)
+  opts = opts or {}
+  table.insert(self._config_vars, {
+    type = "config_var",
+    key = key,
+    config_key = config_key,
+    label = label,
+    var_type = opts.type or "text",
+    choices = opts.choices,
+    default_display = opts.default_display,
+  })
+  return self
+end
+
+--- Substitute %s with branch name in a string
+---@param str string
+---@param branch string|nil
+---@return string
+local function substitute_branch(str, branch)
+  if not branch or not str then
+    return str or ""
+  end
+  return str:gsub("%%s", branch)
+end
+
 --- Build the popup data
 ---@return PopupData
 function PopupBuilder:build()
@@ -176,10 +256,30 @@ function PopupBuilder:build()
   data.switches = vim.deepcopy(self._switches)
   data.options = vim.deepcopy(self._options)
   data.actions = vim.deepcopy(self._actions)
+  data.branch_scope = self._branch_scope
+  data.repo_root = self._repo_root
   data.buffer = nil
   data.window = nil
   data.columns = self._columns or 1
   data.action_positions = {}
+  data.config_positions = {}
+
+  -- Process config vars: substitute branch and load current values
+  data.config_vars = {}
+  local git_opts = data.repo_root and { cwd = data.repo_root } or nil
+  for _, cv in ipairs(self._config_vars) do
+    local item = vim.deepcopy(cv)
+    if item.type == "config_heading" then
+      item.text = substitute_branch(item.text, data.branch_scope)
+    elseif item.type == "config_var" then
+      item.config_key = substitute_branch(item.config_key, data.branch_scope)
+      item.label = substitute_branch(item.label, data.branch_scope)
+      -- Load current value synchronously (config reads are fast)
+      item.current_value = git.config_get(item.config_key, git_opts)
+    end
+    table.insert(data.config_vars, item)
+  end
+
   return data
 end
 
@@ -242,6 +342,121 @@ function PopupData:set_option(key, value)
       return
     end
   end
+end
+
+--- Find a config var by key
+---@param key string Config var key
+---@return PopupConfigVar|nil
+function PopupData:_find_config_var(key)
+  for _, cv in ipairs(self.config_vars or {}) do
+    if cv.type == "config_var" and cv.key == key then
+      return cv
+    end
+  end
+  return nil
+end
+
+--- Set a config var value (async, updates git config)
+---@param key string Config var key
+---@param value string|nil New value (nil or "" to unset)
+---@param callback? fun(success: boolean, err: string|nil)
+function PopupData:set_config_var(key, value, callback)
+  local cv = self:_find_config_var(key)
+  if not cv then
+    if callback then
+      callback(false, "Config var not found: " .. key)
+    end
+    return
+  end
+
+  local git_opts = self.repo_root and { cwd = self.repo_root } or nil
+
+  if value == nil or value == "" then
+    -- Unset the config
+    git.config_unset(cv.config_key, git_opts, function(success, err)
+      if success then
+        cv.current_value = nil
+      end
+      if callback then
+        callback(success, err)
+      end
+    end)
+  else
+    -- Set the config
+    git.config_set(cv.config_key, value, git_opts, function(success, err)
+      if success then
+        cv.current_value = value
+      end
+      if callback then
+        callback(success, err)
+      end
+    end)
+  end
+end
+
+--- Cycle a config var to the next value (for "cycle" type)
+---@param key string Config var key
+---@param callback? fun(success: boolean, err: string|nil)
+function PopupData:cycle_config_var(key, callback)
+  local cv = self:_find_config_var(key)
+  if not cv or cv.var_type ~= "cycle" or not cv.choices then
+    if callback then
+      callback(false, "Config var not found or not a cycle type")
+    end
+    return
+  end
+
+  -- Find current index
+  local current_idx = nil
+  local current = cv.current_value
+  for i, choice in ipairs(cv.choices) do
+    if choice == "" then
+      -- Empty string matches nil/unset
+      if current == nil or current == "" then
+        current_idx = i
+        break
+      end
+    elseif choice == current then
+      current_idx = i
+      break
+    end
+  end
+
+  -- Cycle to next (or first if not found)
+  local next_idx = current_idx and (current_idx % #cv.choices) + 1 or 1
+  local next_value = cv.choices[next_idx]
+
+  -- Empty string means unset
+  if next_value == "" then
+    self:set_config_var(key, nil, callback)
+  else
+    self:set_config_var(key, next_value, callback)
+  end
+end
+
+--- Prompt for a config var value (for "text" type)
+---@param key string Config var key
+---@param callback? fun(success: boolean, err: string|nil)
+function PopupData:prompt_config_var(key, callback)
+  local cv = self:_find_config_var(key)
+  if not cv then
+    if callback then
+      callback(false, "Config var not found: " .. key)
+    end
+    return
+  end
+
+  local current = cv.current_value or ""
+  vim.ui.input({ prompt = cv.label .. ": ", default = current }, function(input)
+    if input == nil then
+      -- Cancelled
+      if callback then
+        callback(false, nil)
+      end
+      return
+    end
+    self:set_config_var(key, input, callback)
+  end)
 end
 
 --- Group actions by heading into sections
@@ -321,13 +536,99 @@ function PopupData:_render_group(group)
   return lines, max_width
 end
 
+--- Format a config value for display
+---@param cv PopupConfigVar
+---@return string
+local function format_config_value(cv)
+  if cv.var_type == "cycle" and cv.choices then
+    -- Format as [opt1|opt2|default:X] with markers for current value
+    local parts = {}
+    local current = cv.current_value
+    local found_current = false
+    for _, choice in ipairs(cv.choices) do
+      if choice == "" then
+        -- Empty string means "unset" / use default
+        local display = cv.default_display or "default"
+        if current == nil or current == "" then
+          table.insert(parts, display)
+          found_current = true
+        else
+          table.insert(parts, display)
+        end
+      else
+        if current == choice then
+          table.insert(parts, choice)
+          found_current = true
+        else
+          table.insert(parts, choice)
+        end
+      end
+    end
+    -- Return format: [opt1|opt2|default:X]
+    -- The highlighting will mark the current one
+    return "[" .. table.concat(parts, "|") .. "]"
+  else
+    -- Text type: show value or "unset"
+    if cv.current_value == nil then
+      return "unset"
+    elseif cv.current_value == "" then
+      return "[]"
+    else
+      return cv.current_value
+    end
+  end
+end
+
 --- Render the popup as lines of text
 ---@return string[]
 function PopupData:render_lines()
   local lines = {}
 
-  -- Clear action positions for fresh render
+  -- Clear positions for fresh render
   self.action_positions = {}
+  self.config_positions = {}
+
+  -- Config sections (render BEFORE Arguments)
+  if self.config_vars and #self.config_vars > 0 then
+    -- Calculate max label width for alignment
+    local max_label_width = 0
+    for _, cv in ipairs(self.config_vars) do
+      if cv.type == "config_var" and cv.label then
+        max_label_width = math.max(max_label_width, display_width(cv.label))
+      end
+    end
+
+    for _, cv in ipairs(self.config_vars) do
+      if cv.type == "config_heading" then
+        -- Add blank line before heading (except first)
+        if #lines > 0 then
+          table.insert(lines, "")
+        end
+        table.insert(lines, cv.text)
+      elseif cv.type == "config_var" then
+        local value_display = format_config_value(cv)
+        local padded_label = pad_to_width(cv.label, max_label_width)
+        local line = string.format(" %s %s %s", cv.key, padded_label, value_display)
+        local line_idx = #lines + 1
+        self.config_positions[line_idx] = self.config_positions[line_idx] or {}
+        self.config_positions[line_idx][cv.key] = {
+          col = 1,
+          len = #cv.key,
+          config_key = cv.config_key,
+          var_type = cv.var_type,
+          choices = cv.choices,
+          current_value = cv.current_value,
+          default_display = cv.default_display,
+        }
+        table.insert(lines, line)
+      end
+    end
+
+    -- Add blank line after config section if there's more content
+    if #self.switches > 0 or #self.options > 0 or #self.actions > 0 then
+      table.insert(lines, "")
+    end
+  end
 
   -- Arguments section (switches and options)
   if #self.switches > 0 or #self.options > 0 then
@@ -546,7 +847,9 @@ function PopupData:show()
     self.switches,
     self.options,
     self.actions,
-    self.action_positions
+    self.action_positions,
+    self.config_vars,
+    self.config_positions
   )
 
   -- Set up keymaps
@@ -580,7 +883,9 @@ function PopupData:refresh()
     self.switches,
     self.options,
     self.actions,
-    self.action_positions
+    self.action_positions,
+    self.config_vars,
+    self.config_positions
   )
 end
 
@@ -647,6 +952,36 @@ function PopupData:_setup_keymaps()
       end)
     end
   end, "Set option", nowait_opts)
+
+  -- Config var keymaps (direct keys)
+  for _, cv in ipairs(self.config_vars or {}) do
+    if cv.type == "config_var" and cv.key then
+      keymap.set(bufnr, "n", cv.key, function()
+        if cv.var_type == "cycle" then
+          self:cycle_config_var(cv.key, function(success, err)
+            vim.schedule(function()
+              if success then
+                self:refresh()
+              elseif err then
+                vim.notify("[gitlad] Config error: " .. err, vim.log.levels.ERROR)
+              end
+            end)
+          end)
+        else
+          -- text type
+          self:prompt_config_var(cv.key, function(success, err)
+            vim.schedule(function()
+              if success then
+                self:refresh()
+              elseif err then
+                vim.notify("[gitlad] Config error: " .. err, vim.log.levels.ERROR)
+              end
+            end)
+          end)
+        end
+      end, cv.label or "Config", nowait_opts)
+    end
+  end
 
   -- Action keymaps (direct keys)
   for _, item in ipairs(self.actions) do

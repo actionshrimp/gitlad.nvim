@@ -786,6 +786,21 @@ function M.config_toggle(key, opts, callback)
   end)
 end
 
+--- Unset a git config value
+---@param key string Config key
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.config_unset(key, opts, callback)
+  cli.run_async({ "config", "--unset", key }, opts, function(result)
+    -- Exit code 5 means the key doesn't exist, which is fine for unset
+    if result.code == 0 or result.code == 5 then
+      callback(true, nil)
+    else
+      callback(errors.result_to_callback(result))
+    end
+  end)
+end
+
 -- =============================================================================
 -- Merge Operations
 -- =============================================================================

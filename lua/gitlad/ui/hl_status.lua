@@ -611,6 +611,8 @@ end
 ---@param options table[] Option definitions
 ---@param actions table[] Action definitions
 ---@param action_positions? table<number, table<string, {col: number, len: number}>> Optional position metadata
+---@param config_vars? table[] Config variable definitions
+---@param config_positions? table<number, table<string, table>> Optional config position metadata
 ---@param ns_popup number Popup namespace
 ---@param hl_module table Reference to the hl module for set/clear functions
 function M.apply_popup_highlights(
@@ -620,6 +622,8 @@ function M.apply_popup_highlights(
   options,
   actions,
   action_positions,
+  config_vars,
+  config_positions,
   ns_popup,
   hl_module
 )
@@ -717,6 +721,86 @@ function M.apply_popup_highlights(
       end
 
       -- Action lines - use position metadata if available, otherwise pattern match
+    end
+
+    -- Config var highlighting - use position metadata
+    local config_line_positions = config_positions and config_positions[i]
+    if config_line_positions then
+      for key, pos in pairs(config_line_positions) do
+        -- Highlight the key
+        hl_module.set(bufnr, ns_popup, line_idx, pos.col, pos.col + pos.len, "GitladPopupConfigKey")
+
+        -- Find and highlight the label (config key path after the key)
+        -- Pattern: " k label value" - label starts after "k "
+        local label_start = pos.col + pos.len + 1 -- After key and space
+        local label = pos.config_key
+        if label then
+          -- Find where the label ends in the line (before the value)
+          local label_end = label_start + #label
+          if label_end <= #line then
+            hl_module.set(
+              bufnr,
+              ns_popup,
+              line_idx,
+              label_start,
+              label_end,
+              "GitladPopupConfigLabel"
+            )
+          end
+
+          -- Highlight the value portion
+          -- Value starts after the label and some spacing
+          local value_start_pattern = line:sub(label_end + 1):match("^%s*()")
+          if value_start_pattern then
+            local value_start = label_end + value_start_pattern - 1
+            local value_text = line:sub(value_start + 1)
+
+            if value_text == "unset" then
+              hl_module.set(bufnr, ns_popup, line_idx, value_start, #line, "GitladPopupConfigUnset")
+            elseif value_text:match("^%[") then
+              -- Choice format: [opt1|opt2|default:X]
+              -- Highlight the whole thing as choice, then highlight active value
+              hl_module.set(
+                bufnr,
+                ns_popup,
+                line_idx,
+                value_start,
+                #line,
+                "GitladPopupConfigChoice"
+              )
+
+              -- Find and highlight the active choice
+              if pos.choices and pos.current_value then
+                local current = pos.current_value
+                for _, choice in ipairs(pos.choices) do
+                  local choice_to_find = choice
+                  if choice == "" then
+                    choice_to_find = pos.default_display or "default"
+                  end
+                  if (choice == "" and (current == nil or current == "")) or choice == current then
+                    -- Find this choice in the value text and highlight it
+                    local choice_start, choice_end = value_text:find(choice_to_find, 1, true)
+                    if choice_start then
+                      hl_module.set(
+                        bufnr,
+                        ns_popup,
+                        line_idx,
+                        value_start + choice_start - 1,
+                        value_start + choice_end,
+                        "GitladPopupConfigActive"
+                      )
+                    end
+                    break
+                  end
+                end
+              end
+            else
+              -- Plain text value
+              hl_module.set(bufnr, ns_popup, line_idx, value_start, #line, "GitladPopupConfigValue")
+            end
+          end
+        end
+      end
     end
 
     -- Always check position metadata for action highlighting (works for multi-column)

@@ -124,6 +124,14 @@ local highlight_groups = {
   GitladPopupDescription = { link = "Normal" },
   GitladPopupValue = { link = "String" },
 
+  -- Popup config section
+  GitladPopupConfigKey = { link = "Keyword" },
+  GitladPopupConfigLabel = { link = "Comment" },
+  GitladPopupConfigValue = { link = "String" },
+  GitladPopupConfigUnset = { link = "Comment", italic = true },
+  GitladPopupConfigChoice = { link = "Type" },
+  GitladPopupConfigActive = { link = "DiagnosticOk" },
+
   -- Help text
   GitladHelpText = { link = "Comment" },
 
@@ -343,7 +351,18 @@ end
 ---@param options table[] Option definitions
 ---@param actions table[] Action definitions
 ---@param action_positions? table<number, table<string, {col: number, len: number}>> Optional position metadata
-function M.apply_popup_highlights(bufnr, lines, switches, options, actions, action_positions)
+---@param config_vars? table[] Config variable definitions
+---@param config_positions? table<number, table<string, table>> Optional config position metadata
+function M.apply_popup_highlights(
+  bufnr,
+  lines,
+  switches,
+  options,
+  actions,
+  action_positions,
+  config_vars,
+  config_positions
+)
   hl_status.apply_popup_highlights(
     bufnr,
     lines,
@@ -351,6 +370,8 @@ function M.apply_popup_highlights(bufnr, lines, switches, options, actions, acti
     options,
     actions,
     action_positions,
+    config_vars,
+    config_positions,
     ns_popup,
     M
   )
