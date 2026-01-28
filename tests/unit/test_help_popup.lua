@@ -3,203 +3,396 @@ local eq = MiniTest.expect.equality
 
 local T = MiniTest.new_set()
 
--- Help popup builder tests
-T["help popup"] = MiniTest.new_set()
+-- Help view tests
+T["HelpView"] = MiniTest.new_set()
 
-T["help popup"]["creates popup with correct structure"] = function()
-  local popup = require("gitlad.ui.popup")
+T["HelpView"]["creates view with correct structure"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
 
-  -- Build a minimal help popup to verify structure
-  local data = popup
-    .builder()
-    :name("Help")
-    :group_heading("Navigation")
-    :action("j", "Next item", function() end)
-    :action("k", "Previous item", function() end)
-    :group_heading("Staging")
-    :action("s", "Stage file/hunk at cursor", function() end)
-    :action("u", "Unstage file/hunk at cursor", function() end)
-    :action("S", "Stage all", function() end)
-    :action("U", "Unstage all", function() end)
-    :group_heading("Popups")
-    :action("c", "Commit", function() end)
-    :action("p", "Push", function() end)
-    :group_heading("Other")
-    :action("g", "Refresh", function() end)
-    :action("$", "Git command history", function() end)
-    :action("q", "Close status buffer", function() end)
-    :action("?", "This help", function() end)
-    :build()
+  local sections = {
+    {
+      name = "Test Section",
+      columns = 2,
+      items = {
+        { key = "a", desc = "Action A" },
+        { key = "b", desc = "Action B" },
+        { key = "c", desc = "Action C" },
+      },
+    },
+  }
 
-  eq(data.name, "Help")
-  -- No switches or options in help popup
-  eq(#data.switches, 0)
-  eq(#data.options, 0)
-  -- 4 headings + 12 actions = 16 total
-  eq(#data.actions, 16)
+  local view = HelpView.new(sections)
+  eq(#view.sections, 1)
+  eq(view.sections[1].name, "Test Section")
+  eq(view.sections[1].columns, 2)
+  eq(#view.sections[1].items, 3)
 end
 
-T["help popup"]["has navigation section"] = function()
-  local popup = require("gitlad.ui.popup")
+T["HelpView"]["renders items in columns"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
 
-  local data = popup
-    .builder()
-    :group_heading("Navigation")
-    :action("j", "Next item", function() end)
-    :action("k", "Previous item", function() end)
-    :action("<Tab>", "Toggle inline diff", function() end)
-    :action("<CR>", "Visit file at point", function() end)
-    :build()
+  local sections = {
+    {
+      name = "Test",
+      columns = 2,
+      items = {
+        { key = "a", desc = "First" },
+        { key = "b", desc = "Second" },
+        { key = "c", desc = "Third" },
+        { key = "d", desc = "Fourth" },
+      },
+    },
+  }
 
-  eq(data.actions[1].type, "heading")
-  eq(data.actions[1].text, "Navigation")
-  eq(data.actions[2].type, "action")
-  eq(data.actions[2].key, "j")
-  eq(data.actions[3].type, "action")
-  eq(data.actions[3].key, "k")
-  eq(data.actions[4].type, "action")
-  eq(data.actions[4].key, "<Tab>")
-  eq(data.actions[5].type, "action")
-  eq(data.actions[5].key, "<CR>")
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
+
+  -- Should have: header + 2 rows (4 items in 2 columns = 2 rows)
+  eq(#lines, 3)
+  eq(lines[1], "Test")
+
+  -- First row should have items a and b
+  eq(lines[2]:match("a%s+First") ~= nil, true)
+  eq(lines[2]:match("b%s+Second") ~= nil, true)
+
+  -- Second row should have items c and d
+  eq(lines[3]:match("c%s+Third") ~= nil, true)
+  eq(lines[3]:match("d%s+Fourth") ~= nil, true)
 end
 
-T["help popup"]["has staging section"] = function()
-  local popup = require("gitlad.ui.popup")
+T["HelpView"]["renders 3 columns correctly"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
 
-  local data = popup
-    .builder()
-    :group_heading("Staging")
-    :action("s", "Stage file/hunk at cursor", function() end)
-    :action("u", "Unstage file/hunk at cursor", function() end)
-    :action("S", "Stage all", function() end)
-    :action("U", "Unstage all", function() end)
-    :action("x", "Discard changes at point", function() end)
-    :build()
+  local sections = {
+    {
+      name = "Commands",
+      columns = 3,
+      items = {
+        { key = "c", desc = "Commit" },
+        { key = "b", desc = "Branch" },
+        { key = "l", desc = "Log" },
+        { key = "p", desc = "Push" },
+        { key = "F", desc = "Pull" },
+        { key = "f", desc = "Fetch" },
+      },
+    },
+  }
 
-  eq(data.actions[1].type, "heading")
-  eq(data.actions[1].text, "Staging")
-  eq(data.actions[2].key, "s")
-  eq(data.actions[3].key, "u")
-  eq(data.actions[4].key, "S")
-  eq(data.actions[5].key, "U")
-  eq(data.actions[6].key, "x")
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
+
+  -- Header + 2 rows (6 items / 3 columns = 2 rows)
+  eq(#lines, 3)
+
+  -- First row: c, b, l
+  eq(lines[2]:match("c%s+Commit") ~= nil, true)
+  eq(lines[2]:match("b%s+Branch") ~= nil, true)
+  eq(lines[2]:match("l%s+Log") ~= nil, true)
+
+  -- Second row: p, F, f
+  eq(lines[3]:match("p%s+Push") ~= nil, true)
+  eq(lines[3]:match("F%s+Pull") ~= nil, true)
+  eq(lines[3]:match("f%s+Fetch") ~= nil, true)
 end
 
-T["help popup"]["has popups section"] = function()
-  local popup = require("gitlad.ui.popup")
+T["HelpView"]["renders multiple sections with blank lines between"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
 
-  local data = popup
-    .builder()
-    :group_heading("Popups")
-    :action("c", "Commit", function() end)
-    :action("p", "Push", function() end)
-    :build()
+  local sections = {
+    {
+      name = "Section One",
+      columns = 1,
+      items = {
+        { key = "a", desc = "Item A" },
+      },
+    },
+    {
+      name = "Section Two",
+      columns = 1,
+      items = {
+        { key = "b", desc = "Item B" },
+      },
+    },
+  }
 
-  eq(data.actions[1].type, "heading")
-  eq(data.actions[1].text, "Popups")
-  eq(data.actions[2].key, "c")
-  eq(data.actions[2].description, "Commit")
-  eq(data.actions[3].key, "p")
-  eq(data.actions[3].description, "Push")
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
+
+  -- Section 1 header + 1 item + blank line + Section 2 header + 1 item = 5 lines
+  eq(#lines, 5)
+  eq(lines[1], "Section One")
+  eq(lines[3], "") -- Blank line between sections
+  eq(lines[4], "Section Two")
 end
 
-T["help popup"]["has other section"] = function()
-  local popup = require("gitlad.ui.popup")
+T["HelpView"]["tracks action positions for highlighting"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
 
-  local data = popup
-    .builder()
-    :group_heading("Other")
-    :action("g", "Refresh", function() end)
-    :action("$", "Git command history", function() end)
-    :action("q", "Close status buffer", function() end)
-    :action("?", "This help", function() end)
-    :build()
+  local sections = {
+    {
+      name = "Test",
+      columns = 2,
+      items = {
+        { key = "ab", desc = "Multi-char key" },
+        { key = "c", desc = "Single char" },
+      },
+    },
+  }
 
-  eq(data.actions[1].type, "heading")
-  eq(data.actions[1].text, "Other")
-  eq(data.actions[2].key, "g")
-  eq(data.actions[3].key, "$")
-  eq(data.actions[4].key, "q")
-  eq(data.actions[5].key, "?")
+  local view = HelpView.new(sections)
+  view:render_lines()
+
+  -- Line 2 should have position info (line 1 is header)
+  local positions = view.action_positions[2]
+  eq(positions ~= nil, true)
+
+  -- Should track both keys
+  eq(positions["ab"] ~= nil, true)
+  eq(positions["c"] ~= nil, true)
+
+  -- First key starts at col 1 (after leading space)
+  eq(positions["ab"].col, 1)
+  eq(positions["ab"].len, 2) -- "ab" is 2 chars
 end
 
-T["help popup"]["action callbacks are invoked"] = function()
-  local popup = require("gitlad.ui.popup")
+T["HelpView"]["handles special key notations"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
 
-  local stage_all_called = false
-  local unstage_all_called = false
-  local refresh_called = false
+  local sections = {
+    {
+      name = "Navigation",
+      columns = 1,
+      items = {
+        { key = "<Tab>", desc = "Toggle" },
+        { key = "<CR>", desc = "Visit" },
+        { key = "<S-Tab>", desc = "Toggle all" },
+      },
+    },
+  }
 
-  local data = popup
-    .builder()
-    :action("S", "Stage all", function()
-      stage_all_called = true
-    end)
-    :action("U", "Unstage all", function()
-      unstage_all_called = true
-    end)
-    :action("g", "Refresh", function()
-      refresh_called = true
-    end)
-    :build()
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
 
-  -- Invoke callbacks
-  data.actions[1].callback(data)
-  eq(stage_all_called, true)
-
-  data.actions[2].callback(data)
-  eq(unstage_all_called, true)
-
-  data.actions[3].callback(data)
-  eq(refresh_called, true)
+  eq(lines[2]:match("<Tab>%s+Toggle") ~= nil, true)
+  eq(lines[3]:match("<CR>%s+Visit") ~= nil, true)
+  eq(lines[4]:match("<S%-Tab>%s+Toggle all") ~= nil, true)
 end
 
-T["help popup"]["supports special key notations"] = function()
-  local popup = require("gitlad.ui.popup")
+T["HelpView"]["action callbacks are invoked"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
 
-  local data = popup
-    .builder()
-    :action("<Tab>", "Toggle diff", function() end)
-    :action("<CR>", "Visit file", function() end)
-    :build()
+  local action_a_called = false
+  local action_b_called = false
 
-  eq(data.actions[1].key, "<Tab>")
-  eq(data.actions[2].key, "<CR>")
+  local sections = {
+    {
+      name = "Test",
+      columns = 1,
+      items = {
+        {
+          key = "a",
+          desc = "Action A",
+          action = function()
+            action_a_called = true
+          end,
+        },
+        {
+          key = "b",
+          desc = "Action B",
+          action = function()
+            action_b_called = true
+          end,
+        },
+      },
+    },
+  }
+
+  local view = HelpView.new(sections)
+
+  -- Directly invoke actions
+  view.sections[1].items[1].action()
+  eq(action_a_called, true)
+
+  view.sections[1].items[2].action()
+  eq(action_b_called, true)
 end
 
-T["help popup"]["renders correctly"] = function()
-  local popup = require("gitlad.ui.popup")
+T["HelpView"]["handles uneven items in columns"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
 
-  local data = popup
-    .builder()
-    :name("Help")
-    :group_heading("Navigation")
-    :action("j", "Next item", function() end)
-    :action("k", "Previous item", function() end)
-    :build()
+  local sections = {
+    {
+      name = "Test",
+      columns = 3,
+      items = {
+        { key = "a", desc = "One" },
+        { key = "b", desc = "Two" },
+        { key = "c", desc = "Three" },
+        { key = "d", desc = "Four" },
+        { key = "e", desc = "Five" }, -- Only 5 items, last row has 2
+      },
+    },
+  }
 
-  local lines = data:render_lines()
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
 
-  -- Check that heading and actions are rendered
-  local found_heading = false
+  -- Header + 2 rows (ceil(5/3) = 2)
+  eq(#lines, 3)
+
+  -- Second row should have d and e (but not 3 items)
+  eq(lines[3]:match("d%s+Four") ~= nil, true)
+  eq(lines[3]:match("e%s+Five") ~= nil, true)
+end
+
+T["HelpView"]["empty section renders only header"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
+
+  local sections = {
+    {
+      name = "Empty Section",
+      columns = 2,
+      items = {},
+    },
+  }
+
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
+
+  eq(#lines, 1)
+  eq(lines[1], "Empty Section")
+end
+
+-- Tests for content matching e2e patterns
+T["HelpView content"] = MiniTest.new_set()
+
+T["HelpView content"]["has Navigation section content"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
+
+  local sections = {
+    {
+      name = "Navigation",
+      columns = 3,
+      items = {
+        { key = "j", desc = "Next item" },
+        { key = "k", desc = "Previous item" },
+        { key = "<Tab>", desc = "Toggle section" },
+      },
+    },
+  }
+
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
+
+  local found_navigation = false
   local found_j = false
   local found_k = false
 
   for _, line in ipairs(lines) do
     if line:match("Navigation") then
-      found_heading = true
+      found_navigation = true
     end
-    if line:match("j") and line:match("Next item") then
+    if line:match("j%s+Next item") then
       found_j = true
     end
-    if line:match("k") and line:match("Previous item") then
+    if line:match("k%s+Previous item") then
       found_k = true
     end
   end
 
-  eq(found_heading, true)
+  eq(found_navigation, true)
   eq(found_j, true)
   eq(found_k, true)
+end
+
+T["HelpView content"]["has Staging-equivalent content"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
+
+  local sections = {
+    {
+      name = "Applying changes",
+      columns = 3,
+      items = {
+        { key = "s", desc = "Stage" },
+        { key = "u", desc = "Unstage" },
+        { key = "S", desc = "Stage all" },
+        { key = "U", desc = "Unstage all" },
+      },
+    },
+  }
+
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
+
+  local found_s = false
+  local found_u = false
+  local found_S = false
+  local found_U = false
+
+  for _, line in ipairs(lines) do
+    if line:match("s%s+Stage[^%s]") or line:match("s%s+Stage%s") then
+      found_s = true
+    end
+    if line:match("u%s+Unstage[^%s]") or line:match("u%s+Unstage%s") then
+      found_u = true
+    end
+    if line:match("S%s+Stage all") then
+      found_S = true
+    end
+    if line:match("U%s+Unstage all") then
+      found_U = true
+    end
+  end
+
+  eq(found_s, true)
+  eq(found_u, true)
+  eq(found_S, true)
+  eq(found_U, true)
+end
+
+T["HelpView content"]["has Popups-equivalent content"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
+
+  local sections = {
+    {
+      name = "Transient commands",
+      columns = 3,
+      items = {
+        { key = "c", desc = "Commit" },
+        { key = "p", desc = "Push" },
+      },
+    },
+  }
+
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
+
+  local found_c = false
+  local found_p = false
+
+  for _, line in ipairs(lines) do
+    if line:match("c%s+Commit") then
+      found_c = true
+    end
+    if line:match("p%s+Push") then
+      found_p = true
+    end
+  end
+
+  eq(found_c, true)
+  eq(found_p, true)
 end
 
 return T

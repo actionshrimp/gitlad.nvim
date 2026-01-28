@@ -105,9 +105,11 @@ T["help popup"]["displays Navigation section"] = function()
     if line:match("Navigation") then
       found_navigation = true
     end
+    -- Match "j Next item" with any whitespace
     if line:match("j%s+Next item") then
       found_j = true
     end
+    -- Match "k Previous item" with any whitespace
     if line:match("k%s+Previous item") then
       found_k = true
     end
@@ -121,7 +123,7 @@ T["help popup"]["displays Navigation section"] = function()
   cleanup_repo(child, repo)
 end
 
-T["help popup"]["displays Staging section"] = function()
+T["help popup"]["displays Applying changes section"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -137,20 +139,22 @@ T["help popup"]["displays Staging section"] = function()
   ]])
   local lines = child.lua_get([[popup_lines]])
 
-  local found_staging = false
+  local found_section = false
   local found_s = false
   local found_u = false
   local found_S = false
   local found_U = false
 
   for _, line in ipairs(lines) do
-    if line:match("Staging") then
-      found_staging = true
+    -- Section is now "Applying changes"
+    if line:match("Applying changes") then
+      found_section = true
     end
-    if line:match("s%s+Stage file") then
+    -- Descriptions are now shorter: "Stage", "Unstage", etc.
+    if line:match("s%s+Stage[^%s]") or line:match("s%s+Stage%s") then
       found_s = true
     end
-    if line:match("u%s+Unstage file") then
+    if line:match("u%s+Unstage[^%s]") or line:match("u%s+Unstage%s") then
       found_u = true
     end
     if line:match("S%s+Stage all") then
@@ -161,7 +165,7 @@ T["help popup"]["displays Staging section"] = function()
     end
   end
 
-  eq(found_staging, true)
+  eq(found_section, true)
   eq(found_s, true)
   eq(found_u, true)
   eq(found_S, true)
@@ -171,7 +175,7 @@ T["help popup"]["displays Staging section"] = function()
   cleanup_repo(child, repo)
 end
 
-T["help popup"]["displays Popups section"] = function()
+T["help popup"]["displays Transient commands section"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -187,13 +191,14 @@ T["help popup"]["displays Popups section"] = function()
   ]])
   local lines = child.lua_get([[popup_lines]])
 
-  local found_popups = false
+  local found_transient = false
   local found_c = false
   local found_p = false
 
   for _, line in ipairs(lines) do
-    if line:match("Popups") then
-      found_popups = true
+    -- Section is now "Transient commands"
+    if line:match("Transient commands") then
+      found_transient = true
     end
     if line:match("c%s+Commit") then
       found_c = true
@@ -203,7 +208,7 @@ T["help popup"]["displays Popups section"] = function()
     end
   end
 
-  eq(found_popups, true)
+  eq(found_transient, true)
   eq(found_c, true)
   eq(found_p, true)
 
@@ -211,7 +216,7 @@ T["help popup"]["displays Popups section"] = function()
   cleanup_repo(child, repo)
 end
 
-T["help popup"]["displays Other section"] = function()
+T["help popup"]["displays Essential commands section"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -227,18 +232,19 @@ T["help popup"]["displays Other section"] = function()
   ]])
   local lines = child.lua_get([[popup_lines]])
 
-  local found_other = false
-  local found_g = false
+  local found_essential = false
+  local found_gr = false
   local found_dollar = false
   local found_q = false
   local found_question = false
 
   for _, line in ipairs(lines) do
-    if line:match("Other") then
-      found_other = true
+    -- Section is now "Essential commands"
+    if line:match("Essential commands") then
+      found_essential = true
     end
     if line:match("gr%s+Refresh") then
-      found_g = true
+      found_gr = true
     end
     if line:match("%$%s+Git command history") then
       found_dollar = true
@@ -251,8 +257,8 @@ T["help popup"]["displays Other section"] = function()
     end
   end
 
-  eq(found_other, true)
-  eq(found_g, true)
+  eq(found_essential, true)
+  eq(found_gr, true)
   eq(found_dollar, true)
   eq(found_q, true)
   eq(found_question, true)
