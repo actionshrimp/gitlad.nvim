@@ -220,11 +220,11 @@ T["push popup"]["switch toggling with -f"] = function()
   cleanup_repo(child, repo)
 end
 
-T["push popup"]["shows warning when no push target configured"] = function()
+T["push popup"]["shows warning when no remote configured"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
-  -- Create initial commit (no remote, no upstream, no push target)
+  -- Create initial commit (no remote at all)
   create_file(child, repo, "test.txt", "hello")
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
@@ -240,7 +240,7 @@ T["push popup"]["shows warning when no push target configured"] = function()
   child.type_keys("p")
   child.lua([[vim.wait(100, function() return false end)]])
 
-  -- Try to push (should fail - no push target derivable)
+  -- Try to push (should fail - no remote at all)
   child.type_keys("p")
   child.lua([[vim.wait(200, function() return false end)]])
 
@@ -248,6 +248,95 @@ T["push popup"]["shows warning when no push target configured"] = function()
   local messages = child.lua_get([[vim.fn.execute("messages")]])
   eq(messages:match("No push target") ~= nil, true)
 
+  cleanup_repo(child, repo)
+end
+
+T["push popup"]["uses single remote as default push target"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Add a single remote (not named origin to test single-remote fallback)
+  git(child, repo, "remote add myremote https://example.com/repo.git")
+
+  -- Create a new branch with no upstream configured
+  git(child, repo, "checkout -b feature-branch")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(800, function() return false end)]])
+
+  -- Open push popup and check the remote option is pre-filled
+  child.type_keys("p")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  child.lua([[
+    popup_buf = vim.api.nvim_get_current_buf()
+    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[popup_lines]])
+
+  -- Should show myremote in the options (as the default remote)
+  local found_myremote = false
+  for _, line in ipairs(lines) do
+    if line:match("myremote") then
+      found_myremote = true
+      break
+    end
+  end
+  eq(found_myremote, true)
+
+  child.type_keys("q")
+  cleanup_repo(child, repo)
+end
+
+T["push popup"]["uses origin as default when multiple remotes exist"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Add multiple remotes (origin should be picked as default)
+  git(child, repo, "remote add upstream https://example.com/upstream.git")
+  git(child, repo, "remote add origin https://example.com/origin.git")
+  git(child, repo, "remote add fork https://example.com/fork.git")
+
+  -- Create a new branch with no upstream configured
+  git(child, repo, "checkout -b feature-branch")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(800, function() return false end)]])
+
+  -- Open push popup and check the remote option is pre-filled with origin
+  child.type_keys("p")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  child.lua([[
+    popup_buf = vim.api.nvim_get_current_buf()
+    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[popup_lines]])
+
+  -- Should show origin as the default remote in options
+  local found_origin_option = false
+  for _, line in ipairs(lines) do
+    -- Look for the remote option line with origin value
+    if line:match("=r.*origin") or line:match("Remote.*origin") then
+      found_origin_option = true
+      break
+    end
+  end
+  eq(found_origin_option, true)
+
+  child.type_keys("q")
   cleanup_repo(child, repo)
 end
 
