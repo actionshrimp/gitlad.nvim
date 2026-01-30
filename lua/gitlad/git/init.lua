@@ -33,6 +33,7 @@ M.remote_branches = git_branches.remote_branches
 M.set_upstream = git_branches.set_upstream
 M.get_upstream = git_branches.get_upstream
 M.get_push_remote = git_branches.get_push_remote
+M.get_default_remote = git_branches.get_default_remote
 M.set_push_remote = git_branches.set_push_remote
 M.delete_remote_branch = git_branches.delete_remote_branch
 

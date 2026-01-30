@@ -137,7 +137,45 @@ function M.get_upstream(branch, opts, callback)
   end)
 end
 
+--- Get the default remote (sensible fallback when no explicit config exists)
+--- Resolution order:
+---   1. If only one remote exists → use it
+---   2. If "origin" remote exists → use it (common convention)
+---   3. Otherwise → nil (caller should prompt user)
+---@param opts? GitCommandOptions
+---@param callback fun(remote: string|nil)
+function M.get_default_remote(opts, callback)
+  cli.run_async({ "remote" }, opts, function(result)
+    if result.code ~= 0 then
+      callback(nil)
+      return
+    end
+
+    -- Filter out empty lines
+    local remotes = vim.tbl_filter(function(line)
+      return line and line ~= ""
+    end, result.stdout)
+
+    if #remotes == 0 then
+      callback(nil)
+    elseif #remotes == 1 then
+      -- Single remote - use it as default
+      callback(remotes[1])
+    elseif vim.tbl_contains(remotes, "origin") then
+      -- Multiple remotes but "origin" exists - use it as convention
+      callback("origin")
+    else
+      -- Multiple remotes, no origin - caller should prompt
+      callback(nil)
+    end
+  end)
+end
+
 --- Get push remote for a branch
+--- Resolution order (matching magit/neogit):
+---   1. branch.<branch>.pushRemote - explicit per-branch config
+---   2. remote.pushDefault - global default push remote
+---   3. Single remote or "origin" - sensible default
 ---@param branch string Branch name
 ---@param opts? GitCommandOptions
 ---@param callback fun(remote: string|nil, err: string|nil)
@@ -158,8 +196,10 @@ function M.get_push_remote(branch, opts, callback)
       then
         callback(fallback_result.stdout[1], nil)
       else
-        -- No push remote configured
-        callback(nil, nil)
+        -- Final fallback: get default remote (single remote or "origin")
+        M.get_default_remote(opts, function(default_remote)
+          callback(default_remote, nil)
+        end)
       end
     end)
   end)
