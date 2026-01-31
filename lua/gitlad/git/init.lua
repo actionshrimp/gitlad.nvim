@@ -409,6 +409,24 @@ function M.remote_names(opts, callback)
   end)
 end
 
+--- Get list of remote names (synchronous)
+---@param opts? GitCommandOptions
+---@return string[] remotes List of remote names
+function M.remote_names_sync(opts)
+  local result = cli.run_sync({ "remote" }, opts)
+  if result.code ~= 0 then
+    return {}
+  end
+  -- Filter out empty strings
+  local remotes = {}
+  for _, name in ipairs(result.stdout) do
+    if name and name ~= "" then
+      table.insert(remotes, name)
+    end
+  end
+  return remotes
+end
+
 ---@class SequencerState
 ---@field cherry_pick_in_progress boolean
 ---@field revert_in_progress boolean

@@ -36,14 +36,19 @@ local git = require("gitlad.git")
 
 ---@class PopupConfigVar
 ---@field type "config_heading"|"config_var"
----@field key? string Single character key binding (for config_var)
+---@field key? string Single character key binding (for config_var, nil for read-only)
 ---@field text? string Heading text (for config_heading, supports %s for branch substitution)
 ---@field config_key? string Git config key (for config_var, supports %s for branch substitution)
 ---@field label? string Display label (for config_var, supports %s for branch substitution)
----@field var_type? "text"|"cycle" How to handle the value (for config_var)
+---@field var_type? "text"|"cycle"|"remote_cycle" How to handle the value (for config_var)
 ---@field choices? string[] For "cycle" type - values to cycle through
 ---@field default_display? string What to show for default/unset (e.g., "default:false")
 ---@field current_value? string Current value (populated on build)
+---@field fallback? string Fallback config key for remote_cycle (e.g., "remote.pushDefault")
+---@field fallback_value? string Cached fallback value (populated on build)
+---@field remote_choices? string[] Dynamically populated list of remote names (for remote_cycle)
+---@field read_only? boolean If true, display only with no keybinding
+---@field on_set? fun(value: string, popup: PopupData): table<string,string>|nil Custom setter that can set multiple configs
 
 ---@class PopupData
 ---@field name string Popup identifier
@@ -217,11 +222,28 @@ function PopupBuilder:config_heading(text)
   return self
 end
 
+--- Add a read-only config display line (no keybinding)
+--- Use this for config values that are set indirectly (e.g., branch.remote set via merge)
+---@param config_key string Git config key (supports %s for branch substitution)
+---@param label string Display label (supports %s for branch substitution)
+---@return PopupBuilder
+function PopupBuilder:config_display(config_key, label)
+  table.insert(self._config_vars, {
+    type = "config_var",
+    key = nil, -- No key = read-only
+    config_key = config_key,
+    label = label,
+    var_type = "text",
+    read_only = true,
+  })
+  return self
+end
+
 --- Add a config variable
 ---@param key string Single character key binding
 ---@param config_key string Git config key (supports %s for branch substitution)
 ---@param label string Display label (supports %s for branch substitution)
----@param opts? { type?: "text"|"cycle", choices?: string[], default_display?: string }
+---@param opts? { type?: "text"|"cycle"|"remote_cycle", choices?: string[], default_display?: string, fallback?: string, on_set?: fun(value: string, popup: PopupData): table<string,string>|nil }
 ---@return PopupBuilder
 function PopupBuilder:config_var(key, config_key, label, opts)
   opts = opts or {}
@@ -233,6 +255,8 @@ function PopupBuilder:config_var(key, config_key, label, opts)
     var_type = opts.type or "text",
     choices = opts.choices,
     default_display = opts.default_display,
+    fallback = opts.fallback,
+    on_set = opts.on_set,
   })
   return self
 end
@@ -267,6 +291,17 @@ function PopupBuilder:build()
   -- Process config vars: substitute branch and load current values
   data.config_vars = {}
   local git_opts = data.repo_root and { cwd = data.repo_root } or nil
+
+  -- Fetch remotes once for all remote_cycle vars (synchronous, fast operation)
+  local remotes_cache = nil
+  local function get_remotes()
+    if remotes_cache == nil then
+      local ok, result = pcall(git.remote_names_sync, git_opts)
+      remotes_cache = (ok and result) or {}
+    end
+    return remotes_cache
+  end
+
   for _, cv in ipairs(self._config_vars) do
     local item = vim.deepcopy(cv)
     if item.type == "config_heading" then
@@ -276,6 +311,14 @@ function PopupBuilder:build()
       item.label = substitute_branch(item.label, data.branch_scope)
       -- Load current value synchronously (config reads are fast)
       item.current_value = git.config_get(item.config_key, git_opts)
+
+      -- For remote_cycle type, populate remote_choices and fallback_value
+      if item.var_type == "remote_cycle" then
+        item.remote_choices = get_remotes() or {}
+        if item.fallback then
+          item.fallback_value = git.config_get(item.fallback, git_opts)
+        end
+      end
     end
     table.insert(data.config_vars, item)
   end
@@ -394,14 +437,41 @@ function PopupData:set_config_var(key, value, callback)
   end
 end
 
---- Cycle a config var to the next value (for "cycle" type)
+--- Cycle a config var to the next value (for "cycle" or "remote_cycle" type)
 ---@param key string Config var key
 ---@param callback? fun(success: boolean, err: string|nil)
 function PopupData:cycle_config_var(key, callback)
   local cv = self:_find_config_var(key)
-  if not cv or cv.var_type ~= "cycle" or not cv.choices then
+  if not cv then
     if callback then
-      callback(false, "Config var not found or not a cycle type")
+      callback(false, "Config var not found: " .. key)
+    end
+    return
+  end
+
+  -- Determine the choices based on var_type
+  local choices
+  if cv.var_type == "cycle" then
+    if not cv.choices then
+      if callback then
+        callback(false, "Config var has no choices")
+      end
+      return
+    end
+    choices = cv.choices
+  elseif cv.var_type == "remote_cycle" then
+    if not cv.remote_choices then
+      if callback then
+        callback(false, "Config var has no remote choices")
+      end
+      return
+    end
+    -- Build choices: all remotes plus empty string (unset)
+    choices = vim.list_extend({}, cv.remote_choices)
+    table.insert(choices, "") -- Add empty for "unset" option
+  else
+    if callback then
+      callback(false, "Config var is not a cycle type")
     end
     return
   end
@@ -409,7 +479,7 @@ function PopupData:cycle_config_var(key, callback)
   -- Find current index
   local current_idx = nil
   local current = cv.current_value
-  for i, choice in ipairs(cv.choices) do
+  for i, choice in ipairs(choices) do
     if choice == "" then
       -- Empty string matches nil/unset
       if current == nil or current == "" then
@@ -423,14 +493,63 @@ function PopupData:cycle_config_var(key, callback)
   end
 
   -- Cycle to next (or first if not found)
-  local next_idx = current_idx and (current_idx % #cv.choices) + 1 or 1
-  local next_value = cv.choices[next_idx]
+  local next_idx = current_idx and (current_idx % #choices) + 1 or 1
+  local next_value = choices[next_idx]
 
   -- Empty string means unset
   if next_value == "" then
     self:set_config_var(key, nil, callback)
   else
     self:set_config_var(key, next_value, callback)
+  end
+end
+
+--- Set multiple config vars at once (for on_set callbacks that modify multiple configs)
+---@param values table<string, string|nil> Map of config_key to value (nil to unset)
+---@param callback? fun(success: boolean, err: string|nil)
+function PopupData:set_multiple_config_vars(values, callback)
+  local git_opts = self.repo_root and { cwd = self.repo_root } or nil
+  local pending = 0
+  local errors = {}
+
+  -- Count total operations
+  for _ in pairs(values) do
+    pending = pending + 1
+  end
+
+  if pending == 0 then
+    if callback then
+      callback(true, nil)
+    end
+    return
+  end
+
+  local function on_done(success, err)
+    pending = pending - 1
+    if not success and err then
+      table.insert(errors, err)
+    end
+    if pending == 0 then
+      -- Update cached current_value for all affected config_vars
+      for config_key, value in pairs(values) do
+        for _, cv in ipairs(self.config_vars) do
+          if cv.type == "config_var" and cv.config_key == config_key then
+            cv.current_value = value
+          end
+        end
+      end
+      if callback then
+        callback(#errors == 0, #errors > 0 and table.concat(errors, ", ") or nil)
+      end
+    end
+  end
+
+  for config_key, value in pairs(values) do
+    if value == nil or value == "" then
+      git.config_unset(config_key, git_opts, on_done)
+    else
+      git.config_set(config_key, value, git_opts, on_done)
+    end
   end
 end
 
@@ -455,6 +574,17 @@ function PopupData:prompt_config_var(key, callback)
       end
       return
     end
+
+    -- Check for custom on_set handler
+    if cv.on_set then
+      local multi_values = cv.on_set(input, self)
+      if multi_values then
+        self:set_multiple_config_vars(multi_values, callback)
+        return
+      end
+    end
+
+    -- Default single value behavior
     self:set_config_var(key, input, callback)
   end)
 end
@@ -544,28 +674,31 @@ local function format_config_value(cv)
     -- Format as [opt1|opt2|default:X] with markers for current value
     local parts = {}
     local current = cv.current_value
-    local found_current = false
     for _, choice in ipairs(cv.choices) do
       if choice == "" then
         -- Empty string means "unset" / use default
         local display = cv.default_display or "default"
-        if current == nil or current == "" then
-          table.insert(parts, display)
-          found_current = true
-        else
-          table.insert(parts, display)
-        end
+        table.insert(parts, display)
       else
-        if current == choice then
-          table.insert(parts, choice)
-          found_current = true
-        else
-          table.insert(parts, choice)
-        end
+        table.insert(parts, choice)
       end
     end
     -- Return format: [opt1|opt2|default:X]
     -- The highlighting will mark the current one
+    return "[" .. table.concat(parts, "|") .. "]"
+  elseif cv.var_type == "remote_cycle" and cv.remote_choices then
+    -- Format as [remote1|remote2|fallback:value] for remote cycling
+    local parts = {}
+    for _, remote in ipairs(cv.remote_choices) do
+      table.insert(parts, remote)
+    end
+    -- Add fallback annotation if value comes from fallback (current is unset)
+    if (cv.current_value == nil or cv.current_value == "") and cv.fallback_value then
+      table.insert(parts, cv.fallback .. ":" .. cv.fallback_value)
+    end
+    if #parts == 0 then
+      return "[]"
+    end
     return "[" .. table.concat(parts, "|") .. "]"
   else
     -- Text type: show value or "unset"
@@ -608,18 +741,29 @@ function PopupData:render_lines()
       elseif cv.type == "config_var" then
         local value_display = format_config_value(cv)
         local padded_label = pad_to_width(cv.label, max_label_width)
-        local line = string.format(" %s %s %s", cv.key, padded_label, value_display)
+        local line
         local line_idx = #lines + 1
-        self.config_positions[line_idx] = self.config_positions[line_idx] or {}
-        self.config_positions[line_idx][cv.key] = {
-          col = 1,
-          len = #cv.key,
-          config_key = cv.config_key,
-          var_type = cv.var_type,
-          choices = cv.choices,
-          current_value = cv.current_value,
-          default_display = cv.default_display,
-        }
+
+        if cv.read_only or cv.key == nil then
+          -- Read-only display: 3-space indent instead of keybinding
+          line = string.format("   %s %s", padded_label, value_display)
+          -- No config_positions entry for read-only items (no key to highlight)
+        else
+          line = string.format(" %s %s %s", cv.key, padded_label, value_display)
+          self.config_positions[line_idx] = self.config_positions[line_idx] or {}
+          self.config_positions[line_idx][cv.key] = {
+            col = 1,
+            len = #cv.key,
+            config_key = cv.config_key,
+            var_type = cv.var_type,
+            choices = cv.choices,
+            current_value = cv.current_value,
+            default_display = cv.default_display,
+            remote_choices = cv.remote_choices,
+            fallback = cv.fallback,
+            fallback_value = cv.fallback_value,
+          }
+        end
         table.insert(lines, line)
       end
     end
@@ -953,11 +1097,11 @@ function PopupData:_setup_keymaps()
     end
   end, "Set option", nowait_opts)
 
-  -- Config var keymaps (direct keys)
+  -- Config var keymaps (direct keys, skip read-only)
   for _, cv in ipairs(self.config_vars or {}) do
-    if cv.type == "config_var" and cv.key then
+    if cv.type == "config_var" and cv.key and not cv.read_only then
       keymap.set(bufnr, "n", cv.key, function()
-        if cv.var_type == "cycle" then
+        if cv.var_type == "cycle" or cv.var_type == "remote_cycle" then
           self:cycle_config_var(cv.key, function(success, err)
             vim.schedule(function()
               if success then
