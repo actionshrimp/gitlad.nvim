@@ -105,6 +105,7 @@ make test-unit
 # Run only e2e tests
 make test-e2e
 ```
+**Important:** If iterating on a particular feature, consider running just that test file directly, rather than the whole suite - this will speed up iteration times considerably. However, once the whole task appears to be done, make sure you run `make test` to verify everything passes.
 
 ### Local Development
 
