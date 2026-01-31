@@ -25,12 +25,12 @@ Done:
 - [x] pressing 'u' again on branch popup should unset both 'merge' and 'remote'
 - [x] choosing a local ref should set the origin as '.' (stored in the config as a literal dot, and displayed as such)
 - [x] when pushDefault is explicitly set to `origin`, the `remote.pushDefault:origin` option disappears for some reason, can we always show this? 
+- [x] do we have tests that check the actual git config values are being updated in the file correctly? if not can we add some
 
 Now:
+- [ ] when the upstream is changed, can we force a refresh of the git state, as the status window is highly dependent on that config
 
 Upcoming:
-- [ ] do we have tests that check the actual git config values are being updated in the file correctly? if not can we add some
-- [ ] when the upstream is changed, can we force a refresh of the git state, as the status window is highly dependent on that config
 - [ ] when using snacks file selector with point in status window, it always opens the file in the _other_ window and not the status buffer?
 - [ ] add 'o' to push popup (push other branch)
 - [ ] fix tab cycling behaviours when point is over a specific section or file
