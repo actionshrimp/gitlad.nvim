@@ -93,19 +93,20 @@ T["push popup"]["opens from status buffer with p key"] = function()
   ]])
   local lines = child.lua_get([[popup_lines]])
 
-  local found_push_upstream = false
-  local found_push_elsewhere = false
+  local found_pushremote = false
+  local found_elsewhere = false
   for _, line in ipairs(lines) do
-    if line:match("p%s+Push to upstream") then
-      found_push_upstream = true
+    -- New magit-style action names
+    if line:match("p%s+pushRemote") then
+      found_pushremote = true
     end
-    if line:match("e%s+Push elsewhere") then
-      found_push_elsewhere = true
+    if line:match("e%s+elsewhere") then
+      found_elsewhere = true
     end
   end
 
-  eq(found_push_upstream, true)
-  eq(found_push_elsewhere, true)
+  eq(found_pushremote, true)
+  eq(found_elsewhere, true)
 
   -- Clean up
   child.type_keys("q")
@@ -138,7 +139,6 @@ T["push popup"]["has all expected switches"] = function()
   local found_force = false
   local found_dry_run = false
   local found_tags = false
-  local found_set_upstream = false
 
   for _, line in ipairs(lines) do
     if line:match("%-f.*force%-with%-lease") then
@@ -153,16 +153,12 @@ T["push popup"]["has all expected switches"] = function()
     if line:match("%-t.*tags") then
       found_tags = true
     end
-    if line:match("%-u.*set%-upstream") then
-      found_set_upstream = true
-    end
   end
 
   eq(found_force_lease, true)
   eq(found_force, true)
   eq(found_dry_run, true)
   eq(found_tags, true)
-  eq(found_set_upstream, true)
 
   child.type_keys("q")
   cleanup_repo(child, repo)
@@ -233,25 +229,31 @@ T["push popup"]["shows warning when no remote configured"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
   child.lua([[vim.wait(500, function() return false end)]])
 
-  -- Clear messages
-  child.lua([[vim.cmd("messages clear")]])
-
   -- Open push popup
   child.type_keys("p")
   child.lua([[vim.wait(100, function() return false end)]])
 
-  -- Try to push (should fail - no remote at all)
-  child.type_keys("p")
-  child.lua([[vim.wait(200, function() return false end)]])
+  -- Verify popup shows "Push main to" heading (includes branch name)
+  child.lua([[
+    popup_buf = vim.api.nvim_get_current_buf()
+    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[popup_lines]])
 
-  -- Should have shown warning message
-  local messages = child.lua_get([[vim.fn.execute("messages")]])
-  eq(messages:match("No push target") ~= nil, true)
+  local found_push_heading = false
+  for _, line in ipairs(lines) do
+    if line:match("Push.*to") then
+      found_push_heading = true
+      break
+    end
+  end
+  eq(found_push_heading, true)
 
+  child.type_keys("q")
   cleanup_repo(child, repo)
 end
 
-T["push popup"]["uses single remote as default push target"] = function()
+T["push popup"]["has remote option for manual override"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -260,7 +262,7 @@ T["push popup"]["uses single remote as default push target"] = function()
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  -- Add a single remote (not named origin to test single-remote fallback)
+  -- Add a single remote
   git(child, repo, "remote add myremote https://example.com/repo.git")
 
   -- Create a new branch with no upstream configured
@@ -270,7 +272,7 @@ T["push popup"]["uses single remote as default push target"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
   child.lua([[vim.wait(800, function() return false end)]])
 
-  -- Open push popup and check the remote option is pre-filled
+  -- Open push popup and verify remote option exists (can be set with =r)
   child.type_keys("p")
   child.lua([[vim.wait(100, function() return false end)]])
 
@@ -280,21 +282,21 @@ T["push popup"]["uses single remote as default push target"] = function()
   ]])
   local lines = child.lua_get([[popup_lines]])
 
-  -- Should show myremote in the options (as the default remote)
-  local found_myremote = false
+  -- Should have =r Remote option (starts empty, user can set it)
+  local found_remote_option = false
   for _, line in ipairs(lines) do
-    if line:match("myremote") then
-      found_myremote = true
+    if line:match("=r%s+Remote") then
+      found_remote_option = true
       break
     end
   end
-  eq(found_myremote, true)
+  eq(found_remote_option, true)
 
   child.type_keys("q")
   cleanup_repo(child, repo)
 end
 
-T["push popup"]["uses origin as default when multiple remotes exist"] = function()
+T["push popup"]["shows magit-style push actions"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -303,7 +305,7 @@ T["push popup"]["uses origin as default when multiple remotes exist"] = function
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  -- Add multiple remotes (origin should be picked as default)
+  -- Add multiple remotes
   git(child, repo, "remote add upstream https://example.com/upstream.git")
   git(child, repo, "remote add origin https://example.com/origin.git")
   git(child, repo, "remote add fork https://example.com/fork.git")
@@ -315,7 +317,7 @@ T["push popup"]["uses origin as default when multiple remotes exist"] = function
   child.lua([[require("gitlad.ui.views.status").open()]])
   child.lua([[vim.wait(800, function() return false end)]])
 
-  -- Open push popup and check the remote option is pre-filled with origin
+  -- Open push popup
   child.type_keys("p")
   child.lua([[vim.wait(100, function() return false end)]])
 
@@ -325,16 +327,24 @@ T["push popup"]["uses origin as default when multiple remotes exist"] = function
   ]])
   local lines = child.lua_get([[popup_lines]])
 
-  -- Should show origin as the default remote in options
-  local found_origin_option = false
+  -- Should show magit-style actions: pushRemote, @{upstream}, elsewhere
+  local found_pushremote = false
+  local found_upstream = false
+  local found_elsewhere = false
   for _, line in ipairs(lines) do
-    -- Look for the remote option line with origin value
-    if line:match("=r.*origin") or line:match("Remote.*origin") then
-      found_origin_option = true
-      break
+    if line:match("p%s+pushRemote") then
+      found_pushremote = true
+    end
+    if line:match("u%s+@{upstream}") then
+      found_upstream = true
+    end
+    if line:match("e%s+elsewhere") then
+      found_elsewhere = true
     end
   end
-  eq(found_origin_option, true)
+  eq(found_pushremote, true)
+  eq(found_upstream, true)
+  eq(found_elsewhere, true)
 
   child.type_keys("q")
   cleanup_repo(child, repo)

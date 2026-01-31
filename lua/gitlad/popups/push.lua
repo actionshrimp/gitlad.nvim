@@ -121,8 +121,13 @@ end
 ---@param repo_state RepoState
 function M.open(repo_state)
   local status = repo_state.status
-  local _, default_remote = get_push_target(status)
-  default_remote = default_remote or ""
+  local branch = status and status.branch or nil
+
+  -- Build dynamic description for "Push <branch> to" section heading
+  local push_heading = "Push"
+  if branch then
+    push_heading = "Push " .. branch .. " to"
+  end
 
   local push_popup = popup
     .builder()
@@ -132,16 +137,18 @@ function M.open(repo_state)
     :switch("F", "force", "Force (dangerous)")
     :switch("n", "dry-run", "Dry run")
     :switch("t", "tags", "Include tags")
-    :switch("u", "set-upstream", "Set upstream")
     -- Options
-    :option("r", "remote", default_remote, "Remote")
+    :option("r", "remote", "", "Remote")
     :option("b", "refspec", "", "Refspec")
-    -- Actions
-    :group_heading("Push")
-    :action("p", "Push to upstream", function(popup_data)
-      M._push_upstream(repo_state, popup_data)
+    -- Actions - magit style
+    :group_heading(push_heading)
+    :action("p", "pushRemote, setting that", function(popup_data)
+      M._push_to_pushremote(repo_state, popup_data)
     end)
-    :action("e", "Push elsewhere", function(popup_data)
+    :action("u", "@{upstream}, creating it", function(popup_data)
+      M._push_to_upstream(repo_state, popup_data)
+    end)
+    :action("e", "elsewhere", function(popup_data)
       M._push_elsewhere(repo_state, popup_data)
     end)
     :build()
@@ -175,102 +182,202 @@ local function remote_branch_exists(status, push_ref)
   return false
 end
 
---- Push to push target (same-name branch on remote)
---- Unlike git's default behavior which can be confused by mismatched upstream,
---- we explicitly push to <remote>/<branch> like magit does
+--- Push to pushRemote, setting it if not configured
+--- Like magit's "p" action: pushes to pushRemote (or remote.pushDefault) and sets it if needed
 ---@param repo_state RepoState
 ---@param popup_data PopupData
-function M._push_upstream(repo_state, popup_data)
+function M._push_to_pushremote(repo_state, popup_data)
   local status = repo_state.status
-
-  -- Get remote from option, or from push target
-  local remote = nil
-  for _, opt in ipairs(popup_data.options) do
-    if opt.cli == "remote" and opt.value ~= "" then
-      remote = opt.value
-      break
-    end
-  end
-
-  -- Get refspec if explicitly set
-  local refspec = nil
-  for _, opt in ipairs(popup_data.options) do
-    if opt.cli == "refspec" and opt.value ~= "" then
-      refspec = opt.value
-      break
-    end
-  end
-
-  -- Validate
-  local ok, err = can_push(repo_state, remote)
-  if not ok then
-    vim.notify("[gitlad] " .. err, vim.log.levels.WARN)
+  if not status or not status.branch then
+    vim.notify("[gitlad] No current branch", vim.log.levels.ERROR)
     return
   end
 
-  -- For "push to upstream", always derive the push target unless user explicitly set refspec
-  -- This ensures we push to <remote>/<branch> even when upstream differs
-  -- The remote option may be pre-filled but we still need to derive the refspec
-  local push_ref = nil
-  if (not refspec or refspec == "") and status then
-    local push_remote
-    push_ref, push_remote = get_push_target(status)
-    if push_ref and push_remote then
-      -- Use derived remote if not explicitly set, otherwise use user's choice
-      if not remote or remote == "" then
-        remote = push_remote
-      end
-      -- Always set refspec to current branch for "push to upstream"
-      refspec = status.branch
-    end
-  end
+  local branch = status.branch
+  local opts = { cwd = repo_state.repo_root }
 
-  -- Check if remote branch exists
-  -- If not, prompt user to create it
-  if push_ref and not remote_branch_exists(status, push_ref) then
-    local prompt = string.format("Create remote branch '%s'?", push_ref)
-    vim.ui.select({ "Yes", "No" }, { prompt = prompt }, function(choice)
-      if choice ~= "Yes" then
-        return
-      end
-
-      -- Only add -u flag if no upstream is already configured
-      -- This preserves triangular workflow where upstream might be e.g. origin/main
-      local current_branch = status and status.branch
-      if not current_branch then
-        local args = build_push_args(popup_data, remote, refspec)
-        do_push(repo_state, args)
-        return
-      end
-
-      git.get_upstream(current_branch, { cwd = repo_state.repo_root }, function(upstream, _)
-        vim.schedule(function()
-          local args = build_push_args(popup_data, remote, refspec)
-
-          -- Only set upstream if one isn't already configured
-          if not upstream then
-            -- Ensure -u is in args if not already
-            local has_set_upstream = false
-            for _, arg in ipairs(args) do
-              if arg == "--set-upstream" or arg == "-u" then
-                has_set_upstream = true
-                break
-              end
+  -- Get the effective push remote (explicit pushRemote or fallback to pushDefault)
+  git.get_push_remote(branch, opts, function(push_remote_name, err)
+    vim.schedule(function()
+      if push_remote_name and push_remote_name ~= "" then
+        -- Push remote is configured, push to it
+        M._do_push_to_remote(repo_state, popup_data, push_remote_name, branch, false)
+      else
+        -- No push remote configured, prompt user to select one
+        git.remote_names(opts, function(remotes, rem_err)
+          vim.schedule(function()
+            if rem_err or not remotes or #remotes == 0 then
+              vim.notify("[gitlad] No remotes configured", vim.log.levels.WARN)
+              return
             end
-            if not has_set_upstream then
+
+            local prompt = "Set branch." .. branch .. ".pushRemote and push there"
+            vim.ui.select(remotes, { prompt = prompt .. ":" }, function(choice)
+              if not choice then
+                return
+              end
+
+              -- Set the pushRemote config
+              git.set_push_remote(branch, choice, opts, function(success, set_err)
+                vim.schedule(function()
+                  if success then
+                    -- Now push to that remote
+                    M._do_push_to_remote(repo_state, popup_data, choice, branch, true)
+                  else
+                    vim.notify(
+                      "[gitlad] Failed to set pushRemote: " .. (set_err or "unknown"),
+                      vim.log.levels.ERROR
+                    )
+                  end
+                end)
+              end)
+            end)
+          end)
+        end)
+      end
+    end)
+  end)
+end
+
+--- Helper to execute push to a specific remote
+---@param repo_state RepoState
+---@param popup_data PopupData
+---@param remote string Remote name
+---@param branch string Branch name
+---@param is_new_config boolean Whether we just set the pushRemote config (affects -u behavior)
+function M._do_push_to_remote(repo_state, popup_data, remote, branch, is_new_config)
+  local status = repo_state.status
+  local opts = { cwd = repo_state.repo_root }
+
+  -- Check if we need to add -u flag (when no upstream is configured)
+  git.get_upstream(branch, opts, function(upstream, _)
+    vim.schedule(function()
+      local args = build_push_args(popup_data, remote, branch)
+
+      -- If creating a new branch or no upstream configured, add -u
+      local push_ref = remote .. "/" .. branch
+      local needs_upstream = not upstream
+
+      -- Check if remote branch exists
+      if not remote_branch_exists(status, push_ref) then
+        -- Creating new remote branch
+        local prompt = string.format("Create remote branch '%s'?", push_ref)
+        vim.ui.select({ "Yes", "No" }, { prompt = prompt }, function(choice)
+          if choice ~= "Yes" then
+            return
+          end
+
+          if needs_upstream then
+            -- Add -u if not already present
+            local has_u = vim.tbl_contains(args, "-u") or vim.tbl_contains(args, "--set-upstream")
+            if not has_u then
               table.insert(args, 1, "-u")
             end
           end
 
           do_push(repo_state, args)
         end)
-      end)
+      else
+        -- Remote branch exists, just push
+        do_push(repo_state, args)
+      end
+    end)
+  end)
+end
+
+--- Push to @{upstream}, creating it if needed
+--- Like magit's "u" action: pushes to the configured upstream tracking branch
+---@param repo_state RepoState
+---@param popup_data PopupData
+function M._push_to_upstream(repo_state, popup_data)
+  local status = repo_state.status
+  if not status or not status.branch then
+    vim.notify("[gitlad] No current branch", vim.log.levels.ERROR)
+    return
+  end
+
+  local branch = status.branch
+  local opts = { cwd = repo_state.repo_root }
+
+  -- Get upstream configuration
+  local upstream_remote = git.config_get("branch." .. branch .. ".remote", opts)
+  local upstream_merge = git.config_get("branch." .. branch .. ".merge", opts)
+
+  if not upstream_remote or not upstream_merge or upstream_remote == "" or upstream_merge == "" then
+    -- Upstream not configured, prompt user to set it
+    M._configure_and_push_upstream(repo_state, popup_data, branch)
+    return
+  end
+
+  -- Extract branch name from merge ref (refs/heads/main -> main)
+  local upstream_branch = upstream_merge:gsub("^refs/heads/", "")
+  local upstream_ref = upstream_remote .. "/" .. upstream_branch
+
+  -- Build refspec: local_branch:remote_branch
+  local refspec = branch .. ":" .. upstream_merge
+
+  -- Check if remote branch exists
+  if not remote_branch_exists(status, upstream_ref) then
+    local prompt = string.format("Create upstream branch '%s'?", upstream_ref)
+    vim.ui.select({ "Yes", "No" }, { prompt = prompt }, function(choice)
+      if choice ~= "Yes" then
+        return
+      end
+
+      local args = build_push_args(popup_data, upstream_remote, refspec)
+      -- Add --set-upstream since we're creating the tracking relationship
+      if not vim.tbl_contains(args, "-u") and not vim.tbl_contains(args, "--set-upstream") then
+        table.insert(args, 1, "--set-upstream")
+      end
+      do_push(repo_state, args)
     end)
     return
   end
 
-  local args = build_push_args(popup_data, remote, refspec)
+  -- Push to existing upstream
+  local args = build_push_args(popup_data, upstream_remote, refspec)
   do_push(repo_state, args)
+end
+
+--- Configure upstream and push (when upstream is not set)
+---@param repo_state RepoState
+---@param popup_data PopupData
+---@param branch string Current branch name
+function M._configure_and_push_upstream(repo_state, popup_data, branch)
+  local opts = { cwd = repo_state.repo_root }
+
+  -- Use the prompt module for ref completion
+  local prompt_module = require("gitlad.utils.prompt")
+  prompt_module.prompt_for_ref({
+    prompt = "Set upstream of " .. branch .. " and push there: ",
+    cwd = repo_state.repo_root,
+  }, function(upstream)
+    if not upstream or upstream == "" then
+      return
+    end
+
+    -- Parse upstream into remote and branch
+    local remote_part, branch_part = upstream:match("^([^/]+)/(.+)$")
+    if not remote_part or not branch_part then
+      vim.notify("[gitlad] Invalid upstream format (expected remote/branch)", vim.log.levels.ERROR)
+      return
+    end
+
+    -- Set upstream using git branch --set-upstream-to
+    git.set_upstream(branch, upstream, opts, function(success, err)
+      vim.schedule(function()
+        if not success then
+          vim.notify("[gitlad] Failed to set upstream: " .. (err or "unknown"), vim.log.levels.ERROR)
+          return
+        end
+
+        -- Now push to the newly configured upstream
+        local refspec = branch .. ":refs/heads/" .. branch_part
+        local args = build_push_args(popup_data, remote_part, refspec)
+        do_push(repo_state, args)
+      end)
+    end)
+  end)
 end
 
 --- Push elsewhere (prompts for remote if not set)
