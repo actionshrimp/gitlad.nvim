@@ -17,6 +17,8 @@ Examples of improvements to watch for:
 
 ---
 
+**Important**: If TODOs are mentioned, make sure to check in the TODOS.md file.
+
 ## Project Vision
 
 A fast, well-tested git interface for Neovim inspired by magit, fugitive, and lazygit. Key differentiators:
