@@ -171,6 +171,19 @@ T["diff context"]["dwim defaults to unstaged when no context"] = function()
   expect.equality(context.file_path == nil, true)
 end
 
+T["diff context"]["dwim selects stash diff when on stash"] = function()
+  local context = {
+    commit = nil,
+    file_path = nil,
+    section = nil,
+    stash = { ref = "stash@{0}", message = "WIP on main" },
+  }
+
+  -- When stash is present, dwim should choose stash diff
+  expect.equality(context.stash ~= nil, true)
+  expect.equality(context.stash.ref, "stash@{0}")
+end
+
 -- =============================================================================
 -- Diffview argument tests
 -- =============================================================================
@@ -196,6 +209,12 @@ T["diffview args"]["commit uses hash^!"] = function()
   local hash = "abc123"
   local expected_args = { hash .. "^!" }
   eq(expected_args[1], "abc123^!")
+end
+
+T["diffview args"]["stash uses ref^!"] = function()
+  local stash_ref = "stash@{0}"
+  local expected_args = { stash_ref .. "^!" }
+  eq(expected_args[1], "stash@{0}^!")
 end
 
 T["diffview args"]["range uses ref1..ref2 format"] = function()

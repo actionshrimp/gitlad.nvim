@@ -164,7 +164,8 @@ end
 local function get_diff_context(self)
   local file_path, section = get_current_file(self)
   local commit = get_current_commit(self)
-  return { file_path = file_path, section = section, commit = commit }
+  local stash = get_current_stash(self)
+  return { file_path = file_path, section = section, commit = commit, stash = stash }
 end
 
 --- Yank section value to clipboard (commit hash, file path, or stash name)

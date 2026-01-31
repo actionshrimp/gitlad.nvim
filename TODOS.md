@@ -3,12 +3,10 @@
 - [x] better 'q' behaviour and buffer tracking
 - [x] when reopening status buffer, position cursor at first item (not header)
 - [x] discard hunks with 'x' - we can discard whole files but this should also work at hunk level
+- [x] "diffs" / pressing RET on stashes doesnt seem to work. Does diffview support this?
 - [ ] add 'o' to push popup (push other branch)
-- [ ] fix tab cycling behaviours when point is over a specific section or file
-- [ ] Reflog HEAD on log view
 - [ ] add a 'view is stale' indicator
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
 - [ ] pressing 'p p' for a new branch errors saying there's no remote set, it would be nice if it could default to creating a branch with the same name on the 'default remote' (usually origin) if git has such a concept and there's one configured? it's a bit annoying to have to manually set the upstream to origin first.
-- [ ] "diffs" / pressing RET on stashes doesnt seem to work. Does diffview support this?
 - [ ] improve look and feel of '$' / command history (from screenshot)
