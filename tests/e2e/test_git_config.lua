@@ -45,12 +45,15 @@ end
 
 -- Helper to read the .git/config file contents
 local function read_git_config_file(child, repo)
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     local path = %q .. "/.git/config"
     local f = io.open(path, "r")
     _G.config_file_content = f and f:read("*all") or ""
     if f then f:close() end
-  ]], repo))
+  ]],
+    repo
+  ))
   return child.lua_get([[_G.config_file_content]])
 end
 
@@ -98,9 +101,12 @@ T["git config"]["config_get returns nil when not set"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     _G.config_value = require("gitlad.git").config_get("nonexistent.key", { cwd = %q })
-  ]], repo))
+  ]],
+    repo
+  ))
 
   local value = child.lua_get([[_G.config_value]])
   eq(value, vim.NIL)
@@ -113,11 +119,14 @@ T["git config"]["config_set writes value to git config"] = function()
   local repo = create_test_repo(child)
 
   -- Set using our config_set
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     require("gitlad.git").config_set("test.newkey", "newvalue", { cwd = %q }, function(success, err)
       _G.config_result = { success = success, err = err }
     end)
-  ]], repo))
+  ]],
+    repo
+  ))
 
   child.lua([[vim.wait(1000, function() return _G.config_result ~= nil end)]])
   local result = child.lua_get([[_G.config_result]])
@@ -147,11 +156,14 @@ T["git config"]["config_unset removes value from git config"] = function()
   eq(config_before:match("toremove%s*=%s*somevalue") ~= nil, true)
 
   -- Unset using our config_unset
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     require("gitlad.git").config_unset("test.toremove", { cwd = %q }, function(success, err)
       _G.unset_result = { success = success, err = err }
     end)
-  ]], repo))
+  ]],
+    repo
+  ))
 
   child.lua([[vim.wait(1000, function() return _G.unset_result ~= nil end)]])
   local result = child.lua_get([[_G.unset_result]])
@@ -169,11 +181,14 @@ T["git config"]["config_unset succeeds even if key doesn't exist"] = function()
   local repo = create_test_repo(child)
 
   -- Unset a key that doesn't exist
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     require("gitlad.git").config_unset("nonexistent.key", { cwd = %q }, function(success, err)
       _G.unset_result = { success = success, err = err }
     end)
-  ]], repo))
+  ]],
+    repo
+  ))
 
   child.lua([[vim.wait(1000, function() return _G.unset_result ~= nil end)]])
   local result = child.lua_get([[_G.unset_result]])
@@ -212,9 +227,12 @@ T["git config bool"]["config_get_bool returns false for 'false'"] = function()
 
   git(child, repo, "config test.mybool false")
 
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     _G.bool_result = require("gitlad.git").config_get_bool("test.mybool", { cwd = %q })
-  ]], repo))
+  ]],
+    repo
+  ))
 
   local value = child.lua_get([[_G.bool_result]])
   eq(value, false)
@@ -226,9 +244,12 @@ T["git config bool"]["config_get_bool returns false for unset"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     _G.bool_result = require("gitlad.git").config_get_bool("nonexistent.bool", { cwd = %q })
-  ]], repo))
+  ]],
+    repo
+  ))
 
   local value = child.lua_get([[_G.bool_result]])
   eq(value, false)
@@ -242,11 +263,14 @@ T["git config bool"]["config_toggle toggles false to true"] = function()
 
   git(child, repo, "config test.toggle false")
 
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     require("gitlad.git").config_toggle("test.toggle", { cwd = %q }, function(new_value, err)
       _G.toggle_result = { new_value = new_value, err = err }
     end)
-  ]], repo))
+  ]],
+    repo
+  ))
 
   child.lua([[vim.wait(1000, function() return _G.toggle_result ~= nil end)]])
   local result = child.lua_get([[_G.toggle_result]])
@@ -306,7 +330,8 @@ T["branch config"]["setting upstream sets both remote and merge"] = function()
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Use the popup's set_multiple_config_vars to simulate setting upstream
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     local popup = require("gitlad.ui.popup")
     local data = popup.builder():repo_root(%q):build()
     data:set_multiple_config_vars({
@@ -315,7 +340,9 @@ T["branch config"]["setting upstream sets both remote and merge"] = function()
     }, function(success, err)
       _G.set_result = { success = success, err = err }
     end)
-  ]], repo))
+  ]],
+    repo
+  ))
 
   child.lua([[vim.wait(2000, function() return _G.set_result ~= nil end)]])
   local result = child.lua_get([[_G.set_result]])
@@ -350,7 +377,8 @@ T["branch config"]["setting local upstream sets remote to dot"] = function()
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Set upstream to a local branch (should use "." as remote)
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     local popup = require("gitlad.ui.popup")
     local data = popup.builder():repo_root(%q):build()
     data:set_multiple_config_vars({
@@ -359,7 +387,9 @@ T["branch config"]["setting local upstream sets remote to dot"] = function()
     }, function(success, err)
       _G.set_result = { success = success, err = err }
     end)
-  ]], repo))
+  ]],
+    repo
+  ))
 
   child.lua([[vim.wait(2000, function() return _G.set_result ~= nil end)]])
   local result = child.lua_get([[_G.set_result]])
@@ -398,7 +428,8 @@ T["branch config"]["unsetting upstream clears both remote and merge"] = function
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Unset both using empty strings (simulating on_unset callback)
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     local popup = require("gitlad.ui.popup")
     local data = popup.builder():repo_root(%q):build()
     data:set_multiple_config_vars({
@@ -407,7 +438,9 @@ T["branch config"]["unsetting upstream clears both remote and merge"] = function
     }, function(success, err)
       _G.unset_result = { success = success, err = err }
     end)
-  ]], repo))
+  ]],
+    repo
+  ))
 
   child.lua([[vim.wait(2000, function() return _G.unset_result ~= nil end)]])
   local result = child.lua_get([[_G.unset_result]])
@@ -436,18 +469,22 @@ T["branch config"]["pushRemote is set correctly"] = function()
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Set pushRemote using config_set
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     require("gitlad.git").config_set("branch.feature-branch.pushRemote", "fork", { cwd = %q }, function(success, err)
       _G.set_result = { success = success, err = err }
     end)
-  ]], repo))
+  ]],
+    repo
+  ))
 
   child.lua([[vim.wait(1000, function() return _G.set_result ~= nil end)]])
   local result = child.lua_get([[_G.set_result]])
   eq(result.success, true)
 
   -- Verify in git config
-  local pushRemote = git(child, repo, "config --get branch.feature-branch.pushRemote"):gsub("%s+", "")
+  local pushRemote =
+    git(child, repo, "config --get branch.feature-branch.pushRemote"):gsub("%s+", "")
   eq(pushRemote, "fork")
 
   -- Verify in .git/config file
@@ -471,11 +508,14 @@ T["branch config"]["remote.pushDefault is set correctly"] = function()
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Set remote.pushDefault
-  child.lua(string.format([[
+  child.lua(string.format(
+    [[
     require("gitlad.git").config_set("remote.pushDefault", "upstream", { cwd = %q }, function(success, err)
       _G.set_result = { success = success, err = err }
     end)
-  ]], repo))
+  ]],
+    repo
+  ))
 
   child.lua([[vim.wait(1000, function() return _G.set_result ~= nil end)]])
   local result = child.lua_get([[_G.set_result]])

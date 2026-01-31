@@ -124,7 +124,8 @@ function M.open(repo_state, context)
 
   local current_branch = get_current_branch(repo_state)
 
-  local builder = popup.builder()
+  local builder = popup
+    .builder()
     :name("Branch")
     :repo_root(repo_state.repo_root)
     :on_config_change(function(config_key, _value)
