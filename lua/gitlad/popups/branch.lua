@@ -84,8 +84,9 @@ local function local_branch_exists(branches, branch_name)
 end
 
 --- Parse upstream input like "origin/main" into separate remote and merge values
---- If input is "origin/main", returns { ["branch.<branch>.remote"] = "origin", ["branch.<branch>.merge"] = "refs/heads/main" }
---- If input is just "main", returns { ["branch.<branch>.merge"] = "refs/heads/main" } (remote unchanged)
+--- If input is "origin/main", returns { remote = "origin", merge = "refs/heads/main" }
+--- If input is just "main" (local branch), returns { remote = ".", merge = "refs/heads/main" }
+--- The "." remote means "local repository" in git
 ---@param input string User input for upstream
 ---@param branch string Current branch name
 ---@return table<string, string> Config key-value pairs to set
@@ -106,7 +107,9 @@ local function parse_upstream_input(input, branch)
     result[remote_key] = remote_part
     result[merge_key] = "refs/heads/" .. branch_part
   else
-    -- Input is just a branch name like "main"
+    -- Input is just a branch name like "main" (local branch)
+    -- Use "." as the remote to indicate local repository
+    result[remote_key] = "."
     result[merge_key] = "refs/heads/" .. input
   end
 
