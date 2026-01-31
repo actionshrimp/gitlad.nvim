@@ -327,18 +327,23 @@ T["push popup"]["shows magit-style push actions"] = function()
   ]])
   local lines = child.lua_get([[popup_lines]])
 
-  -- Should show magit-style actions: pushRemote, @{upstream}, elsewhere
+  -- Should show magit-style actions:
+  -- - pushRemote: either "pushRemote, setting that" (unconfigured) or actual ref like "origin/branch"
+  -- - upstream: either "@{upstream}, setting it" (unconfigured) or actual ref like "origin/main"
+  -- - elsewhere: always "elsewhere"
   local found_pushremote = false
   local found_upstream = false
   local found_elsewhere = false
   for _, line in ipairs(lines) do
-    if line:match("p%s+pushRemote") then
+    -- Match either "pushRemote" (unconfigured) or a ref like "origin/something" (configured)
+    if line:match("^%s*p%s+pushRemote") or line:match("^%s*p%s+%S+/%S+") then
       found_pushremote = true
     end
-    if line:match("u%s+@{upstream}") then
+    -- Match either "@{upstream}" (unconfigured) or a ref like "origin/something" (configured)
+    if line:match("^%s*u%s+@{upstream}") or line:match("^%s*u%s+%S+/%S+") then
       found_upstream = true
     end
-    if line:match("e%s+elsewhere") then
+    if line:match("^%s*e%s+elsewhere") then
       found_elsewhere = true
     end
   end

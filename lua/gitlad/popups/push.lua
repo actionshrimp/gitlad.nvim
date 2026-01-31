@@ -129,6 +129,25 @@ function M.open(repo_state)
     push_heading = "Push " .. branch .. " to"
   end
 
+  -- Build dynamic labels for push targets (like magit)
+  -- When configured: show the actual ref (e.g., "origin/feature-branch")
+  -- When not configured: show explanatory text
+  local pushremote_label = "pushRemote, setting that"
+  local upstream_label = "@{upstream}, setting it"
+
+  if status then
+    -- Get the effective push target (handles fallback from push_remote to upstream-derived)
+    local push_ref, _ = get_push_target(status)
+    if push_ref then
+      pushremote_label = push_ref
+    end
+
+    -- Check if upstream is configured
+    if status.upstream then
+      upstream_label = status.upstream
+    end
+  end
+
   local push_popup = popup
     .builder()
     :name("Push")
@@ -142,10 +161,10 @@ function M.open(repo_state)
     :option("b", "refspec", "", "Refspec")
     -- Actions - magit style
     :group_heading(push_heading)
-    :action("p", "pushRemote, setting that", function(popup_data)
+    :action("p", pushremote_label, function(popup_data)
       M._push_to_pushremote(repo_state, popup_data)
     end)
-    :action("u", "@{upstream}, creating it", function(popup_data)
+    :action("u", upstream_label, function(popup_data)
       M._push_to_upstream(repo_state, popup_data)
     end)
     :action("e", "elsewhere", function(popup_data)
