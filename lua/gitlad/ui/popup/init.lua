@@ -509,48 +509,54 @@ end
 ---@param callback? fun(success: boolean, err: string|nil)
 function PopupData:set_multiple_config_vars(values, callback)
   local git_opts = self.repo_root and { cwd = self.repo_root } or nil
-  local pending = 0
   local errors = {}
 
-  -- Count total operations
-  for _ in pairs(values) do
-    pending = pending + 1
+  -- Convert to array for sequential processing (avoids git config lock conflicts)
+  local operations = {}
+  for config_key, value in pairs(values) do
+    table.insert(operations, { key = config_key, value = value })
   end
 
-  if pending == 0 then
+  if #operations == 0 then
     if callback then
       callback(true, nil)
     end
     return
   end
 
-  local function on_done(success, err)
-    pending = pending - 1
-    if not success and err then
-      table.insert(errors, err)
-    end
-    if pending == 0 then
-      -- Update cached current_value for all affected config_vars
-      for config_key, value in pairs(values) do
+  -- Process operations sequentially to avoid git config lock conflicts
+  local function process_next(idx)
+    if idx > #operations then
+      -- All done - update cached current_value for all affected config_vars
+      for _, op in ipairs(operations) do
         for _, cv in ipairs(self.config_vars) do
-          if cv.type == "config_var" and cv.config_key == config_key then
-            cv.current_value = value
+          if cv.type == "config_var" and cv.config_key == op.key then
+            cv.current_value = op.value
           end
         end
       end
       if callback then
         callback(#errors == 0, #errors > 0 and table.concat(errors, ", ") or nil)
       end
+      return
+    end
+
+    local op = operations[idx]
+    local function on_done(success, err)
+      if not success and err then
+        table.insert(errors, err)
+      end
+      process_next(idx + 1)
+    end
+
+    if op.value == nil or op.value == "" then
+      git.config_unset(op.key, git_opts, on_done)
+    else
+      git.config_set(op.key, op.value, git_opts, on_done)
     end
   end
 
-  for config_key, value in pairs(values) do
-    if value == nil or value == "" then
-      git.config_unset(config_key, git_opts, on_done)
-    else
-      git.config_set(config_key, value, git_opts, on_done)
-    end
-  end
+  process_next(1)
 end
 
 --- Prompt for a config var value (for "text" type)
