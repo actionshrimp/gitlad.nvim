@@ -740,8 +740,9 @@ local function format_config_value(cv)
     for _, remote in ipairs(cv.remote_choices) do
       table.insert(parts, remote)
     end
-    -- Add fallback annotation if value comes from fallback (current is unset)
-    if (cv.current_value == nil or cv.current_value == "") and cv.fallback_value then
+    -- Always show fallback annotation if there's a fallback configured with a value
+    -- This shows all cycle options; highlighting indicates which is active
+    if cv.fallback and cv.fallback_value then
       table.insert(parts, cv.fallback .. ":" .. cv.fallback_value)
     end
     if #parts == 0 then
@@ -1059,6 +1060,14 @@ end
 function PopupData:refresh()
   if not self.buffer or not vim.api.nvim_buf_is_valid(self.buffer) then
     return
+  end
+
+  -- Re-fetch fallback values for remote_cycle config vars (they may have changed)
+  local git_opts = self.repo_root and { cwd = self.repo_root } or nil
+  for _, cv in ipairs(self.config_vars or {}) do
+    if cv.type == "config_var" and cv.var_type == "remote_cycle" and cv.fallback then
+      cv.fallback_value = git.config_get(cv.fallback, git_opts)
+    end
   end
 
   local lines = self:render_lines()
