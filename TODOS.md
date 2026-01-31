@@ -26,9 +26,9 @@ Done:
 - [x] choosing a local ref should set the origin as '.' (stored in the config as a literal dot, and displayed as such)
 - [x] when pushDefault is explicitly set to `origin`, the `remote.pushDefault:origin` option disappears for some reason, can we always show this? 
 - [x] do we have tests that check the actual git config values are being updated in the file correctly? if not can we add some
+- [x] when the upstream is changed, can we force a refresh of the git state, as the status window is highly dependent on that config
 
 Now:
-- [ ] when the upstream is changed, can we force a refresh of the git state, as the status window is highly dependent on that config
 
 Upcoming:
 - [ ] when using snacks file selector with point in status window, it always opens the file in the _other_ window and not the status buffer?

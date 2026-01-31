@@ -124,7 +124,21 @@ function M.open(repo_state, context)
 
   local current_branch = get_current_branch(repo_state)
 
-  local builder = popup.builder():name("Branch"):repo_root(repo_state.repo_root)
+  local builder = popup.builder()
+    :name("Branch")
+    :repo_root(repo_state.repo_root)
+    :on_config_change(function(config_key, _value)
+      -- Refresh status when upstream or push config changes
+      -- These affect the Push/Pull lines in the status view
+      if
+        config_key:match("^branch%..*%.merge$")
+        or config_key:match("^branch%..*%.remote$")
+        or config_key:match("^branch%..*%.pushRemote$")
+        or config_key:match("^remote%.pushDefault$")
+      then
+        repo_state:refresh_status(true)
+      end
+    end)
 
   -- Only show branch-specific config if we have a current branch
   if current_branch then

@@ -64,6 +64,7 @@ local git = require("gitlad.git")
 ---@field columns number Number of columns for action rendering (default 1)
 ---@field action_positions table<number, table<string, {col: number, len: number}>> Line -> key -> position info for highlighting
 ---@field config_positions table<number, table<string, {col: number, len: number}>> Line -> key -> position info for config highlighting
+---@field on_config_change? fun(config_key: string, value: string|nil) Callback when any config var changes
 local PopupData = {}
 PopupData.__index = PopupData
 
@@ -76,6 +77,7 @@ PopupData.__index = PopupData
 ---@field _branch_scope string|nil Branch name for %s substitution
 ---@field _repo_root string|nil Repository root for git config operations
 ---@field _columns number Number of columns for action rendering (default 1)
+---@field _on_config_change? fun(config_key: string, value: string|nil) Callback when any config var changes
 local PopupBuilder = {}
 PopupBuilder.__index = PopupBuilder
 
@@ -91,6 +93,7 @@ function M.builder()
   builder._branch_scope = nil
   builder._repo_root = nil
   builder._columns = 1
+  builder._on_config_change = nil
   return builder
 end
 
@@ -107,6 +110,15 @@ end
 ---@return PopupBuilder
 function PopupBuilder:columns(n)
   self._columns = n
+  return self
+end
+
+--- Set a callback to be called when any config var changes
+--- Useful for triggering status refresh when upstream/pushRemote changes
+---@param fn fun(config_key: string, value: string|nil)
+---@return PopupBuilder
+function PopupBuilder:on_config_change(fn)
+  self._on_config_change = fn
   return self
 end
 
@@ -289,6 +301,7 @@ function PopupBuilder:build()
   data.columns = self._columns or 1
   data.action_positions = {}
   data.config_positions = {}
+  data.on_config_change = self._on_config_change
 
   -- Process config vars: substitute branch and load current values
   data.config_vars = {}
@@ -416,11 +429,15 @@ function PopupData:set_config_var(key, value, callback)
 
   local git_opts = self.repo_root and { cwd = self.repo_root } or nil
 
+  local on_change = self.on_config_change
   if value == nil or value == "" then
     -- Unset the config
     git.config_unset(cv.config_key, git_opts, function(success, err)
       if success then
         cv.current_value = nil
+        if on_change then
+          on_change(cv.config_key, nil)
+        end
       end
       if callback then
         callback(success, err)
@@ -431,6 +448,9 @@ function PopupData:set_config_var(key, value, callback)
     git.config_set(cv.config_key, value, git_opts, function(success, err)
       if success then
         cv.current_value = value
+        if on_change then
+          on_change(cv.config_key, value)
+        end
       end
       if callback then
         callback(success, err)
@@ -512,6 +532,7 @@ end
 function PopupData:set_multiple_config_vars(values, callback)
   local git_opts = self.repo_root and { cwd = self.repo_root } or nil
   local errors = {}
+  local on_change = self.on_config_change
 
   -- Convert to array for sequential processing (avoids git config lock conflicts)
   local operations = {}
@@ -535,6 +556,12 @@ function PopupData:set_multiple_config_vars(values, callback)
           if cv.type == "config_var" and cv.config_key == op.key then
             cv.current_value = op.value
           end
+        end
+      end
+      -- Notify about config changes (once after all operations)
+      if on_change and #errors == 0 then
+        for _, op in ipairs(operations) do
+          on_change(op.key, op.value == "" and nil or op.value)
         end
       end
       if callback then
