@@ -242,7 +242,15 @@ end
 
 --- Close the status buffer
 function StatusBuffer:close()
-  if not self.winnr or not vim.api.nvim_win_is_valid(self.winnr) then
+  -- Use current window if it's showing this buffer, otherwise use stored winnr
+  local current_win = vim.api.nvim_get_current_win()
+  local win_to_close
+
+  if vim.api.nvim_win_get_buf(current_win) == self.bufnr then
+    win_to_close = current_win
+  elseif self.winnr and vim.api.nvim_win_is_valid(self.winnr) then
+    win_to_close = self.winnr
+  else
     self.winnr = nil
     return
   end
@@ -250,9 +258,12 @@ function StatusBuffer:close()
   -- Always switch to another buffer instead of closing the window
   -- This preserves the user's split layout
   local target_buf = self:_find_fallback_buffer()
-  vim.api.nvim_win_set_buf(self.winnr, target_buf)
+  vim.api.nvim_win_set_buf(win_to_close, target_buf)
 
-  self.winnr = nil
+  -- Clear winnr if we closed the tracked window
+  if win_to_close == self.winnr then
+    self.winnr = nil
+  end
 end
 
 --- Find a buffer to switch to when closing gitlad

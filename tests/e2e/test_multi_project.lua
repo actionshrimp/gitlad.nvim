@@ -209,4 +209,64 @@ T["multi-project"]["each repo gets independent status buffer"] = function()
   cleanup_test_repo(child, repo_b)
 end
 
+T["multi-project"]["q key closes correct window when multiple status buffers open"] = function()
+  -- Create two test repos
+  local repo_a = create_test_repo(child)
+  local repo_b = create_test_repo(child)
+
+  -- Create initial commits
+  create_file(child, repo_a, "a.txt", "content a")
+  git(child, repo_a, "add a.txt")
+  git(child, repo_a, "commit -m 'Commit A'")
+
+  create_file(child, repo_b, "b.txt", "content b")
+  git(child, repo_b, "add b.txt")
+  git(child, repo_b, "commit -m 'Commit B'")
+
+  -- Open status for repo A
+  cd(child, repo_a)
+  child.cmd("Gitlad")
+  wait(child, 300)
+
+  local win_a = child.lua_get("vim.api.nvim_get_current_win()")
+  local buf_a = child.lua_get("vim.api.nvim_get_current_buf()")
+
+  -- Create split and open status for repo B
+  child.cmd("vsplit")
+  cd(child, repo_b)
+  child.cmd("Gitlad")
+  wait(child, 300)
+
+  local win_b = child.lua_get("vim.api.nvim_get_current_win()")
+  local buf_b = child.lua_get("vim.api.nvim_get_current_buf()")
+
+  -- Verify we have two different windows and buffers
+  eq(win_a ~= win_b, true)
+  eq(buf_a ~= buf_b, true)
+
+  -- Go back to window A (repo A's status)
+  child.lua(string.format("vim.api.nvim_set_current_win(%d)", win_a))
+  wait(child, 100)
+
+  -- Verify we're in window A with buffer A
+  eq(child.lua_get("vim.api.nvim_get_current_win()"), win_a)
+  eq(child.lua_get("vim.api.nvim_get_current_buf()"), buf_a)
+
+  -- Press 'q' to close status in window A
+  child.type_keys("q")
+  wait(child, 100)
+
+  -- Window A should now show a different buffer (not status A)
+  local new_buf_in_win_a = child.lua_get(string.format("vim.api.nvim_win_get_buf(%d)", win_a))
+  eq(new_buf_in_win_a ~= buf_a, true)
+
+  -- Window B should still show status B (unchanged)
+  local buf_in_win_b = child.lua_get(string.format("vim.api.nvim_win_get_buf(%d)", win_b))
+  eq(buf_in_win_b, buf_b)
+
+  -- Cleanup
+  cleanup_test_repo(child, repo_a)
+  cleanup_test_repo(child, repo_b)
+end
+
 return T
