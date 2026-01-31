@@ -175,6 +175,12 @@ local function get_or_create_buffer(repo_state)
       self.expanded_commits = {}
       self.diff_cache = {}
       self:render()
+
+      -- Position cursor at first item after fresh open (only when data has arrived, not during refresh)
+      if self._position_cursor_on_render and not repo_state.refreshing then
+        self._position_cursor_on_render = false
+        self:_goto_first_item()
+      end
     end)
   end)
 
@@ -219,6 +225,9 @@ function StatusBuffer:open(force_refresh)
 
   -- Set window-local options for clean status display
   utils.setup_view_window_options(self.winnr)
+
+  -- Mark that cursor should be positioned at first item after status data arrives
+  self._position_cursor_on_render = true
 
   -- Start spinner before initial render so we show "Refreshing..." not "Idle"
   self.spinner:start(function()

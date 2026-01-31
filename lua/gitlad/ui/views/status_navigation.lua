@@ -274,6 +274,27 @@ local function visit_file(self)
   end
 end
 
+--- Go to the first item in the buffer (for initial cursor positioning)
+---@param self StatusBuffer
+local function goto_first_item(self)
+  -- Ensure we have a valid window for this buffer
+  if not self.winnr or not vim.api.nvim_win_is_valid(self.winnr) then
+    return
+  end
+
+  local total_lines = vim.api.nvim_buf_line_count(self.bufnr)
+
+  for line = 1, total_lines do
+    if self.line_map[line] then
+      vim.api.nvim_win_set_cursor(self.winnr, { line, 0 })
+      return
+    end
+  end
+
+  -- No items found, stay at line 1
+  vim.api.nvim_win_set_cursor(self.winnr, { 1, 0 })
+end
+
 --- Attach navigation methods to StatusBuffer class
 ---@param StatusBuffer table The StatusBuffer class
 function M.setup(StatusBuffer)
@@ -283,6 +304,7 @@ function M.setup(StatusBuffer)
   StatusBuffer._goto_prev_section = goto_prev_section
   StatusBuffer._get_diff_line_target = get_diff_line_target
   StatusBuffer._visit_file = visit_file
+  StatusBuffer._goto_first_item = goto_first_item
 end
 
 return M

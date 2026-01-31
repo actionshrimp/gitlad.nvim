@@ -196,10 +196,7 @@ T["diff popup from status"]["shows 3-way action when on unstaged file"] = functi
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")
 
-  -- Navigate to unstaged file (gj to move to first file)
-  child.type_keys("gj")
-  child.lua("vim.wait(100, function() end)")
-
+  -- Cursor should already be on the first file (unstaged init.txt)
   -- Open diff popup
   child.type_keys("d")
   child.lua("vim.wait(200, function() end)")
@@ -228,10 +225,7 @@ T["diff popup from status"]["shows 3-way action when on staged file"] = function
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")
 
-  -- Navigate to staged file (gj to move to first file)
-  child.type_keys("gj")
-  child.lua("vim.wait(100, function() end)")
-
+  -- Cursor should already be on the first file (staged init.txt)
   -- Open diff popup
   child.type_keys("d")
   child.lua("vim.wait(200, function() end)")

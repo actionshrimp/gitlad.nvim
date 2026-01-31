@@ -438,10 +438,7 @@ T["hunk navigation"]["<CR> on diff line jumps to file at correct line"] = functi
 
   open_gitlad(child, repo)
 
-  -- Navigate to the unstaged file
-  child.type_keys("gj")
-  wait(child, 100)
-
+  -- Cursor should already be on the unstaged file (first item)
   -- Expand the diff (single TAB for 2-state toggle)
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
   wait(child, 300)
@@ -493,9 +490,8 @@ T["hunk navigation"]["<CR> on hunk header jumps to hunk start line"] = function(
 
   open_gitlad(child, repo)
 
-  -- Navigate to file and expand
-  child.type_keys("gj")
-  wait(child, 100)
+  -- Cursor should already be on file (first item)
+  -- Expand the file
   child.type_keys("<Tab>")
   wait(child, 300)
 

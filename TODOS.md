@@ -28,17 +28,20 @@ Done:
 - [x] do we have tests that check the actual git config values are being updated in the file correctly? if not can we add some
 - [x] when the upstream is changed, can we force a refresh of the git state, as the status window is highly dependent on that config
 - [x] better 'q' behaviour and buffer tracking
+- [x] when reopening status buffer, position cursor at first item (not header)
 
 Now:
 
 Upcoming:
+- [ ] add remote popup to help
+- [ ] discard hunks with 'x'
 - [ ] add 'o' to push popup (push other branch)
 - [ ] fix tab cycling behaviours when point is over a specific section or file
 - [ ] Reflog HEAD on log view
 - [ ] add a 'view is stale' indicator
-- [ ] 'when i have scrolled down in the status buffer, then close it with `q`, when i reopen it again it would be nice to scroll to the top
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] support 'remotes' popup
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
 - [ ] pressing 'p p' for a new branch errors saying there's no remote set, it would be nice if it could default to creating a branch with the same name on the 'default remote' (usually origin) if git has such a concept and there's one configured? it's a bit annoying to have to manually set the upstream to origin first.
 - [ ] "diffs" / pressing RET on stashes doesnt seem to work. Does diffview support this?
+- [ ] improve look and feel of '$' / command history (from screenshot)

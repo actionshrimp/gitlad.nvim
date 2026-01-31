@@ -113,10 +113,7 @@ T["scoped visibility on file"]["4 on file line expands only that file"] = functi
 
   open_gitlad(child, repo)
 
-  -- Navigate to file1 using gj (next file navigation)
-  child.type_keys("gj")
-  wait(child, 100)
-
+  -- Cursor should already be on file1 (first item after header)
   -- Check that we're on file1 line
   child.lua([[
     local status = require("gitlad.ui.views.status")

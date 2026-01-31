@@ -397,4 +397,54 @@ T["cr on commit"]["<CR> keymap is set on log buffer"] = function()
   eq(has_cr, true, "<CR> should be mapped in log buffer")
 end
 
+T["navigation"]["reopening status buffer positions cursor at first item"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create multiple files so we have enough content to scroll
+  for i = 1, 20 do
+    create_file(child, repo, "file" .. i .. ".txt", "content " .. i)
+  end
+
+  open_gitlad(child, repo)
+
+  -- Wait for buffer to have content (20 files should give us plenty of lines)
+  child.lua([[
+    vim.wait(2000, function()
+      local line_count = vim.api.nvim_buf_line_count(0)
+      return line_count > 15
+    end)
+  ]])
+
+  -- Verify buffer has enough lines
+  local line_count = child.lua_get("vim.api.nvim_buf_line_count(0)")
+  assert_truthy(line_count > 15, "Buffer should have more than 15 lines, got " .. line_count)
+
+  -- Get initial cursor position (should be at first item, not line 1 header)
+  local initial_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  assert_truthy(initial_line > 1, "Cursor should start past header line, at first item, got " .. initial_line)
+
+  -- Remember where the first item is
+  local first_item_line = initial_line
+
+  -- Go to end of buffer using G (standard vim motion)
+  child.type_keys("G")
+  wait(child, 100)
+
+  local scrolled_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  assert_truthy(scrolled_line > first_item_line, "Should be past first item after G, got " .. scrolled_line)
+
+  -- Close status buffer
+  child.type_keys("q")
+  wait(child, 100)
+
+  -- Reopen status buffer
+  child.cmd("Gitlad")
+  wait(child, 500)
+
+  -- Cursor should be back at first item (same position as initial open)
+  local reopened_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
+  eq(reopened_line, first_item_line, "Cursor should be at first item after reopening")
+end
+
 return T

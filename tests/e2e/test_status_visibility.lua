@@ -266,6 +266,10 @@ T["visibility levels"]["1 sets level 1 (headers only)"] = function()
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
+  -- Move to header line for global visibility behavior (not scoped to file)
+  child.type_keys("gg")
+  wait(child, 100)
+
   -- Press 1 to set level 1
   child.type_keys("1")
   wait(child, 300)
@@ -284,6 +288,10 @@ T["visibility levels"]["2 sets level 2 (items visible)"] = function()
 
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
+
+  -- Move to header line for global visibility behavior
+  child.type_keys("gg")
+  wait(child, 100)
 
   -- First set level 1, then level 2
   child.type_keys("1")
@@ -323,6 +331,10 @@ T["visibility levels"]["3 shows diff headers only"] = function()
   create_file(child, repo, "init.txt", "modified content")
 
   open_gitlad(child, repo)
+
+  -- Move to header line for global visibility behavior
+  child.type_keys("gg")
+  wait(child, 100)
 
   -- Press 3 to show diff headers
   child.type_keys("3")
@@ -371,6 +383,10 @@ T["visibility levels"]["4 expands everything including hunk content"] = function
   create_file(child, repo, "init.txt", "modified")
 
   open_gitlad(child, repo)
+
+  -- Move to header line for global visibility behavior
+  child.type_keys("gg")
+  wait(child, 100)
 
   -- Press 4 to expand everything
   child.type_keys("4")
