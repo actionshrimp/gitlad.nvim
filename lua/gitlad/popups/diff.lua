@@ -12,6 +12,7 @@ local popup = require("gitlad.ui.popup")
 ---@field file_path? string File under cursor (if any)
 ---@field section? string Section type (staged/unstaged/untracked/commit)
 ---@field commit? GitCommitInfo Commit under cursor (if any)
+---@field stash? StashEntry Stash under cursor (if any)
 ---@field ref? string Ref name under cursor (from refs buffer)
 ---@field base_ref? string Base ref being compared against (from refs buffer)
 
@@ -74,6 +75,17 @@ function M._diff_commit(repo_state, commit)
     return
   end
   open_diffview({ commit.hash .. "^!" }, "git show " .. commit.hash)
+end
+
+--- Show stash diff
+---@param repo_state RepoState
+---@param stash StashEntry
+function M._diff_stash(repo_state, stash)
+  if not stash then
+    vim.notify("[gitlad] No stash under cursor", vim.log.levels.WARN)
+    return
+  end
+  open_diffview({ stash.ref .. "^!" }, "git stash show -p " .. stash.ref)
 end
 
 --- Diff range (prompt for refs)
@@ -181,6 +193,12 @@ function M._diff_dwim(repo_state, context)
   -- If on a commit, show commit diff
   if context.commit then
     M._diff_commit(repo_state, context.commit)
+    return
+  end
+
+  -- If on a stash, show stash diff
+  if context.stash then
+    M._diff_stash(repo_state, context.stash)
     return
   end
 

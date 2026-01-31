@@ -272,6 +272,14 @@ local function visit_file(self)
     diff_popup._diff_commit(self.repo_state, commit)
     return
   end
+
+  -- If not on a commit, check if on a stash - show stash diff
+  local stash = self:_get_current_stash()
+  if stash then
+    local diff_popup = require("gitlad.popups.diff")
+    diff_popup._diff_stash(self.repo_state, stash)
+    return
+  end
 end
 
 --- Go to the first item in the buffer (for initial cursor positioning)
