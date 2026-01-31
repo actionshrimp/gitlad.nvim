@@ -26,6 +26,7 @@ Done:
 Now:
 
 Upcoming:
+- [ ] add 'o' to push popup (push other branch)
 - [ ] fix tab cycling behaviours when point is over a specific section or file
 - [ ] Reflog HEAD on log view
 - [ ] add a 'view is stale' indicator
