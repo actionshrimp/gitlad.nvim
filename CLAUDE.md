@@ -104,6 +104,9 @@ make test-unit
 
 # Run only e2e tests
 make test-e2e
+
+# Run a single test file for a feature that's being iterated on
+make test-file FILE=tests/e2e/test_rebase.lua
 ```
 **Important:** If iterating on a particular feature, consider running just that test file directly, rather than the whole suite - this will speed up iteration times considerably. However, once the whole task appears to be done, make sure you run `make test` to verify everything passes.
 
