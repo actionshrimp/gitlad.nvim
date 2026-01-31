@@ -67,6 +67,7 @@ local status_navigation = require("gitlad.ui.views.status_navigation")
 ---@class StatusBuffer
 ---@field bufnr number Buffer number
 ---@field winnr number|nil Window number if open
+---@field prev_bufnr number|nil Buffer that was active before opening gitlad
 ---@field repo_state RepoState Repository state
 ---@field line_map table<number, LineInfo|CommitLineInfo|StashLineInfo|SubmoduleLineInfo> Map of line numbers to file, commit, stash, or submodule info
 ---@field section_lines table<number, SectionInfo> Map of line numbers to section headers
@@ -195,6 +196,12 @@ function StatusBuffer:open(force_refresh)
     end
   end
 
+  -- Remember the current buffer before switching (for restoring on close)
+  local current_buf = vim.api.nvim_get_current_buf()
+  if current_buf ~= self.bufnr then
+    self.prev_bufnr = current_buf
+  end
+
   -- Open in current window
   vim.api.nvim_set_current_buf(self.bufnr)
   self.winnr = vim.api.nvim_get_current_win()
@@ -229,27 +236,38 @@ function StatusBuffer:close()
     return
   end
 
-  -- Check if this is the last window
-  local windows = vim.api.nvim_list_wins()
-  if #windows == 1 then
-    -- Can't close last window, switch to an empty buffer instead
-    local empty_buf = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_win_set_buf(self.winnr, empty_buf)
-  else
-    -- Try to close the window, but handle the case where it's actually
-    -- the last "real" window (can happen with floating windows)
-    local ok, err = pcall(vim.api.nvim_win_close, self.winnr, false)
-    if not ok and err and err:match("E444") then
-      -- Fall back to switching to empty buffer
-      local empty_buf = vim.api.nvim_create_buf(false, true)
-      vim.api.nvim_win_set_buf(self.winnr, empty_buf)
-    elseif not ok then
-      -- Re-throw other errors
-      error(err)
+  -- Always switch to another buffer instead of closing the window
+  -- This preserves the user's split layout
+  local target_buf = self:_find_fallback_buffer()
+  vim.api.nvim_win_set_buf(self.winnr, target_buf)
+
+  self.winnr = nil
+end
+
+--- Find a buffer to switch to when closing gitlad
+--- Prefers the buffer that was active before gitlad opened
+---@return number buffer number
+function StatusBuffer:_find_fallback_buffer()
+  -- Try the buffer we came from first
+  if self.prev_bufnr and vim.api.nvim_buf_is_valid(self.prev_bufnr) then
+    return self.prev_bufnr
+  end
+
+  -- Try the alternate buffer
+  local alt = vim.fn.bufnr("#")
+  if alt > 0 and alt ~= self.bufnr and vim.api.nvim_buf_is_valid(alt) then
+    return alt
+  end
+
+  -- Try to find any other listed buffer
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if buf ~= self.bufnr and vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buflisted then
+      return buf
     end
   end
 
-  self.winnr = nil
+  -- Last resort: create an empty buffer
+  return vim.api.nvim_create_buf(false, true)
 end
 
 --- Apply an expansion command and sync state to legacy fields
