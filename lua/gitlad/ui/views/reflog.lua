@@ -23,16 +23,17 @@ local git = require("gitlad.git")
 local ReflogBuffer = {}
 ReflogBuffer.__index = ReflogBuffer
 
--- Singleton buffer (one reflog view at a time)
-local reflog_buffer = nil
+-- Reflog buffers by repo root (one per repo for multi-project support)
+local reflog_buffers = {}
 
---- Create or get the reflog buffer
+--- Create or get the reflog buffer for a repository
 ---@param repo_state RepoState
 ---@return ReflogBuffer
 local function get_or_create_buffer(repo_state)
-  if reflog_buffer and vim.api.nvim_buf_is_valid(reflog_buffer.bufnr) then
-    reflog_buffer.repo_state = repo_state
-    return reflog_buffer
+  local key = repo_state.repo_root
+
+  if reflog_buffers[key] and vim.api.nvim_buf_is_valid(reflog_buffers[key].bufnr) then
+    return reflog_buffers[key]
   end
 
   local self = setmetatable({}, ReflogBuffer)
@@ -46,8 +47,8 @@ local function get_or_create_buffer(repo_state)
   self.bufnr = vim.api.nvim_create_buf(false, true)
   self.winnr = nil
 
-  -- Set buffer options
-  vim.api.nvim_buf_set_name(self.bufnr, "gitlad://reflog")
+  -- Set buffer options (include repo path for multi-project support)
+  vim.api.nvim_buf_set_name(self.bufnr, "gitlad://reflog[" .. key .. "]")
   vim.bo[self.bufnr].buftype = "nofile"
   vim.bo[self.bufnr].bufhidden = "hide"
   vim.bo[self.bufnr].swapfile = false
@@ -56,7 +57,15 @@ local function get_or_create_buffer(repo_state)
   -- Set up keymaps
   self:_setup_keymaps()
 
-  reflog_buffer = self
+  -- Clean up when buffer is wiped
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    buffer = self.bufnr,
+    callback = function()
+      reflog_buffers[key] = nil
+    end,
+  })
+
+  reflog_buffers[key] = self
   return self
 end
 
@@ -359,27 +368,51 @@ function M.open(repo_state, ref, entries)
   buf:open_with_entries(repo_state, ref, entries)
 end
 
---- Close reflog view
-function M.close()
-  if reflog_buffer then
-    reflog_buffer:close()
-  end
-end
-
---- Get current reflog buffer (for testing)
----@return ReflogBuffer|nil
-function M.get_buffer()
-  return reflog_buffer
-end
-
---- Clear the buffer singleton (for testing)
-function M.clear()
-  if reflog_buffer then
-    if vim.api.nvim_buf_is_valid(reflog_buffer.bufnr) then
-      vim.api.nvim_buf_delete(reflog_buffer.bufnr, { force = true })
+--- Close reflog view for a repo
+---@param repo_state? RepoState
+function M.close(repo_state)
+  if repo_state then
+    local key = repo_state.repo_root
+    if reflog_buffers[key] then
+      reflog_buffers[key]:close()
     end
-    reflog_buffer = nil
+  else
+    -- Close all if no repo specified
+    for _, buf in pairs(reflog_buffers) do
+      buf:close()
+    end
   end
+end
+
+--- Get the reflog buffer for a repo if it exists
+---@param repo_state? RepoState
+---@return ReflogBuffer|nil
+function M.get_buffer(repo_state)
+  if repo_state then
+    local key = repo_state.repo_root
+    local buf = reflog_buffers[key]
+    if buf and vim.api.nvim_buf_is_valid(buf.bufnr) then
+      return buf
+    end
+    return nil
+  end
+  -- If no repo_state, return first valid buffer (for backwards compat/testing)
+  for _, buf in pairs(reflog_buffers) do
+    if vim.api.nvim_buf_is_valid(buf.bufnr) then
+      return buf
+    end
+  end
+  return nil
+end
+
+--- Clear all reflog buffers (for testing)
+function M.clear_all()
+  for _, buf in pairs(reflog_buffers) do
+    if vim.api.nvim_buf_is_valid(buf.bufnr) then
+      vim.api.nvim_buf_delete(buf.bufnr, { force = true })
+    end
+  end
+  reflog_buffers = {}
 end
 
 return M
