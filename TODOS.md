@@ -27,11 +27,11 @@ Done:
 - [x] when pushDefault is explicitly set to `origin`, the `remote.pushDefault:origin` option disappears for some reason, can we always show this? 
 - [x] do we have tests that check the actual git config values are being updated in the file correctly? if not can we add some
 - [x] when the upstream is changed, can we force a refresh of the git state, as the status window is highly dependent on that config
+- [x] better 'q' behaviour and buffer tracking
 
 Now:
 
 Upcoming:
-- [ ] when using snacks file selector with point in status window, it always opens the file in the _other_ window and not the status buffer?
 - [ ] add 'o' to push popup (push other branch)
 - [ ] fix tab cycling behaviours when point is over a specific section or file
 - [ ] Reflog HEAD on log view
@@ -41,3 +41,4 @@ Upcoming:
 - [ ] support 'remotes' popup
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
 - [ ] pressing 'p p' for a new branch errors saying there's no remote set, it would be nice if it could default to creating a branch with the same name on the 'default remote' (usually origin) if git has such a concept and there's one configured? it's a bit annoying to have to manually set the upstream to origin first.
+- [ ] "diffs" / pressing RET on stashes doesnt seem to work. Does diffview support this?

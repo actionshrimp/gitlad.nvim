@@ -266,8 +266,12 @@ function StatusBuffer:_find_fallback_buffer()
     end
   end
 
-  -- Last resort: create an empty buffer
-  return vim.api.nvim_create_buf(false, true)
+  -- Last resort: create a normal empty buffer
+  -- Use listed scratch buffer for bufhidden='hide' and swapfile=false,
+  -- but clear buftype so pickers treat it as a normal buffer
+  local buf = vim.api.nvim_create_buf(true, true)
+  vim.bo[buf].buftype = ""
+  return buf
 end
 
 --- Apply an expansion command and sync state to legacy fields
