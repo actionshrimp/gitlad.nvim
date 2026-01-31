@@ -422,7 +422,10 @@ T["navigation"]["reopening status buffer positions cursor at first item"] = func
 
   -- Get initial cursor position (should be at first item, not line 1 header)
   local initial_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
-  assert_truthy(initial_line > 1, "Cursor should start past header line, at first item, got " .. initial_line)
+  assert_truthy(
+    initial_line > 1,
+    "Cursor should start past header line, at first item, got " .. initial_line
+  )
 
   -- Remember where the first item is
   local first_item_line = initial_line
@@ -432,7 +435,10 @@ T["navigation"]["reopening status buffer positions cursor at first item"] = func
   wait(child, 100)
 
   local scrolled_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
-  assert_truthy(scrolled_line > first_item_line, "Should be past first item after G, got " .. scrolled_line)
+  assert_truthy(
+    scrolled_line > first_item_line,
+    "Should be past first item after G, got " .. scrolled_line
+  )
 
   -- Close status buffer
   child.type_keys("q")
