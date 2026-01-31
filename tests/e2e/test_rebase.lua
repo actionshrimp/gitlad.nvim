@@ -97,10 +97,12 @@ T["rebase popup"]["opens from status buffer with r key"] = function()
   local found_upstream = false
   local found_elsewhere = false
   for _, line in ipairs(lines) do
-    if line:match("p%s+pushremote") then
+    -- Dynamic labels: shows "pushRemote, setting that" when not configured
+    if line:match("p%s+pushRemote") then
       found_pushremote = true
     end
-    if line:match("u%s+upstream") then
+    -- Dynamic labels: shows "@{upstream}, setting it" when not configured
+    if line:match("u%s+@{upstream}") then
       found_upstream = true
     end
     if line:match("e%s+elsewhere") then
@@ -250,7 +252,7 @@ T["rebase popup"]["switch toggling with -A"] = function()
   cleanup_repo(child, repo)
 end
 
-T["rebase popup"]["shows warning when no upstream configured"] = function()
+T["rebase popup"]["prompts to set upstream when not configured"] = function()
   local child = _G.child
   local repo = create_test_repo(child)
 
@@ -263,20 +265,39 @@ T["rebase popup"]["shows warning when no upstream configured"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
   child.lua([[vim.wait(500, function() return false end)]])
 
-  -- Clear messages
-  child.lua([[vim.cmd("messages clear")]])
+  -- Mock the prompt module's prompt_for_ref function to track if it was called
+  -- This is more reliable than mocking vim.ui.input since the prompt module
+  -- might use mini.pick or snacks.nvim if available
+  child.lua([[
+    _G.prompt_was_called = false
+    local prompt = require("gitlad.utils.prompt")
+    _G.original_prompt_for_ref = prompt.prompt_for_ref
+    prompt.prompt_for_ref = function(opts, callback)
+      _G.prompt_was_called = true
+      -- Cancel the prompt to avoid hanging
+      if callback then
+        callback(nil)
+      end
+    end
+  ]])
 
   -- Open rebase popup
   child.type_keys("r")
   child.lua([[vim.wait(100, function() return false end)]])
 
-  -- Try to rebase onto upstream (should fail - no upstream)
+  -- Try to rebase onto upstream (should prompt to set it)
   child.type_keys("u")
-  child.lua([[vim.wait(200, function() return false end)]])
+  child.lua([[vim.wait(300, function() return false end)]])
 
-  -- Should have shown warning message
-  local messages = child.lua_get([[vim.fn.execute("messages")]])
-  eq(messages:match("No upstream configured") ~= nil, true)
+  -- Verify prompt was invoked (magit-style flow: prompt to set upstream)
+  local prompt_called = child.lua_get([[_G.prompt_was_called]])
+  eq(prompt_called, true)
+
+  -- Restore original prompt_for_ref
+  child.lua([[
+    local prompt = require("gitlad.utils.prompt")
+    prompt.prompt_for_ref = _G.original_prompt_for_ref
+  ]])
 
   cleanup_repo(child, repo)
 end
