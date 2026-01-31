@@ -22,10 +22,12 @@ Done:
 - [x] some highlighting in the various popup menus are wrong - the key isnt always highlighted purple
 - [x] the help popup is a bit long now! it would be good if it could be rendered as two columns with some logical grouping of different sections
 - [x] for some reason text in brackets in commit lists is highlighted green
+- [x] pressing 'u' again on branch popup should unset both 'merge' and 'remote'
 
 Now:
 
 Upcoming:
+- [ ] choosing a local ref should set the origin as '.' the dot actual
 - [ ] add 'o' to push popup (push other branch)
 - [ ] fix tab cycling behaviours when point is over a specific section or file
 - [ ] Reflog HEAD on log view

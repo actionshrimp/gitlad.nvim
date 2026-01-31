@@ -49,6 +49,7 @@ local git = require("gitlad.git")
 ---@field remote_choices? string[] Dynamically populated list of remote names (for remote_cycle)
 ---@field read_only? boolean If true, display only with no keybinding
 ---@field on_set? fun(value: string, popup: PopupData): table<string,string>|nil Custom setter that can set multiple configs
+---@field on_unset? fun(popup: PopupData): table<string,string>|nil Custom unsetter that returns config keys to unset (values should be nil or "")
 
 ---@class PopupData
 ---@field name string Popup identifier
@@ -243,7 +244,7 @@ end
 ---@param key string Single character key binding
 ---@param config_key string Git config key (supports %s for branch substitution)
 ---@param label string Display label (supports %s for branch substitution)
----@param opts? { type?: "text"|"cycle"|"remote_cycle"|"ref", choices?: string[], default_display?: string, fallback?: string, on_set?: fun(value: string, popup: PopupData): table<string,string>|nil }
+---@param opts? { type?: "text"|"cycle"|"remote_cycle"|"ref", choices?: string[], default_display?: string, fallback?: string, on_set?: fun(value: string, popup: PopupData): table<string,string>|nil, on_unset?: fun(popup: PopupData): table<string,string>|nil }
 ---@return PopupBuilder
 function PopupBuilder:config_var(key, config_key, label, opts)
   opts = opts or {}
@@ -257,6 +258,7 @@ function PopupBuilder:config_var(key, config_key, label, opts)
     default_display = opts.default_display,
     fallback = opts.fallback,
     on_set = opts.on_set,
+    on_unset = opts.on_unset,
   })
   return self
 end
@@ -559,6 +561,32 @@ function PopupData:set_multiple_config_vars(values, callback)
   process_next(1)
 end
 
+--- Unset a config var (for toggle behavior on text/ref types)
+--- Checks for on_unset callback, otherwise just unsets the single config key
+---@param key string Config var key
+---@param callback? fun(success: boolean, err: string|nil)
+function PopupData:unset_config_var(key, callback)
+  local cv = self:_find_config_var(key)
+  if not cv then
+    if callback then
+      callback(false, "Config var not found: " .. key)
+    end
+    return
+  end
+
+  -- Check for custom on_unset handler
+  if cv.on_unset then
+    local multi_values = cv.on_unset(self)
+    if multi_values then
+      self:set_multiple_config_vars(multi_values, callback)
+      return
+    end
+  end
+
+  -- Default: just unset the single config key
+  self:set_config_var(key, nil, callback)
+end
+
 --- Prompt for a config var value (for "text" or "ref" type)
 ---@param key string Config var key
 ---@param callback? fun(success: boolean, err: string|nil)
@@ -721,11 +749,9 @@ local function format_config_value(cv)
     end
     return "[" .. table.concat(parts, "|") .. "]"
   else
-    -- Text type: show value or "unset"
-    if cv.current_value == nil then
+    -- Text/ref type: show value or "unset"
+    if cv.current_value == nil or cv.current_value == "" then
       return "unset"
-    elseif cv.current_value == "" then
-      return "[]"
     else
       return cv.current_value
     end
@@ -1132,20 +1158,40 @@ function PopupData:_setup_keymaps()
             end)
           end)
         else
-          -- text or ref type - may open a picker that steals focus
-          self:prompt_config_var(cv.key, function(success, err)
-            vim.schedule(function()
-              if success then
-                self:refresh()
-              elseif err then
-                vim.notify("[gitlad] Config error: " .. err, vim.log.levels.ERROR)
-              end
-              -- Refocus popup window (picker may have stolen focus)
-              if self.window and vim.api.nvim_win_is_valid(self.window) then
-                vim.api.nvim_set_current_win(self.window)
-              end
+          -- text or ref type: toggle behavior - if value is set, unset it first
+          -- Only on subsequent press (when unset) does it open the picker
+          local current_cv = self:_find_config_var(cv.key)
+          local has_value = current_cv
+            and current_cv.current_value ~= nil
+            and current_cv.current_value ~= ""
+
+          if has_value then
+            -- Value is set, unset it (toggle off)
+            self:unset_config_var(cv.key, function(success, err)
+              vim.schedule(function()
+                if success then
+                  self:refresh()
+                elseif err then
+                  vim.notify("[gitlad] Config error: " .. err, vim.log.levels.ERROR)
+                end
+              end)
             end)
-          end)
+          else
+            -- Value is not set, open the picker to set it
+            self:prompt_config_var(cv.key, function(success, err)
+              vim.schedule(function()
+                if success then
+                  self:refresh()
+                elseif err then
+                  vim.notify("[gitlad] Config error: " .. err, vim.log.levels.ERROR)
+                end
+                -- Refocus popup window (picker may have stolen focus)
+                if self.window and vim.api.nvim_win_is_valid(self.window) then
+                  vim.api.nvim_set_current_win(self.window)
+                end
+              end)
+            end)
+          end
         end
       end, cv.label or "Config", nowait_opts)
     end

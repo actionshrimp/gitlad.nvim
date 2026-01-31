@@ -943,4 +943,51 @@ T["config_var"]["ref type with on_set callback"] = function()
   eq(data.config_vars[1].var_type, "ref")
 end
 
+-- on_unset callback tests
+T["config_var"]["config_var() accepts on_unset callback"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():config_var("u", "test.merge", "test.merge", {
+    type = "ref",
+    on_unset = function(popup_data)
+      return { ["test.merge"] = nil, ["test.remote"] = nil }
+    end,
+  })
+  expect.no_equality(builder._config_vars[1].on_unset, nil)
+end
+
+T["config_var"]["on_unset callback is preserved after build"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_var("u", "test.merge", "test.merge", {
+      type = "ref",
+      on_unset = function(popup_data)
+        return { ["test.merge"] = nil }
+      end,
+    })
+    :build()
+
+  expect.no_equality(data.config_vars[1].on_unset, nil)
+end
+
+T["config_var"]["config_var with both on_set and on_unset"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_var("u", "branch.main.merge", "branch.main.merge", {
+      type = "ref",
+      on_set = function(value, popup_data)
+        return { ["branch.main.remote"] = "origin", ["branch.main.merge"] = "refs/heads/" .. value }
+      end,
+      on_unset = function(popup_data)
+        return { ["branch.main.merge"] = nil, ["branch.main.remote"] = nil }
+      end,
+    })
+    :build()
+
+  expect.no_equality(data.config_vars[1].on_set, nil)
+  expect.no_equality(data.config_vars[1].on_unset, nil)
+  eq(data.config_vars[1].var_type, "ref")
+end
+
 return T

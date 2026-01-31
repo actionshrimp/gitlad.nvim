@@ -136,6 +136,15 @@ function M.open(repo_state, context)
           -- Auto-parse "origin/main" into remote=origin and merge=refs/heads/main
           return parse_upstream_input(value, popup_data.branch_scope)
         end,
+        on_unset = function(popup_data)
+          -- Unset both merge and remote when clearing upstream
+          -- Use empty string "" to indicate unset (nil removes key from table in Lua)
+          local branch = popup_data.branch_scope
+          return {
+            ["branch." .. branch .. ".merge"] = "",
+            ["branch." .. branch .. ".remote"] = "",
+          }
+        end,
       })
       :config_display("branch.%s.remote", "branch.%s.remote") -- Read-only, set via merge
       :config_var("r", "branch.%s.rebase", "branch.%s.rebase", {
