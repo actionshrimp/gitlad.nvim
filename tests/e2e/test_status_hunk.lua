@@ -610,4 +610,191 @@ T["expansion memory"]["defaults to fully expanded when no remembered state"] = f
   assert_truthy(has_content, "Should show diff content (fully expanded by default)")
 end
 
+-- =============================================================================
+-- Hunk Discard Tests
+-- =============================================================================
+
+T["hunk discard"] = MiniTest.new_set()
+
+-- Helper to get file contents from repo
+local function read_file_content(child, repo, filename)
+  local path = repo .. "/" .. filename
+  return child.lua_get(string.format("vim.fn.join(vim.fn.readfile(%q), '\\n') .. '\\n'", path))
+end
+
+-- Helper to mock vim.ui.select to auto-confirm Yes
+local function mock_ui_select_yes(child)
+  child.lua([[
+    _G.original_ui_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      -- Auto-select "Yes" (first item)
+      on_choice("Yes")
+    end
+  ]])
+end
+
+-- Helper to restore vim.ui.select
+local function restore_ui_select(child)
+  child.lua([[
+    if _G.original_ui_select then
+      vim.ui.select = _G.original_ui_select
+    end
+  ]])
+end
+
+T["hunk discard"]["x on diff line discards single hunk"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create a file with multiple sections that will create multiple hunks
+  local original = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
+  create_file(child, repo, "file.txt", original)
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Modify to create two separate hunks
+  local modified =
+    "line1 modified\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10 modified\n"
+  create_file(child, repo, "file.txt", modified)
+
+  open_gitlad(child, repo)
+
+  -- Mock vim.ui.select to auto-confirm
+  mock_ui_select_yes(child)
+
+  -- Expand the diff (single TAB for 2-state toggle)
+  local lines = get_buffer_lines(child)
+  local file_line = find_line_with(lines, "file.txt")
+  child.cmd(tostring(file_line))
+  child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
+  wait(child, 200)
+
+  -- Find the first hunk's diff line and discard it
+  lines = get_buffer_lines(child)
+  local first_hunk_line = find_line_with(lines, "+line1 modified")
+  assert_truthy(first_hunk_line, "Should find first hunk line")
+
+  child.cmd(tostring(first_hunk_line))
+  child.type_keys("x")
+  wait(child, 300)
+
+  restore_ui_select(child)
+
+  -- Verify: first hunk should be discarded, second hunk should remain
+  local content = read_file_content(child, repo, "file.txt")
+  assert_truthy(content:find("line1\n"), "First line should be reverted to original")
+  assert_truthy(not content:find("line1 modified"), "First modified line should be gone")
+  assert_truthy(content:find("line10 modified"), "Second modified line should still be present")
+end
+
+T["hunk discard"]["x on file discards whole file when not on hunk"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create and modify a file
+  create_file(child, repo, "file.txt", "original\n")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+  create_file(child, repo, "file.txt", "modified\n")
+
+  open_gitlad(child, repo)
+
+  -- Mock vim.ui.select to auto-confirm
+  mock_ui_select_yes(child)
+
+  -- Don't expand - stay on file line
+  local lines = get_buffer_lines(child)
+  local file_line = find_line_with(lines, "file.txt")
+  child.cmd(tostring(file_line))
+
+  child.type_keys("x")
+  wait(child, 300)
+
+  restore_ui_select(child)
+
+  -- Verify file is back to original
+  local content = read_file_content(child, repo, "file.txt")
+  eq(content, "original\n")
+end
+
+T["hunk discard"]["visual selection discards single line from hunk"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create a file
+  create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Add multiple new lines that will be in same hunk
+  create_file(child, repo, "file.txt", "line1\nnew1\nnew2\nline2\nline3\n")
+
+  open_gitlad(child, repo)
+
+  -- Mock vim.ui.select to auto-confirm
+  mock_ui_select_yes(child)
+
+  -- Expand the diff
+  local lines = get_buffer_lines(child)
+  local file_line = find_line_with(lines, "file.txt")
+  child.cmd(tostring(file_line))
+  child.type_keys("<Tab>")
+  wait(child, 200)
+
+  -- Find the first new line
+  lines = get_buffer_lines(child)
+  local new1_line = find_line_with(lines, "+new1")
+  assert_truthy(new1_line, "Should find +new1")
+
+  -- Visual select just new1 and discard it
+  child.cmd(tostring(new1_line))
+  child.type_keys("V", "x")
+  wait(child, 300)
+
+  restore_ui_select(child)
+
+  -- Verify: new1 should be gone, but new2 should remain
+  local content = read_file_content(child, repo, "file.txt")
+  assert_truthy(not content:find("new1"), "new1 should be discarded")
+  assert_truthy(content:find("new2"), "new2 should still be present")
+end
+
+T["hunk discard"]["cannot discard staged changes"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create, modify, and stage
+  create_file(child, repo, "file.txt", "original\n")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+  create_file(child, repo, "file.txt", "modified\n")
+  git(child, repo, "add file.txt")
+
+  open_gitlad(child, repo)
+
+  -- Find the staged file
+  local lines = get_buffer_lines(child)
+  local file_line = find_line_with(lines, "file.txt")
+  child.cmd(tostring(file_line))
+
+  -- Expand and try to discard
+  child.type_keys("<Tab>")
+  wait(child, 200)
+  lines = get_buffer_lines(child)
+  local diff_line = find_line_with(lines, "+modified")
+  if diff_line then
+    child.cmd(tostring(diff_line))
+  end
+
+  child.type_keys("x")
+  wait(child, 200)
+
+  -- File should still be staged (discard blocked)
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(
+    status:find("M  file.txt") or status:find("A  file.txt"),
+    "File should still be staged"
+  )
+end
+
 return T

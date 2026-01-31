@@ -554,8 +554,8 @@ local function discard_current(self)
     return
   end
 
-  -- Not on section header - check for file
-  local path, section = self:_get_current_file()
+  -- Not on section header - check for file or hunk
+  local path, section, hunk_index = self:_get_current_file()
   if not path then
     return
   end
@@ -563,6 +563,42 @@ local function discard_current(self)
   if section == "staged" then
     vim.notify("[gitlad] Cannot discard staged changes. Unstage first.", vim.log.levels.WARN)
     return
+  end
+
+  -- Check if we're on a hunk line in unstaged section
+  if section == "unstaged" and hunk_index then
+    local key = diff_cache_key(path, section)
+    local diff_data = self.diff_cache[key]
+    if diff_data then
+      local patch_lines = self:_build_hunk_patch(diff_data, hunk_index)
+      if patch_lines then
+        vim.ui.select({ "Yes", "No" }, {
+          prompt = "Discard this hunk?",
+        }, function(choice)
+          if choice == "Yes" then
+            -- Apply reverse patch to worktree (cached=false)
+            git.apply_patch(
+              patch_lines,
+              true,
+              { cwd = self.repo_state.repo_root },
+              function(success, err)
+                if not success then
+                  local msg = err or "unknown error"
+                  if msg:find("patch does not apply") then
+                    msg = "Diff may be stale. Try refreshing (gr) first."
+                  end
+                  vim.notify("[gitlad] Discard hunk error: " .. msg, vim.log.levels.ERROR)
+                else
+                  self.repo_state:refresh_status(true)
+                end
+              end,
+              false
+            )
+          end
+        end)
+        return
+      end
+    end
   end
 
   if section == "untracked" then
@@ -586,45 +622,116 @@ local function discard_current(self)
   end
 end
 
---- Discard changes for visually selected files
+--- Discard changes for visually selected files or diff lines
 ---@param self StatusBuffer
 local function discard_visual(self)
   local start_line, end_line = get_visual_selection_range()
 
-  -- Collect all file entries in the selection that can be discarded
+  -- Collect all file entries and diff lines in the selection
   local allowed_sections = { unstaged = true, untracked = true }
-  local files, _ = collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
+  local files, first_diff =
+    collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
 
-  if #files == 0 then
-    vim.notify("[gitlad] No discardable files in selection", vim.log.levels.INFO)
+  -- If we have file entries selected, discard them all
+  if #files > 0 then
+    -- Build confirmation message
+    local untracked_count = 0
+    local unstaged_count = 0
+    for _, file in ipairs(files) do
+      if file.section == "untracked" then
+        untracked_count = untracked_count + 1
+      else
+        unstaged_count = unstaged_count + 1
+      end
+    end
+
+    local prompt_parts = {}
+    if unstaged_count > 0 then
+      table.insert(prompt_parts, string.format("discard changes to %d file(s)", unstaged_count))
+    end
+    if untracked_count > 0 then
+      table.insert(prompt_parts, string.format("delete %d untracked file(s)", untracked_count))
+    end
+    local prompt = table.concat(prompt_parts, " and ") .. "?"
+
+    vim.ui.select({ "Yes", "No" }, {
+      prompt = string.format("Really %s", prompt),
+    }, function(choice)
+      if choice == "Yes" then
+        self.repo_state:discard_files(files)
+      end
+    end)
     return
   end
 
-  -- Build confirmation message
-  local untracked_count = 0
-  local unstaged_count = 0
-  for _, file in ipairs(files) do
-    if file.section == "untracked" then
-      untracked_count = untracked_count + 1
-    else
-      unstaged_count = unstaged_count + 1
+  -- No file entries - try partial hunk discard on diff lines
+  if not first_diff then
+    vim.notify("[gitlad] No discardable files or diff lines in selection", vim.log.levels.INFO)
+    return
+  end
+
+  local path = first_diff.path
+  local section = first_diff.section
+  local hunk_index = first_diff.hunk_index
+
+  if section ~= "unstaged" then
+    vim.notify("[gitlad] Partial hunk discard only works on unstaged changes", vim.log.levels.INFO)
+    return
+  end
+
+  local key = diff_cache_key(path, section)
+  local diff_data = self.diff_cache[key]
+  if not diff_data then
+    return
+  end
+
+  -- Find which display_lines indices correspond to the buffer selection
+  local selected_display_indices = {}
+
+  local file_entry_line = nil
+  for line_num, line_info in pairs(self.line_map) do
+    if line_info.path == path and line_info.section == section and not line_info.hunk_index then
+      file_entry_line = line_num
+      break
     end
   end
 
-  local prompt_parts = {}
-  if unstaged_count > 0 then
-    table.insert(prompt_parts, string.format("discard changes to %d file(s)", unstaged_count))
+  if not file_entry_line then
+    return
   end
-  if untracked_count > 0 then
-    table.insert(prompt_parts, string.format("delete %d untracked file(s)", untracked_count))
+
+  for buf_line = start_line, end_line do
+    local line_info = self.line_map[buf_line]
+    if line_info and line_info.hunk_index == hunk_index then
+      local display_idx = buf_line - file_entry_line
+      selected_display_indices[display_idx] = true
+    end
   end
-  local prompt = table.concat(prompt_parts, " and ") .. "?"
+
+  -- Use reverse=true so unselected + lines become context (they're in the working tree)
+  local patch_lines =
+    self:_build_partial_hunk_patch(diff_data, hunk_index, selected_display_indices, true)
+  if not patch_lines then
+    vim.notify("[gitlad] No changes selected", vim.log.levels.INFO)
+    return
+  end
 
   vim.ui.select({ "Yes", "No" }, {
-    prompt = string.format("Really %s", prompt),
+    prompt = "Discard selected changes?",
   }, function(choice)
     if choice == "Yes" then
-      self.repo_state:discard_files(files)
+      -- Reverse apply to worktree (cached=false)
+      git.apply_patch(patch_lines, true, { cwd = self.repo_state.repo_root }, function(success, err)
+        if not success then
+          local msg = err or "unknown error"
+          if msg:find("patch does not apply") then
+            msg = "Diff may be stale. Try refreshing (gr) first."
+          end
+          vim.notify("[gitlad] Discard selection error: " .. msg, vim.log.levels.ERROR)
+        else
+          self.repo_state:refresh_status(true)
+        end
+      end, false)
     end
   end)
 end

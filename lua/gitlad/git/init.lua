@@ -304,11 +304,15 @@ end
 
 --- Apply a patch via stdin
 ---@param patch_lines string[] The patch content lines
----@param reverse boolean Whether to reverse the patch (for unstaging)
+---@param reverse boolean Whether to reverse the patch (for unstaging/discarding)
 ---@param opts? GitCommandOptions
 ---@param callback fun(success: boolean, err: string|nil)
-function M.apply_patch(patch_lines, reverse, opts, callback)
-  local args = { "apply", "--cached" }
+---@param cached? boolean Whether to apply to index (default true) vs worktree (false)
+function M.apply_patch(patch_lines, reverse, opts, callback, cached)
+  local args = { "apply" }
+  if cached == nil or cached then
+    table.insert(args, "--cached")
+  end
   if reverse then
     table.insert(args, "-R")
   end
