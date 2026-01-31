@@ -367,7 +367,10 @@ function M._configure_and_push_upstream(repo_state, popup_data, branch)
     git.set_upstream(branch, upstream, opts, function(success, err)
       vim.schedule(function()
         if not success then
-          vim.notify("[gitlad] Failed to set upstream: " .. (err or "unknown"), vim.log.levels.ERROR)
+          vim.notify(
+            "[gitlad] Failed to set upstream: " .. (err or "unknown"),
+            vim.log.levels.ERROR
+          )
           return
         end
 

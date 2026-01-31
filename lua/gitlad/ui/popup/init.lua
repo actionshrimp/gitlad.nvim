@@ -40,7 +40,7 @@ local git = require("gitlad.git")
 ---@field text? string Heading text (for config_heading, supports %s for branch substitution)
 ---@field config_key? string Git config key (for config_var, supports %s for branch substitution)
 ---@field label? string Display label (for config_var, supports %s for branch substitution)
----@field var_type? "text"|"cycle"|"remote_cycle" How to handle the value (for config_var)
+---@field var_type? "text"|"cycle"|"remote_cycle"|"ref" How to handle the value (for config_var)
 ---@field choices? string[] For "cycle" type - values to cycle through
 ---@field default_display? string What to show for default/unset (e.g., "default:false")
 ---@field current_value? string Current value (populated on build)
@@ -243,7 +243,7 @@ end
 ---@param key string Single character key binding
 ---@param config_key string Git config key (supports %s for branch substitution)
 ---@param label string Display label (supports %s for branch substitution)
----@param opts? { type?: "text"|"cycle"|"remote_cycle", choices?: string[], default_display?: string, fallback?: string, on_set?: fun(value: string, popup: PopupData): table<string,string>|nil }
+---@param opts? { type?: "text"|"cycle"|"remote_cycle"|"ref", choices?: string[], default_display?: string, fallback?: string, on_set?: fun(value: string, popup: PopupData): table<string,string>|nil }
 ---@return PopupBuilder
 function PopupBuilder:config_var(key, config_key, label, opts)
   opts = opts or {}
@@ -559,7 +559,7 @@ function PopupData:set_multiple_config_vars(values, callback)
   process_next(1)
 end
 
---- Prompt for a config var value (for "text" type)
+--- Prompt for a config var value (for "text" or "ref" type)
 ---@param key string Config var key
 ---@param callback? fun(success: boolean, err: string|nil)
 function PopupData:prompt_config_var(key, callback)
@@ -572,7 +572,9 @@ function PopupData:prompt_config_var(key, callback)
   end
 
   local current = cv.current_value or ""
-  vim.ui.input({ prompt = cv.label .. ": ", default = current }, function(input)
+
+  -- Handler for processing input (shared between text and ref types)
+  local function handle_input(input)
     if input == nil then
       -- Cancelled
       if callback then
@@ -592,7 +594,19 @@ function PopupData:prompt_config_var(key, callback)
 
     -- Default single value behavior
     self:set_config_var(key, input, callback)
-  end)
+  end
+
+  -- Use ref prompt for "ref" type, otherwise use vim.ui.input
+  if cv.var_type == "ref" then
+    local ref_prompt = require("gitlad.utils.prompt")
+    ref_prompt.prompt_for_ref({
+      prompt = cv.label .. ": ",
+      default = current,
+      cwd = self.repo_root,
+    }, handle_input)
+  else
+    vim.ui.input({ prompt = cv.label .. ": ", default = current }, handle_input)
+  end
 end
 
 --- Group actions by heading into sections
@@ -1118,13 +1132,17 @@ function PopupData:_setup_keymaps()
             end)
           end)
         else
-          -- text type
+          -- text or ref type - may open a picker that steals focus
           self:prompt_config_var(cv.key, function(success, err)
             vim.schedule(function()
               if success then
                 self:refresh()
               elseif err then
                 vim.notify("[gitlad] Config error: " .. err, vim.log.levels.ERROR)
+              end
+              -- Refocus popup window (picker may have stolen focus)
+              if self.window and vim.api.nvim_win_is_valid(self.window) then
+                vim.api.nvim_set_current_win(self.window)
               end
             end)
           end)

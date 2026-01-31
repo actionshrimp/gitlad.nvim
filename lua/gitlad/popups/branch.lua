@@ -131,7 +131,7 @@ function M.open(repo_state, context)
       :config_heading("Configure %s")
       :config_var("d", "branch.%s.description", "branch.%s.description", { type = "text" })
       :config_var("u", "branch.%s.merge", "branch.%s.merge", {
-        type = "text",
+        type = "ref",
         on_set = function(value, popup_data)
           -- Auto-parse "origin/main" into remote=origin and merge=refs/heads/main
           return parse_upstream_input(value, popup_data.branch_scope)
