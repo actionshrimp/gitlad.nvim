@@ -119,6 +119,11 @@ make dev
 # Then use :Gitlad to open status view
 ```
 
+### Writing lua
+
+If you need to try out any isolated snippets of lua that don't require the vim
+environment, the `lua` CLI command is available for a lua interpreter.
+
 ### Test Structure
 
 - `tests/unit/` - Pure Lua unit tests (fast, isolated)
