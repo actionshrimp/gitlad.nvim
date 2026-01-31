@@ -32,16 +32,17 @@ local ns_signs = vim.api.nvim_create_namespace("gitlad_log_signs")
 local LogBuffer = {}
 LogBuffer.__index = LogBuffer
 
--- Singleton buffer (one log view at a time)
-local log_buffer = nil
+-- Log buffers by repo root (one per repo for multi-project support)
+local log_buffers = {}
 
---- Create or get the log buffer
+--- Create or get the log buffer for a repository
 ---@param repo_state RepoState
 ---@return LogBuffer
 local function get_or_create_buffer(repo_state)
-  if log_buffer and vim.api.nvim_buf_is_valid(log_buffer.bufnr) then
-    log_buffer.repo_state = repo_state
-    return log_buffer
+  local key = repo_state.repo_root
+
+  if log_buffers[key] and vim.api.nvim_buf_is_valid(log_buffers[key].bufnr) then
+    return log_buffers[key]
   end
 
   local self = setmetatable({}, LogBuffer)
@@ -57,8 +58,8 @@ local function get_or_create_buffer(repo_state)
   self.bufnr = vim.api.nvim_create_buf(false, true)
   self.winnr = nil
 
-  -- Set buffer options
-  vim.api.nvim_buf_set_name(self.bufnr, "gitlad://log")
+  -- Set buffer options (include repo path for multi-project support)
+  vim.api.nvim_buf_set_name(self.bufnr, "gitlad://log[" .. key .. "]")
   vim.bo[self.bufnr].buftype = "nofile"
   vim.bo[self.bufnr].bufhidden = "hide"
   vim.bo[self.bufnr].swapfile = false
@@ -67,7 +68,15 @@ local function get_or_create_buffer(repo_state)
   -- Set up keymaps
   self:_setup_keymaps()
 
-  log_buffer = self
+  -- Clean up when buffer is wiped
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    buffer = self.bufnr,
+    callback = function()
+      log_buffers[key] = nil
+    end,
+  })
+
+  log_buffers[key] = self
   return self
 end
 
@@ -481,20 +490,35 @@ function M.close()
   end
 end
 
---- Get current log buffer (for testing)
+--- Get the log buffer for a repo if it exists
+---@param repo_state? RepoState
 ---@return LogBuffer|nil
-function M.get_buffer()
-  return log_buffer
+function M.get_buffer(repo_state)
+  if repo_state then
+    local key = repo_state.repo_root
+    local buf = log_buffers[key]
+    if buf and vim.api.nvim_buf_is_valid(buf.bufnr) then
+      return buf
+    end
+    return nil
+  end
+  -- If no repo_state, return first valid buffer (for backwards compat/testing)
+  for _, buf in pairs(log_buffers) do
+    if vim.api.nvim_buf_is_valid(buf.bufnr) then
+      return buf
+    end
+  end
+  return nil
 end
 
---- Clear the buffer singleton (for testing)
-function M.clear()
-  if log_buffer then
-    if vim.api.nvim_buf_is_valid(log_buffer.bufnr) then
-      vim.api.nvim_buf_delete(log_buffer.bufnr, { force = true })
+--- Clear all log buffers (for testing)
+function M.clear_all()
+  for _, buf in pairs(log_buffers) do
+    if vim.api.nvim_buf_is_valid(buf.bufnr) then
+      vim.api.nvim_buf_delete(buf.bufnr, { force = true })
     end
-    log_buffer = nil
   end
+  log_buffers = {}
 end
 
 return M

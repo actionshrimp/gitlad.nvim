@@ -95,6 +95,18 @@ status_navigation.setup(StatusBuffer)
 -- Active status buffers by repo root
 local status_buffers = {}
 
+--- Find any window currently displaying a buffer
+---@param bufnr number
+---@return number|nil winnr Window number if found
+local function find_window_with_buffer(bufnr)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_buf(win) == bufnr then
+      return win
+    end
+  end
+  return nil
+end
+
 --- Create or get a status buffer for a repository
 ---@param repo_state RepoState
 ---@return StatusBuffer
@@ -132,8 +144,8 @@ local function get_or_create_buffer(repo_state)
   self.bufnr = vim.api.nvim_create_buf(false, true)
   self.winnr = nil
 
-  -- Set buffer options
-  vim.api.nvim_buf_set_name(self.bufnr, "gitlad://status")
+  -- Set buffer options (include repo path for multi-project support)
+  vim.api.nvim_buf_set_name(self.bufnr, "gitlad://status[" .. key .. "]")
   vim.bo[self.bufnr].buftype = "nofile"
   vim.bo[self.bufnr].bufhidden = "hide"
   vim.bo[self.bufnr].swapfile = false
@@ -182,18 +194,17 @@ end
 --- Open the status buffer in a window
 ---@param force_refresh? boolean If true, always trigger a refresh (e.g., when user explicitly runs :Gitlad)
 function StatusBuffer:open(force_refresh)
-  -- Check if already open in a window with the status buffer displayed
-  if self.winnr and vim.api.nvim_win_is_valid(self.winnr) then
-    local win_buf = vim.api.nvim_win_get_buf(self.winnr)
-    if win_buf == self.bufnr then
-      -- Status buffer is already displayed in this window, just focus it
-      vim.api.nvim_set_current_win(self.winnr)
-      -- If force_refresh requested (e.g., explicit :Gitlad command), trigger refresh
-      if force_refresh then
-        self.repo_state:refresh_status(true)
-      end
-      return
+  -- Check if buffer is already visible in ANY window (not just self.winnr)
+  local existing_win = find_window_with_buffer(self.bufnr)
+  if existing_win then
+    -- Status buffer is already displayed, just focus it
+    vim.api.nvim_set_current_win(existing_win)
+    self.winnr = existing_win
+    -- If force_refresh requested (e.g., explicit :Gitlad command), trigger refresh
+    if force_refresh then
+      self.repo_state:refresh_status(true)
     end
+    return
   end
 
   -- Remember the current buffer before switching (for restoring on close)
