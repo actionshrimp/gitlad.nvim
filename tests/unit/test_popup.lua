@@ -692,4 +692,302 @@ T["config_var"]["_find_config_var() returns nil for unknown key"] = function()
   eq(cv, nil)
 end
 
+-- remote_cycle type tests
+T["config_var"]["config_var() with remote_cycle type"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder =
+    popup.builder():config_var("p", "branch.main.pushRemote", "branch.main.pushRemote", {
+      type = "remote_cycle",
+      fallback = "remote.pushDefault",
+    })
+  eq(builder._config_vars[1].var_type, "remote_cycle")
+  eq(builder._config_vars[1].fallback, "remote.pushDefault")
+end
+
+T["config_var"]["config_var() with remote_cycle type without fallback"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():config_var("P", "remote.pushDefault", "remote.pushDefault", {
+    type = "remote_cycle",
+  })
+  eq(builder._config_vars[1].var_type, "remote_cycle")
+  eq(builder._config_vars[1].fallback, nil)
+end
+
+T["config_var"]["remote_cycle renders in bracket format"] = function()
+  local popup = require("gitlad.ui.popup")
+  -- Build popup - remotes_choices will be populated from current git repo
+  local data = popup
+    .builder()
+    :config_heading("Config")
+    :config_var("p", "test.pushRemote", "test.pushRemote", { type = "remote_cycle" })
+    :build()
+
+  -- config_vars[1] is the heading, config_vars[2] is the config_var
+  -- remote_choices should be a table (may or may not have remotes depending on test env)
+  eq(type(data.config_vars[2].remote_choices), "table")
+
+  local lines = data:render_lines()
+
+  -- Should show bracket format [something] (could be [] or [origin] etc)
+  local found_bracket = false
+  for _, line in ipairs(lines) do
+    if line:match("%[.*%]") then
+      found_bracket = true
+      break
+    end
+  end
+
+  eq(found_bracket, true)
+end
+
+T["config_var"]["tracks remote_choices and fallback in config_positions"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_var("p", "test.pushRemote", "test.pushRemote", {
+      type = "remote_cycle",
+      fallback = "remote.pushDefault",
+    })
+    :build()
+
+  local _ = data:render_lines()
+
+  -- Should have remote_cycle metadata in positions
+  local found_positions = false
+  for _, pos_table in pairs(data.config_positions) do
+    for key, pos in pairs(pos_table) do
+      if key == "p" then
+        eq(pos.var_type, "remote_cycle")
+        eq(pos.fallback, "remote.pushDefault")
+        eq(type(pos.remote_choices), "table")
+        found_positions = true
+      end
+    end
+  end
+
+  eq(found_positions, true)
+end
+
+-- config_display tests (read-only config vars)
+T["config_var"]["config_display() adds a read-only config var"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():config_display("branch.main.remote", "branch.main.remote")
+  eq(#builder._config_vars, 1)
+  eq(builder._config_vars[1].type, "config_var")
+  eq(builder._config_vars[1].key, nil) -- No key for read-only
+  eq(builder._config_vars[1].config_key, "branch.main.remote")
+  eq(builder._config_vars[1].label, "branch.main.remote")
+  eq(builder._config_vars[1].read_only, true)
+end
+
+T["config_var"]["config_display() renders with 3-space indent"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_heading("Config")
+    :config_display("test.readonly", "test.readonly")
+    :build()
+
+  local lines = data:render_lines()
+
+  -- Should have a line starting with 3 spaces (not " k " pattern)
+  local found_readonly = false
+  for _, line in ipairs(lines) do
+    -- Pattern: starts with 3 spaces, then the label
+    if line:match("^   test%.readonly") then
+      found_readonly = true
+      break
+    end
+  end
+
+  eq(found_readonly, true)
+end
+
+T["config_var"]["config_display() has no position entry for highlighting"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup.builder():config_display("test.readonly", "test.readonly"):build()
+
+  local _ = data:render_lines()
+
+  -- Should have no config_positions entries (read-only has no key to highlight)
+  local has_positions = false
+  for _, pos_table in pairs(data.config_positions) do
+    if next(pos_table) then
+      has_positions = true
+      break
+    end
+  end
+
+  eq(has_positions, false)
+end
+
+T["config_var"]["config_display() substitutes %s with branch scope"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :branch_scope("feature")
+    :config_display("branch.%s.remote", "branch.%s.remote")
+    :build()
+
+  eq(data.config_vars[1].config_key, "branch.feature.remote")
+  eq(data.config_vars[1].label, "branch.feature.remote")
+end
+
+-- on_set callback tests
+T["config_var"]["config_var() accepts on_set callback"] = function()
+  local popup = require("gitlad.ui.popup")
+  local on_set_called = false
+  local builder = popup.builder():config_var("u", "test.merge", "test.merge", {
+    type = "text",
+    on_set = function(value, popup_data)
+      on_set_called = true
+      return { ["test.key1"] = "val1", ["test.key2"] = "val2" }
+    end,
+  })
+  expect.no_equality(builder._config_vars[1].on_set, nil)
+end
+
+T["config_var"]["on_set callback is preserved after build"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_var("u", "test.merge", "test.merge", {
+      type = "text",
+      on_set = function(value, popup_data)
+        return { ["test.key"] = value }
+      end,
+    })
+    :build()
+
+  expect.no_equality(data.config_vars[1].on_set, nil)
+end
+
+-- ref type tests
+T["config_var"]["config_var() with ref type"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():config_var("u", "branch.main.merge", "branch.main.merge", {
+    type = "ref",
+  })
+  eq(builder._config_vars[1].var_type, "ref")
+end
+
+T["config_var"]["ref type is preserved after build"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_var("u", "branch.main.merge", "branch.main.merge", {
+      type = "ref",
+    })
+    :build()
+
+  eq(data.config_vars[1].var_type, "ref")
+end
+
+T["config_var"]["ref type renders same as text type"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_heading("Config")
+    :config_var("u", "test.merge", "test.merge", { type = "ref" })
+    :build()
+
+  local lines = data:render_lines()
+
+  -- Should show unset like text type (value display is same)
+  local found_line = false
+  for _, line in ipairs(lines) do
+    if line:match("u.*test%.merge") then
+      found_line = true
+      break
+    end
+  end
+
+  eq(found_line, true)
+end
+
+T["config_var"]["ref type tracks positions for highlighting"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup.builder():config_var("u", "test.merge", "test.merge", { type = "ref" }):build()
+
+  local _ = data:render_lines()
+
+  -- Should have config positions tracked
+  local found_positions = false
+  for _, pos_table in pairs(data.config_positions) do
+    for key, pos in pairs(pos_table) do
+      if key == "u" then
+        expect.no_equality(pos.col, nil)
+        expect.no_equality(pos.len, nil)
+        eq(pos.var_type, "ref")
+        found_positions = true
+      end
+    end
+  end
+
+  eq(found_positions, true)
+end
+
+T["config_var"]["ref type with on_set callback"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_var("u", "branch.main.merge", "branch.main.merge", {
+      type = "ref",
+      on_set = function(value, popup_data)
+        return { ["branch.main.remote"] = "origin", ["branch.main.merge"] = "refs/heads/" .. value }
+      end,
+    })
+    :build()
+
+  expect.no_equality(data.config_vars[1].on_set, nil)
+  eq(data.config_vars[1].var_type, "ref")
+end
+
+-- on_unset callback tests
+T["config_var"]["config_var() accepts on_unset callback"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():config_var("u", "test.merge", "test.merge", {
+    type = "ref",
+    on_unset = function(popup_data)
+      return { ["test.merge"] = nil, ["test.remote"] = nil }
+    end,
+  })
+  expect.no_equality(builder._config_vars[1].on_unset, nil)
+end
+
+T["config_var"]["on_unset callback is preserved after build"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_var("u", "test.merge", "test.merge", {
+      type = "ref",
+      on_unset = function(popup_data)
+        return { ["test.merge"] = nil }
+      end,
+    })
+    :build()
+
+  expect.no_equality(data.config_vars[1].on_unset, nil)
+end
+
+T["config_var"]["config_var with both on_set and on_unset"] = function()
+  local popup = require("gitlad.ui.popup")
+  local data = popup
+    .builder()
+    :config_var("u", "branch.main.merge", "branch.main.merge", {
+      type = "ref",
+      on_set = function(value, popup_data)
+        return { ["branch.main.remote"] = "origin", ["branch.main.merge"] = "refs/heads/" .. value }
+      end,
+      on_unset = function(popup_data)
+        return { ["branch.main.merge"] = nil, ["branch.main.remote"] = nil }
+      end,
+    })
+    :build()
+
+  expect.no_equality(data.config_vars[1].on_set, nil)
+  expect.no_equality(data.config_vars[1].on_unset, nil)
+  eq(data.config_vars[1].var_type, "ref")
+end
+
 return T

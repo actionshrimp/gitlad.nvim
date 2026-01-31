@@ -399,7 +399,8 @@ T["help popup"]["pressing p opens push popup"] = function()
     if line:match("force%-with%-lease") then
       found_force_with_lease = true
     end
-    if line:match("p%s+Push") then
+    -- Match either "p Push" or "p pushRemote" (new magit-style action)
+    if line:match("p%s+[Pp]ush") then
       found_push_action = true
     end
   end

@@ -83,6 +83,39 @@ local function local_branch_exists(branches, branch_name)
   return false
 end
 
+--- Parse upstream input like "origin/main" into separate remote and merge values
+--- If input is "origin/main", returns { remote = "origin", merge = "refs/heads/main" }
+--- If input is just "main" (local branch), returns { remote = ".", merge = "refs/heads/main" }
+--- The "." remote means "local repository" in git
+---@param input string User input for upstream
+---@param branch string Current branch name
+---@return table<string, string> Config key-value pairs to set
+local function parse_upstream_input(input, branch)
+  if not input or input == "" then
+    return {}
+  end
+
+  local result = {}
+  local remote_key = "branch." .. branch .. ".remote"
+  local merge_key = "branch." .. branch .. ".merge"
+
+  -- Check if input contains a slash (could be remote/branch)
+  local remote_part, branch_part = input:match("^([^/]+)/(.+)$")
+
+  if remote_part and branch_part then
+    -- Input is like "origin/main" or "upstream/feature/fix"
+    result[remote_key] = remote_part
+    result[merge_key] = "refs/heads/" .. branch_part
+  else
+    -- Input is just a branch name like "main" (local branch)
+    -- Use "." as the remote to indicate local repository
+    result[remote_key] = "."
+    result[merge_key] = "refs/heads/" .. input
+  end
+
+  return result
+end
+
 --- Create and show the branch popup
 ---@param repo_state RepoState
 ---@param context? BranchContext Optional context with pre-selected ref
@@ -91,7 +124,22 @@ function M.open(repo_state, context)
 
   local current_branch = get_current_branch(repo_state)
 
-  local builder = popup.builder():name("Branch"):repo_root(repo_state.repo_root)
+  local builder = popup
+    .builder()
+    :name("Branch")
+    :repo_root(repo_state.repo_root)
+    :on_config_change(function(config_key, _value)
+      -- Refresh status when upstream or push config changes
+      -- These affect the Push/Pull lines in the status view
+      if
+        config_key:match("^branch%..*%.merge$")
+        or config_key:match("^branch%..*%.remote$")
+        or config_key:match("^branch%..*%.pushRemote$")
+        or config_key:match("^remote%.pushDefault$")
+      then
+        repo_state:refresh_status(true)
+      end
+    end)
 
   -- Only show branch-specific config if we have a current branch
   if current_branch then
@@ -100,13 +148,32 @@ function M.open(repo_state, context)
       -- Configure <branch> section
       :config_heading("Configure %s")
       :config_var("d", "branch.%s.description", "branch.%s.description", { type = "text" })
-      :config_var("u", "branch.%s.merge", "branch.%s.merge", { type = "text" })
+      :config_var("u", "branch.%s.merge", "branch.%s.merge", {
+        type = "ref",
+        on_set = function(value, popup_data)
+          -- Auto-parse "origin/main" into remote=origin and merge=refs/heads/main
+          return parse_upstream_input(value, popup_data.branch_scope)
+        end,
+        on_unset = function(popup_data)
+          -- Unset both merge and remote when clearing upstream
+          -- Use empty string "" to indicate unset (nil removes key from table in Lua)
+          local branch = popup_data.branch_scope
+          return {
+            ["branch." .. branch .. ".merge"] = "",
+            ["branch." .. branch .. ".remote"] = "",
+          }
+        end,
+      })
+      :config_display("branch.%s.remote", "branch.%s.remote") -- Read-only, set via merge
       :config_var("r", "branch.%s.rebase", "branch.%s.rebase", {
         type = "cycle",
         choices = { "true", "false", "" },
         default_display = "default:false",
       })
-      :config_var("p", "branch.%s.pushRemote", "branch.%s.pushRemote", { type = "text" })
+      :config_var("p", "branch.%s.pushRemote", "branch.%s.pushRemote", {
+        type = "remote_cycle",
+        fallback = "remote.pushDefault",
+      })
   end
 
   -- Configure repository defaults section
@@ -117,7 +184,7 @@ function M.open(repo_state, context)
       choices = { "true", "false", "" },
       default_display = "default:false",
     })
-    :config_var("P", "remote.pushDefault", "remote.pushDefault", { type = "text" })
+    :config_var("P", "remote.pushDefault", "remote.pushDefault", { type = "remote_cycle" })
 
   -- Switches (for delete operation)
   builder:switch("f", "force", "Force delete (even if not merged)")

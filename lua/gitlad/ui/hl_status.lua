@@ -758,7 +758,7 @@ function M.apply_popup_highlights(
             if value_text == "unset" then
               hl_module.set(bufnr, ns_popup, line_idx, value_start, #line, "GitladPopupConfigUnset")
             elseif value_text:match("^%[") then
-              -- Choice format: [opt1|opt2|default:X]
+              -- Choice format: [opt1|opt2|default:X] or [remote1|remote2|fallback:value]
               -- Highlight the whole thing as choice, then highlight active value
               hl_module.set(
                 bufnr,
@@ -770,7 +770,39 @@ function M.apply_popup_highlights(
               )
 
               -- Find and highlight the active choice
-              if pos.choices and pos.current_value then
+              if pos.var_type == "remote_cycle" and pos.remote_choices then
+                -- For remote_cycle, determine effective value (current or fallback)
+                local effective_value = pos.current_value
+                if (effective_value == nil or effective_value == "") and pos.fallback_value then
+                  -- Value comes from fallback - highlight the fallback annotation
+                  local fallback_annotation = pos.fallback .. ":" .. pos.fallback_value
+                  local annot_start, annot_end = value_text:find(fallback_annotation, 1, true)
+                  if annot_start then
+                    hl_module.set(
+                      bufnr,
+                      ns_popup,
+                      line_idx,
+                      value_start + annot_start - 1,
+                      value_start + annot_end,
+                      "GitladPopupConfigActive"
+                    )
+                  end
+                elseif effective_value and effective_value ~= "" then
+                  -- Value is explicitly set, highlight it
+                  local choice_start, choice_end = value_text:find(effective_value, 1, true)
+                  if choice_start then
+                    hl_module.set(
+                      bufnr,
+                      ns_popup,
+                      line_idx,
+                      value_start + choice_start - 1,
+                      value_start + choice_end,
+                      "GitladPopupConfigActive"
+                    )
+                  end
+                end
+              elseif pos.choices then
+                -- Standard cycle type
                 local current = pos.current_value
                 for _, choice in ipairs(pos.choices) do
                   local choice_to_find = choice

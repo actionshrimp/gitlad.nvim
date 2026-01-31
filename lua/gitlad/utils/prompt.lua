@@ -36,12 +36,27 @@ local function get_git_refs(cwd)
   -- Build command with optional cwd
   local git_prefix = cwd and string.format("git -C %s ", vim.fn.shellescape(cwd)) or "git "
 
+  -- Get remote names to filter them out (for-each-ref returns bare remote names)
+  local remotes_cmd = git_prefix .. "remote 2>/dev/null"
+  local remotes_output = vim.fn.systemlist(remotes_cmd)
+  local remote_set = {}
+  if vim.v.shell_error == 0 then
+    for _, remote in ipairs(remotes_output) do
+      remote_set[remote] = true
+    end
+  end
+
   -- Get branches and tags via for-each-ref (fast, single call)
   local ref_cmd = git_prefix
     .. "for-each-ref --format='%(refname:short)' refs/heads refs/remotes refs/tags 2>/dev/null"
   local ref_output = vim.fn.systemlist(ref_cmd)
   if vim.v.shell_error == 0 then
-    vim.list_extend(refs, ref_output)
+    for _, ref in ipairs(ref_output) do
+      -- Filter out bare remote names (e.g., "origin" without a branch)
+      if not remote_set[ref] then
+        table.insert(refs, ref)
+      end
+    end
   end
 
   -- Add some recent commit SHAs for convenience

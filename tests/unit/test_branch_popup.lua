@@ -314,6 +314,106 @@ T["branch popup helpers"]["local_branch_exists returns false for non-existing br
   eq(local_branch_exists(branches, "nonexistent"), false)
 end
 
+-- parse_upstream_input tests
+T["parse_upstream_input"] = MiniTest.new_set()
+
+T["parse_upstream_input"]["parses remote/branch format"] = function()
+  -- Replicate the parse_upstream_input logic for testing
+  local function parse_upstream_input(input, branch)
+    if not input or input == "" then
+      return {}
+    end
+    local result = {}
+    local remote_key = "branch." .. branch .. ".remote"
+    local merge_key = "branch." .. branch .. ".merge"
+    local remote_part, branch_part = input:match("^([^/]+)/(.+)$")
+    if remote_part and branch_part then
+      result[remote_key] = remote_part
+      result[merge_key] = "refs/heads/" .. branch_part
+    else
+      result[remote_key] = "."
+      result[merge_key] = "refs/heads/" .. input
+    end
+    return result
+  end
+
+  local result = parse_upstream_input("origin/main", "feature")
+  eq(result["branch.feature.remote"], "origin")
+  eq(result["branch.feature.merge"], "refs/heads/main")
+end
+
+T["parse_upstream_input"]["parses local branch with dot remote"] = function()
+  local function parse_upstream_input(input, branch)
+    if not input or input == "" then
+      return {}
+    end
+    local result = {}
+    local remote_key = "branch." .. branch .. ".remote"
+    local merge_key = "branch." .. branch .. ".merge"
+    local remote_part, branch_part = input:match("^([^/]+)/(.+)$")
+    if remote_part and branch_part then
+      result[remote_key] = remote_part
+      result[merge_key] = "refs/heads/" .. branch_part
+    else
+      result[remote_key] = "."
+      result[merge_key] = "refs/heads/" .. input
+    end
+    return result
+  end
+
+  -- Local branch should set remote to "."
+  local result = parse_upstream_input("main", "feature")
+  eq(result["branch.feature.remote"], ".")
+  eq(result["branch.feature.merge"], "refs/heads/main")
+end
+
+T["parse_upstream_input"]["handles nested branch names in remote"] = function()
+  local function parse_upstream_input(input, branch)
+    if not input or input == "" then
+      return {}
+    end
+    local result = {}
+    local remote_key = "branch." .. branch .. ".remote"
+    local merge_key = "branch." .. branch .. ".merge"
+    local remote_part, branch_part = input:match("^([^/]+)/(.+)$")
+    if remote_part and branch_part then
+      result[remote_key] = remote_part
+      result[merge_key] = "refs/heads/" .. branch_part
+    else
+      result[remote_key] = "."
+      result[merge_key] = "refs/heads/" .. input
+    end
+    return result
+  end
+
+  local result = parse_upstream_input("origin/feature/add-login", "my-branch")
+  eq(result["branch.my-branch.remote"], "origin")
+  eq(result["branch.my-branch.merge"], "refs/heads/feature/add-login")
+end
+
+T["parse_upstream_input"]["returns empty for empty input"] = function()
+  local function parse_upstream_input(input, branch)
+    if not input or input == "" then
+      return {}
+    end
+    local result = {}
+    local remote_key = "branch." .. branch .. ".remote"
+    local merge_key = "branch." .. branch .. ".merge"
+    local remote_part, branch_part = input:match("^([^/]+)/(.+)$")
+    if remote_part and branch_part then
+      result[remote_key] = remote_part
+      result[merge_key] = "refs/heads/" .. branch_part
+    else
+      result[remote_key] = "."
+      result[merge_key] = "refs/heads/" .. input
+    end
+    return result
+  end
+
+  local result = parse_upstream_input("", "feature")
+  eq(next(result), nil) -- Empty table
+end
+
 -- Configure group tests
 T["branch popup configure"] = MiniTest.new_set()
 
