@@ -398,6 +398,24 @@ function RepoState:stage(path, section, callback)
   end)
 end
 
+--- Stage a file with intent-to-add (git add -N) for partial staging
+---@param path string File path to stage with intent
+---@param callback? fun(success: boolean)
+function RepoState:stage_intent(path, callback)
+  git.stage_intent(path, { cwd = self.repo_root }, function(success, err)
+    if not success then
+      errors.notify("Stage (intent-to-add)", err)
+    else
+      -- Optimistic update: apply command to state
+      local cmd = commands.stage_intent(path)
+      self:apply_command(cmd)
+    end
+    if callback then
+      callback(success)
+    end
+  end)
+end
+
 --- Unstage a file (optimistic update)
 ---@param path string File path to unstage
 ---@param callback? fun(success: boolean)

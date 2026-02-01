@@ -109,6 +109,63 @@ T["apply"]["stage_file from conflicted"] = function()
   eq(new_status.staged[1].worktree_status, ".")
 end
 
+T["apply"]["stage_intent moves untracked to unstaged"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    untracked = { { path = "new.txt", index_status = "?", worktree_status = "?" } },
+  })
+
+  local cmd = commands.stage_intent("new.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.untracked, 0)
+  eq(#new_status.unstaged, 1)
+  eq(new_status.unstaged[1].path, "new.txt")
+  -- After git add -N, porcelain v2 shows ".A" (index unchanged, worktree added)
+  eq(new_status.unstaged[1].index_status, ".")
+  eq(new_status.unstaged[1].worktree_status, "A")
+end
+
+T["apply"]["stage_intent nonexistent file is no-op"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    untracked = { { path = "other.txt", index_status = "?", worktree_status = "?" } },
+  })
+
+  local cmd = commands.stage_intent("nonexistent.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.untracked, 1)
+  eq(#new_status.unstaged, 0)
+end
+
+T["apply"]["stage_intent inserts in alphabetical order"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    unstaged = {
+      { path = "a.txt", index_status = ".", worktree_status = "M" },
+      { path = "c.txt", index_status = ".", worktree_status = "M" },
+    },
+    untracked = {
+      { path = "b.txt", index_status = "?", worktree_status = "?" },
+    },
+  })
+
+  local cmd = commands.stage_intent("b.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.unstaged, 3)
+  eq(new_status.unstaged[1].path, "a.txt")
+  eq(new_status.unstaged[2].path, "b.txt")
+  eq(new_status.unstaged[3].path, "c.txt")
+end
+
 T["apply"]["unstage_file added file becomes untracked"] = function()
   local reducer = require("gitlad.state.reducer")
   local commands = require("gitlad.state.commands")

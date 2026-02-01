@@ -148,6 +148,18 @@ function M.stage_files(paths, opts, callback)
   end)
 end
 
+--- Stage a file with intent-to-add (git add -N)
+--- This marks the file as staged without including any content,
+--- allowing subsequent partial staging of the file's content.
+---@param path string File path to stage with intent
+---@param opts? GitCommandOptions
+---@param callback fun(success: boolean, err: string|nil)
+function M.stage_intent(path, opts, callback)
+  cli.run_async({ "add", "-N", "--", path }, opts, function(result)
+    callback(errors.result_to_callback(result))
+  end)
+end
+
 --- Unstage a file
 ---@param path string File path to unstage
 ---@param opts? GitCommandOptions

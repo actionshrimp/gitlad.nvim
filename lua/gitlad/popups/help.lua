@@ -401,6 +401,7 @@ local function create_sections(status_buffer)
       items = {
         { key = "s", desc = "Stage" },
         { key = "u", desc = "Unstage" },
+        { key = "gs", desc = "Intent to add" },
         {
           key = "S",
           desc = "Stage all",
