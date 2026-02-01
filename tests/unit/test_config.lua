@@ -17,20 +17,23 @@ T["config"]["returns defaults when setup not called"] = function()
   local config = require("gitlad.config")
   local cfg = config.get()
 
-  eq(cfg.refresh_on_focus, true)
-  eq(cfg.watch_gitdir, true)
   expect.equality(type(cfg.signs), "table")
+  expect.equality(type(cfg.commit_editor), "table")
+  expect.equality(type(cfg.worktree), "table")
+  expect.equality(type(cfg.status), "table")
 end
 
 T["config"]["merges user options with defaults"] = function()
   local config = require("gitlad.config")
   config.setup({
-    refresh_on_focus = false,
+    commit_editor = {
+      split = "replace",
+    },
   })
 
   local cfg = config.get()
-  eq(cfg.refresh_on_focus, false)
-  eq(cfg.watch_gitdir, true) -- Still default
+  eq(cfg.commit_editor.split, "replace")
+  eq(cfg.signs.staged, "●") -- Still default
 end
 
 T["config"]["deep merges nested options"] = function()
@@ -48,11 +51,11 @@ end
 
 T["config"]["reset clears configuration"] = function()
   local config = require("gitlad.config")
-  config.setup({ refresh_on_focus = false })
+  config.setup({ commit_editor = { split = "replace" } })
 
   config.reset()
   local cfg = config.get()
-  eq(cfg.refresh_on_focus, true) -- Back to default
+  eq(cfg.commit_editor.split, "above") -- Back to default
 end
 
 T["config"]["has worktree defaults"] = function()

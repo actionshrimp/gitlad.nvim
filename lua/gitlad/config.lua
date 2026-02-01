@@ -4,22 +4,25 @@ local M = {}
 ---@class GitladCommitEditorConfig
 ---@field split "above"|"replace" How to open the commit editor ("above" = split above status, "replace" = replace current buffer)
 
+---@class GitladSectionConfig
+---@field [1] string Section name (first array element)
+---@field count? number For "recent" section - number of commits to show (default: 10)
+---@field min_count? number For "worktrees" section - minimum worktrees to show section (default: 2)
+
+---@alias GitladSection string|GitladSectionConfig
+
 ---@class GitladStatusConfig
----@field show_submodules_section boolean Whether to show the dedicated Submodules section (default: false, like magit)
+---@field sections? GitladSection[] Section order and options. Omit sections to hide them. Options: "untracked", "unstaged", "staged", "conflicted", "stashes", "submodules", "worktrees", "unpushed", "unpulled", "recent". Use table form for options: { "recent", count = 5 }
 
 ---@class GitladWorktreeConfig
 ---@field directory_strategy "sibling"|"prompt" How to suggest worktree paths ("sibling" = suggest sibling directory, "prompt" = always prompt for path)
 
 ---@class GitladConfig
----@field refresh_on_focus boolean
----@field watch_gitdir boolean
 ---@field signs GitladSigns
 ---@field commit_editor GitladCommitEditorConfig
 ---@field status GitladStatusConfig
 ---@field worktree GitladWorktreeConfig
 local defaults = {
-  refresh_on_focus = true,
-  watch_gitdir = true,
   signs = {
     staged = "●",
     unstaged = "○",
@@ -29,9 +32,7 @@ local defaults = {
   commit_editor = {
     split = "above", -- "above" or "replace"
   },
-  status = {
-    show_submodules_section = false, -- Off by default, like magit
-  },
+  status = {},
   worktree = {
     directory_strategy = "sibling", -- "sibling" or "prompt"
   },
