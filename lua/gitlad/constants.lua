@@ -13,6 +13,7 @@ M.SECTION = {
   CONFLICTED = "conflicted",
   STASHES = "stashes",
   SUBMODULES = "submodules",
+  WORKTREES = "worktrees",
 }
 
 return M

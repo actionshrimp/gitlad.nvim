@@ -15,7 +15,7 @@ local signs_util = require("gitlad.ui.utils.signs")
 -- Namespace for sign column indicators
 local ns_signs = vim.api.nvim_create_namespace("gitlad_signs")
 
--- Sections that can be collapsed (file sections, commit sections, stashes, submodules)
+-- Sections that can be collapsed (file sections, commit sections, stashes, submodules, worktrees)
 local COLLAPSIBLE_SECTIONS = {
   -- File sections (top-level sections like magit)
   untracked = true,
@@ -31,6 +31,7 @@ local COLLAPSIBLE_SECTIONS = {
   -- Other sections
   stashes = true,
   submodules = true,
+  worktrees = true,
 }
 
 --- Get the cache key for a file's diff
@@ -423,6 +424,44 @@ local function render(self)
         else
           self.sign_lines[#lines] = { expanded = false }
         end
+      end
+    end
+    table.insert(lines, "")
+  end
+
+  -- === Worktrees section (after submodules, before commit sections) ===
+  -- Only shown when 2+ worktrees exist (like magit)
+  if status.worktrees and #status.worktrees > 1 then
+    local is_collapsed = self.collapsed_sections["worktrees"]
+    table.insert(lines, string.format("Worktrees (%d)", #status.worktrees))
+    self.section_lines[#lines] = { name = "Worktrees", section = "worktrees" }
+    self.sign_lines[#lines] = { expanded = not is_collapsed }
+
+    if not is_collapsed then
+      -- Normalize repo_root path for comparison (remove trailing slash)
+      local current_repo_root = self.repo_state.repo_root:gsub("/$", "")
+
+      for _, worktree in ipairs(status.worktrees) do
+        -- Format: [*] branch  ~/path  (current marked with *, locked marked with L)
+        local prefix = "  "
+        -- Normalize worktree path for comparison (remove trailing slash)
+        local wt_path = worktree.path:gsub("/$", "")
+        if wt_path == current_repo_root then
+          prefix = "* " -- Current worktree
+        elseif worktree.locked then
+          prefix = "L " -- Locked worktree
+        end
+
+        local branch_info = worktree.branch or "(detached)"
+        local short_path = vim.fn.fnamemodify(worktree.path, ":~")
+        local line_text = string.format("  %s%s  %s", prefix, branch_info, short_path)
+
+        table.insert(lines, line_text)
+        self.line_map[#lines] = {
+          type = "worktree",
+          worktree = worktree,
+          section = "worktrees",
+        }
       end
     end
     table.insert(lines, "")

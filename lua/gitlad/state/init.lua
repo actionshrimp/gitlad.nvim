@@ -243,7 +243,14 @@ function RepoState:_fetch_extended_status(result, callback)
     complete_one()
   end)
 
-  -- 8. Determine push destination
+  -- 8. Fetch worktree list
+  start_op()
+  git.worktree_list(opts, function(worktrees, _err)
+    result.worktrees = worktrees or {}
+    complete_one()
+  end)
+
+  -- 9. Determine push destination
   -- Push goes to <push-remote>/<branch-name> where push-remote is:
   --   1. branch.<name>.pushRemote (explicit config)
   --   2. remote.pushDefault (global default)

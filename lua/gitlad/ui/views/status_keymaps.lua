@@ -104,6 +104,21 @@ local function get_current_stash(self)
   return nil
 end
 
+--- Get the worktree at the current cursor position
+---@param self StatusBuffer
+---@return WorktreeEntry|nil worktree
+local function get_current_worktree(self)
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local line = cursor[1]
+
+  local info = self.line_map[line]
+  if info and info.type == "worktree" then
+    return info.worktree
+  end
+
+  return nil
+end
+
 --- Get selected commits (normal mode: single, visual mode: range)
 ---@param self StatusBuffer
 ---@return GitCommitInfo[] Selected commits
@@ -456,6 +471,14 @@ local function setup_keymaps(self)
     local remote_popup = require("gitlad.popups.remote")
     remote_popup.open(self.repo_state)
   end, "Remote popup")
+
+  -- Worktree popup (evil-collection-magit style: % for worktree)
+  keymap.set(bufnr, "n", "%", function()
+    local worktree_popup = require("gitlad.popups.worktree")
+    local worktree = get_current_worktree(self)
+    local context = worktree and { worktree = worktree } or nil
+    worktree_popup.open(self.repo_state, context)
+  end, "Worktree popup")
 end
 
 --- Attach keymap methods to StatusBuffer class
@@ -466,6 +489,7 @@ function M.setup(StatusBuffer)
   StatusBuffer._get_current_commit = get_current_commit
   StatusBuffer._get_current_submodule = get_current_submodule
   StatusBuffer._get_current_stash = get_current_stash
+  StatusBuffer._get_current_worktree = get_current_worktree
   StatusBuffer._get_selected_commits = get_selected_commits
   StatusBuffer._get_selected_submodule_paths = get_selected_submodule_paths
   StatusBuffer._get_diff_context = get_diff_context

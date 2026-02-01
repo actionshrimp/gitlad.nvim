@@ -378,6 +378,13 @@ local function create_sections(status_buffer)
           end,
         },
         {
+          key = "%",
+          desc = "Worktree",
+          action = function()
+            require("gitlad.popups.worktree").open(repo_state)
+          end,
+        },
+        {
           key = "M",
           desc = "Remotes",
           action = function()
