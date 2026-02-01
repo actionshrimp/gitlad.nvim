@@ -532,8 +532,12 @@ T["branch operations"]["spin-off works with push remote only (no upstream)"] = f
   eq(initial_branch, "main-branch")
 
   -- Verify there's no upstream configured
-  local upstream_check = git(child, repo, "rev-parse --abbrev-ref main-branch@{upstream} 2>&1 || true")
-  eq(upstream_check:match("no upstream configured") ~= nil or upstream_check:match("fatal") ~= nil, true)
+  local upstream_check =
+    git(child, repo, "rev-parse --abbrev-ref main-branch@{upstream} 2>&1 || true")
+  eq(
+    upstream_check:match("no upstream configured") ~= nil or upstream_check:match("fatal") ~= nil,
+    true
+  )
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])

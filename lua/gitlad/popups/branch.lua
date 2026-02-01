@@ -764,7 +764,10 @@ function M._spinoff(repo_state, _popup_data)
               end)
             else
               -- No reset needed - just notify about the new branch
-              vim.notify("[gitlad] Created and switched to '" .. new_branch_name .. "'", vim.log.levels.INFO)
+              vim.notify(
+                "[gitlad] Created and switched to '" .. new_branch_name .. "'",
+                vim.log.levels.INFO
+              )
               repo_state:refresh_status(true)
             end
           end)
@@ -782,7 +785,9 @@ function M._spinoff(repo_state, _popup_data)
         do_spinoff(upstream, ahead_count)
       elseif status and status.push_remote then
         -- No upstream but has push remote (e.g., "origin/main") - use that
-        local ahead_count = status.push_ahead or (status.unpushed_push and #status.unpushed_push) or 0
+        local ahead_count = status.push_ahead
+          or (status.unpushed_push and #status.unpushed_push)
+          or 0
         do_spinoff(status.push_remote, ahead_count)
       else
         -- No upstream and no push remote - create branch anyway without reset (magit behavior)
