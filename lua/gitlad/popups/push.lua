@@ -119,7 +119,9 @@ end
 
 --- Create and show the push popup
 ---@param repo_state RepoState
-function M.open(repo_state)
+---@param context? { commit?: string } Optional context (commit at point)
+function M.open(repo_state, context)
+  local ctx = context or {}
   local status = repo_state.status
   local branch = status and status.branch or nil
 
@@ -169,6 +171,17 @@ function M.open(repo_state)
     end)
     :action("e", "elsewhere", function(popup_data)
       M._push_elsewhere(repo_state, popup_data)
+    end)
+    -- Push section (like magit's second section)
+    :group_heading("Push")
+    :action("o", "another branch", function(popup_data)
+      M._push_another_branch(repo_state, popup_data, ctx)
+    end)
+    :action("T", "a tag", function(popup_data)
+      M._push_tag(repo_state, popup_data)
+    end)
+    :action("t", "all tags", function(popup_data)
+      M._push_all_tags(repo_state, popup_data)
     end)
     :build()
 
@@ -458,6 +471,112 @@ function M._push_elsewhere(repo_state, popup_data)
         end
 
         local args = build_push_args(popup_data, choice, refspec)
+        do_push(repo_state, args)
+      end)
+    end)
+  end)
+end
+
+--- Push another branch or commit to a remote branch
+--- Two-stage selector: first pick source (branch/commit), then pick target (remote/branch)
+---@param repo_state RepoState
+---@param popup_data PopupData
+---@param context { commit?: string } Optional context with commit at point
+function M._push_another_branch(repo_state, popup_data, context)
+  local prompt_module = require("gitlad.utils.prompt")
+
+  -- Stage 1: Select source (pre-fill from context if available)
+  prompt_module.prompt_for_ref({
+    prompt = "Push: ",
+    cwd = repo_state.repo_root,
+    default = context.commit or "",
+  }, function(source)
+    if not source or source == "" then
+      return
+    end
+
+    -- Stage 2: Select target (remote/branch)
+    prompt_module.prompt_for_ref({
+      prompt = "Push " .. source .. " to: ",
+      cwd = repo_state.repo_root,
+    }, function(target)
+      if not target or target == "" then
+        return
+      end
+
+      -- Parse target: "origin/feature" → remote="origin", branch="feature"
+      local remote, branch_name = target:match("^([^/]+)/(.+)$")
+      if not remote then
+        vim.notify("[gitlad] Invalid target format (expected remote/branch)", vim.log.levels.ERROR)
+        return
+      end
+
+      -- Build args and push: git push <remote> <source>:<branch>
+      local args = build_push_args(popup_data, remote, source .. ":" .. branch_name)
+      do_push(repo_state, args)
+    end)
+  end)
+end
+
+--- Push a single tag to a remote
+---@param repo_state RepoState
+---@param popup_data PopupData
+function M._push_tag(repo_state, popup_data)
+  -- Get list of tags
+  local tags_output =
+    vim.fn.systemlist("git -C " .. vim.fn.shellescape(repo_state.repo_root) .. " tag")
+  if vim.v.shell_error ~= 0 or not tags_output or #tags_output == 0 then
+    vim.notify("[gitlad] No tags found", vim.log.levels.WARN)
+    return
+  end
+
+  vim.ui.select(tags_output, { prompt = "Push tag:" }, function(tag)
+    if not tag then
+      return
+    end
+
+    git.remotes({ cwd = repo_state.repo_root }, function(remotes, err)
+      vim.schedule(function()
+        if err or not remotes or #remotes == 0 then
+          vim.notify("[gitlad] No remotes configured", vim.log.levels.WARN)
+          return
+        end
+
+        local remote_names = vim.tbl_map(function(r)
+          return r.name
+        end, remotes)
+        vim.ui.select(remote_names, { prompt = "Push " .. tag .. " to:" }, function(remote)
+          if not remote then
+            return
+          end
+          local args = build_push_args(popup_data, remote, tag)
+          do_push(repo_state, args)
+        end)
+      end)
+    end)
+  end)
+end
+
+--- Push all tags to a remote
+---@param repo_state RepoState
+---@param popup_data PopupData
+function M._push_all_tags(repo_state, popup_data)
+  git.remotes({ cwd = repo_state.repo_root }, function(remotes, err)
+    vim.schedule(function()
+      if err or not remotes or #remotes == 0 then
+        vim.notify("[gitlad] No remotes configured", vim.log.levels.WARN)
+        return
+      end
+
+      local remote_names = vim.tbl_map(function(r)
+        return r.name
+      end, remotes)
+      vim.ui.select(remote_names, { prompt = "Push all tags to:" }, function(remote)
+        if not remote then
+          return
+        end
+        local args = build_push_args(popup_data, remote, nil)
+        table.insert(args, "--tags")
         do_push(repo_state, args)
       end)
     end)

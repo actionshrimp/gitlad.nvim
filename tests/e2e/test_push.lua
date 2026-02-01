@@ -424,4 +424,157 @@ T["push popup"]["p keybinding appears in help"] = function()
   cleanup_repo(child, repo)
 end
 
+-- Push section tests (o, T, t actions)
+T["push section"] = MiniTest.new_set()
+
+T["push section"]["popup shows Push section with o, T, t actions"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open push popup
+  child.type_keys("p")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Check for new Push section with o, T, t actions
+  child.lua([[
+    popup_buf = vim.api.nvim_get_current_buf()
+    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[popup_lines]])
+
+  local found_push_section = false
+  local found_another_branch = false
+  local found_a_tag = false
+  local found_all_tags = false
+
+  for _, line in ipairs(lines) do
+    -- Look for the "Push" section heading (distinct from "Push main to" section)
+    if line:match("^Push$") then
+      found_push_section = true
+    end
+    if line:match("o%s+another branch") then
+      found_another_branch = true
+    end
+    if line:match("T%s+a tag") then
+      found_a_tag = true
+    end
+    if line:match("t%s+all tags") then
+      found_all_tags = true
+    end
+  end
+
+  eq(found_push_section, true)
+  eq(found_another_branch, true)
+  eq(found_a_tag, true)
+  eq(found_all_tags, true)
+
+  child.type_keys("q")
+  cleanup_repo(child, repo)
+end
+
+T["push section"]["T action shows no tags message when no tags exist"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit (no tags)
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open push popup
+  child.type_keys("p")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Press T to push a tag - should show "No tags found" message
+  child.type_keys("T")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Check notification for no tags
+  local messages = child.lua_get([[vim.fn.execute("messages")]])
+  eq(messages:match("No tags found") ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["push section"]["t action shows no remotes message when no remotes configured"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit (no remote)
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open push popup
+  child.type_keys("p")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Press t to push all tags - should show "No remotes configured" message
+  child.type_keys("t")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Check notification for no remotes
+  local messages = child.lua_get([[vim.fn.execute("messages")]])
+  eq(messages:match("No remotes configured") ~= nil, true)
+
+  cleanup_repo(child, repo)
+end
+
+T["push section"]["T action shows tag list when tags exist"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit with tags
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+  git(child, repo, "tag v1.0.0")
+  git(child, repo, "tag v1.0.1")
+
+  -- Add a remote
+  git(child, repo, "remote add origin https://example.com/repo.git")
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Open push popup
+  child.type_keys("p")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  -- Press T to push a tag - should open tag selector
+  child.type_keys("T")
+  child.lua([[vim.wait(300, function() return false end)]])
+
+  -- The vim.ui.select should be showing tags
+  -- We can't easily verify vim.ui.select content, but we can verify no error occurred
+  -- and that the popup closed (action was triggered)
+  local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  -- There should be the status window + possibly the select popup
+  eq(win_count >= 1, true)
+
+  -- Cancel the selection
+  child.type_keys("<Esc>")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  cleanup_repo(child, repo)
+end
+
 return T

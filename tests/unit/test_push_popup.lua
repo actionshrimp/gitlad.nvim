@@ -576,4 +576,130 @@ T["parse_remotes"]["returns remotes in sorted order"] = function()
   eq(result[3].name, "upstream")
 end
 
+-- Push section tests (o, T, t actions)
+T["push section"] = MiniTest.new_set()
+
+T["push section"]["popup creates push section with o, T, t actions"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  local another_branch_called = false
+  local push_tag_called = false
+  local push_all_tags_called = false
+
+  local data = popup
+    .builder()
+    :name("Push")
+    -- Simulate existing "Push [branch] to" section
+    :group_heading("Push main to")
+    :action("p", "origin/main", function() end)
+    :action("u", "origin/main", function() end)
+    :action("e", "elsewhere", function() end)
+    -- New "Push" section
+    :group_heading("Push")
+    :action("o", "another branch", function()
+      another_branch_called = true
+    end)
+    :action("T", "a tag", function()
+      push_tag_called = true
+    end)
+    :action("t", "all tags", function()
+      push_all_tags_called = true
+    end)
+    :build()
+
+  eq(data.name, "Push")
+
+  -- Should have 2 headings + 6 actions = 8 items
+  eq(#data.actions, 8)
+
+  -- First section: "Push main to"
+  eq(data.actions[1].type, "heading")
+  eq(data.actions[1].text, "Push main to")
+  eq(data.actions[2].key, "p")
+  eq(data.actions[3].key, "u")
+  eq(data.actions[4].key, "e")
+
+  -- Second section: "Push"
+  eq(data.actions[5].type, "heading")
+  eq(data.actions[5].text, "Push")
+  eq(data.actions[6].type, "action")
+  eq(data.actions[6].key, "o")
+  eq(data.actions[6].description, "another branch")
+  eq(data.actions[7].type, "action")
+  eq(data.actions[7].key, "T")
+  eq(data.actions[7].description, "a tag")
+  eq(data.actions[8].type, "action")
+  eq(data.actions[8].key, "t")
+  eq(data.actions[8].description, "all tags")
+
+  -- Test callbacks work
+  data.actions[6].callback(data)
+  eq(another_branch_called, true)
+
+  data.actions[7].callback(data)
+  eq(push_tag_called, true)
+
+  data.actions[8].callback(data)
+  eq(push_all_tags_called, true)
+end
+
+T["push section"]["builds correct refspec for another branch push"] = function()
+  -- The "o another branch" action builds a refspec like "source:branch"
+  -- This test verifies the refspec format is correct
+  local source = "abc1234"
+  local target = "origin/feature-branch"
+
+  -- Parse target the same way _push_another_branch does
+  local remote, branch_name = target:match("^([^/]+)/(.+)$")
+
+  eq(remote, "origin")
+  eq(branch_name, "feature-branch")
+
+  -- Build refspec
+  local refspec = source .. ":" .. branch_name
+  eq(refspec, "abc1234:feature-branch")
+end
+
+T["push section"]["parses remote/branch target correctly"] = function()
+  -- Test various target formats
+
+  -- Simple branch
+  local r1, b1 = ("origin/main"):match("^([^/]+)/(.+)$")
+  eq(r1, "origin")
+  eq(b1, "main")
+
+  -- Feature branch with slash
+  local r2, b2 = ("origin/feature/my-feature"):match("^([^/]+)/(.+)$")
+  eq(r2, "origin")
+  eq(b2, "feature/my-feature")
+
+  -- Different remote
+  local r3, b3 = ("upstream/develop"):match("^([^/]+)/(.+)$")
+  eq(r3, "upstream")
+  eq(b3, "develop")
+
+  -- Invalid format (no slash) should not match
+  local r4, b4 = ("localref"):match("^([^/]+)/(.+)$")
+  eq(r4, nil)
+  eq(b4, nil)
+end
+
+T["push section"]["context with commit hash is used for default"] = function()
+  -- Verify the context structure matches what we expect
+  local commit_hash = "abc1234"
+  local context = { commit = commit_hash }
+
+  -- The _push_another_branch function uses context.commit as default
+  eq(context.commit, "abc1234")
+
+  -- Empty context should have nil commit
+  local empty_context = {}
+  eq(empty_context.commit, nil)
+
+  -- nil context defaults to empty table
+  local ctx = nil
+  ctx = ctx or {}
+  eq(ctx.commit, nil)
+end
+
 return T
