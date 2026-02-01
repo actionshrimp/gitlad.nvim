@@ -18,15 +18,11 @@ local M = {}
 ---@field directory_strategy "sibling"|"prompt" How to suggest worktree paths ("sibling" = suggest sibling directory, "prompt" = always prompt for path)
 
 ---@class GitladConfig
----@field refresh_on_focus boolean
----@field watch_gitdir boolean
 ---@field signs GitladSigns
 ---@field commit_editor GitladCommitEditorConfig
 ---@field status GitladStatusConfig
 ---@field worktree GitladWorktreeConfig
 local defaults = {
-  refresh_on_focus = true,
-  watch_gitdir = true,
   signs = {
     staged = "●",
     unstaged = "○",

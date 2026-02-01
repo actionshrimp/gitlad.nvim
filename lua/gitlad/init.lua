@@ -10,9 +10,10 @@ local M = {}
 local config = require("gitlad.config")
 
 ---@class GitladSetupOptions
----@field refresh_on_focus? boolean Auto-refresh when Neovim gains focus (default: true)
----@field watch_gitdir? boolean Watch .git directory for changes (default: true)
 ---@field signs? table Signs configuration for status buffer
+---@field commit_editor? table Commit editor configuration
+---@field worktree? table Worktree configuration
+---@field status? table Status buffer configuration
 
 --- Setup gitlad with user options
 ---@param opts? GitladSetupOptions

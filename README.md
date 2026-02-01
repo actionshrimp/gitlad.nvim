@@ -62,12 +62,6 @@ Below are the default settings. You only need to pass options you want to change
 
 ```lua
 require("gitlad").setup({
-  -- Refresh status buffer when Neovim gains focus
-  refresh_on_focus = true,
-
-  -- Watch .git directory for changes and auto-refresh
-  watch_gitdir = true,
-
   -- Signs shown in the status buffer
   signs = {
     staged = "●",
