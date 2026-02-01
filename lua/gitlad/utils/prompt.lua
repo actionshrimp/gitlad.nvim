@@ -101,6 +101,8 @@ local function prompt_with_snacks(opts, callback)
     title = opts.prompt:gsub(": ?$", ""), -- Remove trailing colon/space
     items = items,
     format = "text",
+    -- Pre-fill with default value if provided
+    pattern = opts.default or nil,
     layout = {
       preset = "select",
     },
@@ -159,6 +161,12 @@ local function prompt_with_mini_pick(opts, callback)
         return nil -- Continue to close picker
       end,
     },
+    -- Pre-fill with default value if provided
+    options = {
+      content_from_bottom = false,
+    },
+    -- Set initial query for pre-fill
+    query = opts.default or nil,
     mappings = {
       -- Custom Enter that accepts query when no match
       choose_or_input = {

@@ -8,6 +8,7 @@ local M = {}
 
 local popup = require("gitlad.ui.popup")
 local git = require("gitlad.git")
+local cli = require("gitlad.git.cli")
 
 ---@class BranchPopupContext
 ---@field repo_state RepoState
@@ -682,8 +683,12 @@ function M._set_push_remote(repo_state, _popup_data)
   end)
 end
 
---- Spin-off: create a new branch with current changes and reset current branch to upstream
+--- Spin-off: create a new branch with current changes and reset current branch to upstream/push remote
 --- This is useful when you've made commits on the wrong branch
+--- Behavior (matching magit):
+---   - If upstream exists and branch is ahead: create new branch, reset current to upstream
+---   - If no upstream but push remote exists and branch is ahead: use push remote as reset target
+---   - If no upstream/push remote or not ahead: create new branch anyway, don't reset current
 ---@param repo_state RepoState
 ---@param _popup_data PopupData
 function M._spinoff(repo_state, _popup_data)
@@ -693,104 +698,101 @@ function M._spinoff(repo_state, _popup_data)
     return
   end
 
-  -- Get upstream for current branch
-  git.get_upstream(current_branch, { cwd = repo_state.repo_root }, function(upstream, err)
-    vim.schedule(function()
-      if err or not upstream then
-        vim.notify(
-          "[gitlad] No upstream configured for '" .. current_branch .. "'. Cannot spin-off.",
-          vim.log.levels.ERROR
-        )
+  local status = repo_state.status
+
+  -- Helper to perform the spinoff once we have the reset target (or nil if no reset needed)
+  local function do_spinoff(reset_target, ahead_count)
+    -- Ask for new branch name
+    vim.ui.input({
+      prompt = "Spin-off to new branch: ",
+    }, function(new_branch_name)
+      if not new_branch_name or new_branch_name == "" then
         return
       end
 
-      -- Check if there are commits to spin off (current branch ahead of upstream)
-      local status = repo_state.status
-      if status and status.ahead == 0 then
-        vim.notify(
-          "[gitlad] Branch is not ahead of upstream. Nothing to spin off.",
-          vim.log.levels.INFO
-        )
-        return
-      end
-
-      -- Ask for new branch name
-      vim.ui.input({
-        prompt = "Spin-off to new branch: ",
-      }, function(new_branch_name)
-        if not new_branch_name or new_branch_name == "" then
-          return
-        end
-
-        -- Create new branch at current HEAD
-        git.create_branch(
-          new_branch_name,
-          "HEAD",
-          { cwd = repo_state.repo_root },
-          function(create_success, create_err)
-            vim.schedule(function()
-              if not create_success then
-                vim.notify(
-                  "[gitlad] Failed to create branch: " .. (create_err or "unknown error"),
-                  vim.log.levels.ERROR
-                )
-                return
-              end
-
-              -- Reset current branch to upstream
-              git.reset(
-                upstream,
-                "hard",
-                { cwd = repo_state.repo_root },
-                function(reset_success, reset_err)
-                  vim.schedule(function()
-                    if not reset_success then
-                      vim.notify(
-                        "[gitlad] Failed to reset to upstream: " .. (reset_err or "unknown error"),
-                        vim.log.levels.ERROR
-                      )
-                      return
-                    end
-
-                    -- Switch to the new branch
-                    git.checkout(
-                      new_branch_name,
-                      {},
-                      { cwd = repo_state.repo_root },
-                      function(checkout_success, checkout_err)
-                        vim.schedule(function()
-                          if not checkout_success then
-                            vim.notify(
-                              "[gitlad] Spun off to '"
-                                .. new_branch_name
-                                .. "' but failed to switch: "
-                                .. (checkout_err or "unknown error"),
-                              vim.log.levels.WARN
-                            )
-                            repo_state:refresh_status(true)
-                            return
-                          end
-
-                          vim.notify(
-                            "[gitlad] Spun off to '"
-                              .. new_branch_name
-                              .. "', reset '"
-                              .. current_branch
-                              .. "' to "
-                              .. upstream,
-                            vim.log.levels.INFO
-                          )
-                          repo_state:refresh_status(true)
-                        end)
-                      end
-                    )
-                  end)
-                end
+      -- Create new branch at current HEAD and checkout
+      git.checkout_new_branch(
+        new_branch_name,
+        "HEAD",
+        {},
+        { cwd = repo_state.repo_root },
+        function(create_success, create_err)
+          vim.schedule(function()
+            if not create_success then
+              vim.notify(
+                "[gitlad] Failed to create branch: " .. (create_err or "unknown error"),
+                vim.log.levels.ERROR
               )
-            end)
-          end
-        )
-      end)
+              return
+            end
+
+            -- If we have a reset target and are ahead, reset the original branch
+            if reset_target and ahead_count and ahead_count > 0 then
+              -- We need to reset the original branch (not the one we just switched to)
+              -- Use update-ref to move the original branch without switching
+              cli.run_async({
+                "update-ref",
+                "-m",
+                "spin-off: moving to " .. reset_target,
+                "refs/heads/" .. current_branch,
+                reset_target,
+              }, { cwd = repo_state.repo_root }, function(reset_result)
+                vim.schedule(function()
+                  if reset_result.code ~= 0 then
+                    vim.notify(
+                      "[gitlad] Spun off to '"
+                        .. new_branch_name
+                        .. "' but failed to reset '"
+                        .. current_branch
+                        .. "': "
+                        .. table.concat(reset_result.stderr, "\n"),
+                      vim.log.levels.WARN
+                    )
+                  else
+                    vim.notify(
+                      "[gitlad] Spun off to '"
+                        .. new_branch_name
+                        .. "', reset '"
+                        .. current_branch
+                        .. "' to "
+                        .. reset_target,
+                      vim.log.levels.INFO
+                    )
+                  end
+                  repo_state:refresh_status(true)
+                end)
+              end)
+            else
+              -- No reset needed - just notify about the new branch
+              vim.notify(
+                "[gitlad] Created and switched to '" .. new_branch_name .. "'",
+                vim.log.levels.INFO
+              )
+              repo_state:refresh_status(true)
+            end
+          end)
+        end
+      )
+    end)
+  end
+
+  -- First try to get upstream
+  git.get_upstream(current_branch, { cwd = repo_state.repo_root }, function(upstream, _err)
+    vim.schedule(function()
+      if upstream then
+        -- Has upstream - use it as reset target
+        local ahead_count = status and status.ahead or 0
+        do_spinoff(upstream, ahead_count)
+      elseif status and status.push_remote then
+        -- No upstream but has push remote (e.g., "origin/main") - use that
+        local ahead_count = status.push_ahead
+          or (status.unpushed_push and #status.unpushed_push)
+          or 0
+        do_spinoff(status.push_remote, ahead_count)
+      else
+        -- No upstream and no push remote - create branch anyway without reset (magit behavior)
+        do_spinoff(nil, 0)
+      end
     end)
   end)
 end

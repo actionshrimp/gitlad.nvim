@@ -335,7 +335,9 @@ local function setup_keymaps(self)
       stash_popup.open(self.repo_state, { stash = stash })
     else
       local push_popup = require("gitlad.popups.push")
-      push_popup.open(self.repo_state)
+      local commit = get_current_commit(self)
+      local context = commit and { commit = commit.hash } or nil
+      push_popup.open(self.repo_state, context)
     end
   end, "Push popup / Stash popup")
 
