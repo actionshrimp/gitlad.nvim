@@ -10,6 +10,7 @@ local M = {}
 ---@alias StatusCommandType
 ---| "stage_file"      -- Move file to staged
 ---| "unstage_file"    -- Move file to unstaged
+---| "stage_intent"    -- Intent-to-add (git add -N), moves untracked to unstaged
 ---| "refresh"         -- Full replacement from git status
 ---| "stage_all"       -- Stage all unstaged + untracked
 ---| "unstage_all"     -- Unstage all staged
@@ -30,6 +31,17 @@ function M.stage_file(path, from_section)
     type = "stage_file",
     path = path,
     from_section = from_section,
+  }
+end
+
+--- Create a stage_intent command (git add -N)
+--- Moves file from untracked to unstaged, allowing partial staging
+---@param path string File path to stage with intent
+---@return StatusCommand
+function M.stage_intent(path)
+  return {
+    type = "stage_intent",
+    path = path,
   }
 end
 

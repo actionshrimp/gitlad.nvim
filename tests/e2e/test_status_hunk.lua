@@ -797,4 +797,68 @@ T["hunk discard"]["cannot discard staged changes"] = function()
   )
 end
 
+-- =============================================================================
+-- Visual Selection Staging for Untracked Files
+-- =============================================================================
+
+T["visual selection untracked"] = MiniTest.new_set()
+
+T["visual selection untracked"]["stages selected lines from untracked file"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create an untracked file with multiple lines
+  create_file(child, repo, "new.txt", "line1\nline2\nline3\nline4\nline5\n")
+
+  open_gitlad(child, repo)
+
+  -- Navigate to the untracked file and expand it
+  local lines = get_buffer_lines(child)
+  local file_line = find_line_with(lines, "new.txt")
+  assert_truthy(file_line, "Should find new.txt")
+  child.cmd(tostring(file_line))
+
+  -- Expand to see the diff
+  child.type_keys("<Tab>")
+  wait(child, 200)
+
+  -- Find lines to select (we'll select line1 and line2 but not line3-5)
+  lines = get_buffer_lines(child)
+  local plus_line1 = find_line_with(lines, "+line1")
+  local plus_line2 = find_line_with(lines, "+line2")
+  assert_truthy(plus_line1, "Should find +line1")
+  assert_truthy(plus_line2, "Should find +line2")
+
+  -- Visual select lines 1-2 and stage them
+  child.cmd(tostring(plus_line1))
+  child.type_keys("V")
+  child.cmd(tostring(plus_line2))
+  child.type_keys("s")
+  wait(child, 400) -- Extra wait for intent-to-add + apply patch
+
+  -- Verify partial staging occurred:
+  -- - git add -N was run first
+  -- - Then partial patch was applied
+  -- File should have both staged (line1, line2) and unstaged (line3, line4, line5) changes
+  local status = git(child, repo, "status --porcelain")
+  -- Should be AM (Added in index with modifications in worktree)
+  assert_truthy(status:find("AM new.txt"), "File should have partial staging (AM status)")
+
+  -- Verify staged diff contains line1 and line2
+  local staged_diff = git(child, repo, "diff --cached new.txt")
+  assert_truthy(staged_diff:find("+line1"), "Staged diff should contain +line1")
+  assert_truthy(staged_diff:find("+line2"), "Staged diff should contain +line2")
+
+  -- Verify unstaged diff contains line3, line4, line5 (but not line1, line2)
+  local unstaged_diff = git(child, repo, "diff new.txt")
+  assert_truthy(unstaged_diff:find("+line3"), "Unstaged diff should contain +line3")
+  assert_truthy(unstaged_diff:find("+line4"), "Unstaged diff should contain +line4")
+  assert_truthy(unstaged_diff:find("+line5"), "Unstaged diff should contain +line5")
+end
+
 return T

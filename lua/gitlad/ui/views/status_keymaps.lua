@@ -222,6 +222,11 @@ local function setup_keymaps(self)
     self:_unstage_visual()
   end, "Unstage selection")
 
+  -- Intent-to-add (for partial staging of untracked files)
+  keymap.set(bufnr, "n", "gs", function()
+    self:_stage_intent_current()
+  end, "Stage intent (git add -N)")
+
   -- Staging all
   keymap.set(bufnr, "n", "S", function()
     self:_stage_all()

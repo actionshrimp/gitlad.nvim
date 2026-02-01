@@ -185,6 +185,26 @@ function M._apply_unstage_file(status, path)
   return status
 end
 
+--- Apply stage_intent command (git add -N)
+--- Moves file from untracked to unstaged, allowing partial staging
+---@param status GitStatusResult (already copied)
+---@param path string
+---@return GitStatusResult
+function M._apply_stage_intent(status, path)
+  local new_untracked, removed = remove_entry(status.untracked, path)
+  if removed then
+    status.untracked = new_untracked
+    -- After git add -N, porcelain v2 shows ".A" (index unchanged, worktree added)
+    -- The file is tracked but content is not staged yet
+    insert_sorted(status.unstaged, {
+      path = removed.path,
+      index_status = ".",
+      worktree_status = "A",
+    })
+  end
+  return status
+end
+
 --- Apply stage_all command
 ---@param status GitStatusResult (already copied)
 ---@return GitStatusResult
@@ -280,6 +300,8 @@ function M.apply(status, cmd)
     return M._apply_stage_file(new_status, cmd.path, cmd.from_section)
   elseif cmd.type == "unstage_file" then
     return M._apply_unstage_file(new_status, cmd.path)
+  elseif cmd.type == "stage_intent" then
+    return M._apply_stage_intent(new_status, cmd.path)
   elseif cmd.type == "stage_all" then
     return M._apply_stage_all(new_status)
   elseif cmd.type == "unstage_all" then

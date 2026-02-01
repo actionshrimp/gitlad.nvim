@@ -5,7 +5,7 @@
 - [x] discard hunks with 'x' - we can discard whole files but this should also work at hunk level
 - [x] "diffs" / pressing RET on stashes doesnt seem to work. Does diffview support this?
 - [x] update casing of 'pushremote' in places where it's all lower case to 'pushRemote'
-- [ ] is there some way we can make partial staging of untracked files work?
+- [x] is there some way we can make partial staging of untracked files work? perhaps with `git add -N` followed by a similar approach to how we do staging of visually selected lines for unstaged changes?
 - [ ] add 'o' to push popup (push other branch)
 - [ ] add a 'view is stale' indicator
 - [ ] for a moved file, only show the actual file changes in the diff

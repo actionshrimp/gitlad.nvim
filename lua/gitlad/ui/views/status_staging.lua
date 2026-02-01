@@ -147,8 +147,11 @@ local function stage_visual(self)
   local section = first_diff.section
   local hunk_index = first_diff.hunk_index
 
-  if section ~= "unstaged" then
-    vim.notify("[gitlad] Partial hunk staging only works on unstaged changes", vim.log.levels.INFO)
+  if section ~= "unstaged" and section ~= "untracked" then
+    vim.notify(
+      "[gitlad] Partial hunk staging only works on unstaged or untracked files",
+      vim.log.levels.INFO
+    )
     return
   end
 
@@ -192,13 +195,45 @@ local function stage_visual(self)
     return
   end
 
-  git.apply_patch(patch_lines, false, { cwd = self.repo_state.repo_root }, function(success, err)
-    if not success then
-      vim.notify("[gitlad] Stage selection error: " .. (err or "unknown"), vim.log.levels.ERROR)
-    else
-      self.repo_state:refresh_status(true)
-    end
-  end)
+  if section == "untracked" then
+    -- For untracked files, we need to:
+    -- 1. Run git add -N first to mark intent-to-add
+    -- 2. Then apply the partial patch
+    -- Note: The patch from --no-index (with "--- /dev/null") works fine after git add -N
+
+    git.stage_intent(path, { cwd = self.repo_state.repo_root }, function(success, err)
+      if not success then
+        vim.notify("[gitlad] Intent-to-add error: " .. (err or "unknown"), vim.log.levels.ERROR)
+        return
+      end
+
+      -- Now apply the partial patch
+      git.apply_patch(
+        patch_lines,
+        false,
+        { cwd = self.repo_state.repo_root },
+        function(apply_success, apply_err)
+          if not apply_success then
+            vim.notify(
+              "[gitlad] Stage selection error: " .. (apply_err or "unknown"),
+              vim.log.levels.ERROR
+            )
+          else
+            self.repo_state:refresh_status(true)
+          end
+        end
+      )
+    end)
+  else
+    -- Regular unstaged file - apply patch directly
+    git.apply_patch(patch_lines, false, { cwd = self.repo_state.repo_root }, function(success, err)
+      if not success then
+        vim.notify("[gitlad] Stage selection error: " .. (err or "unknown"), vim.log.levels.ERROR)
+      else
+        self.repo_state:refresh_status(true)
+      end
+    end)
+  end
 end
 
 --- Unstage visual selection
@@ -386,6 +421,23 @@ local function stage_current(self)
       self.repo_state:stage(path, section)
     end
   end
+end
+
+--- Stage the untracked file under cursor with intent-to-add (git add -N)
+--- This allows subsequent partial staging of the file's content
+---@param self StatusBuffer
+local function stage_intent_current(self)
+  local path, section = self:_get_current_file()
+  if not path then
+    return
+  end
+
+  if section ~= "untracked" then
+    vim.notify("[gitlad] Intent-to-add (gs) only applies to untracked files", vim.log.levels.INFO)
+    return
+  end
+
+  self.repo_state:stage_intent(path)
 end
 
 --- Unstage the file or hunk under cursor, or entire section if on section header
@@ -805,6 +857,7 @@ function M.setup(StatusBuffer)
   StatusBuffer._stage_visual = stage_visual
   StatusBuffer._unstage_visual = unstage_visual
   StatusBuffer._stage_current = stage_current
+  StatusBuffer._stage_intent_current = stage_intent_current
   StatusBuffer._unstage_current = unstage_current
   StatusBuffer._find_next_file_in_section = find_next_file_in_section
   StatusBuffer._find_prev_file_in_section = find_prev_file_in_section

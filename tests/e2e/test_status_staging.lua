@@ -617,4 +617,143 @@ T["unstage cursor positioning"]["repeated u unstages multiple files in successio
   eq(status:find("A "), nil, "No staged files should remain")
 end
 
+-- =============================================================================
+-- Intent-to-Add (gs keybinding) Tests
+-- =============================================================================
+
+T["intent to add"] = MiniTest.new_set()
+
+T["intent to add"]["gs marks untracked file with intent-to-add"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked file
+  create_file(child, repo, "new.txt", "new content\nline 2\nline 3")
+
+  open_gitlad(child, repo)
+
+  -- Navigate to the untracked file
+  local lines = get_buffer_lines(child)
+  local file_line = find_line_with(lines, "new.txt")
+  assert_truthy(file_line, "Should find new.txt")
+
+  -- Go to that line and press 'gs' to mark intent-to-add
+  child.cmd(tostring(file_line))
+  child.type_keys("gs")
+  wait(child, 200)
+
+  -- Verify file moved to unstaged section (git add -N marks as AM)
+  lines = get_buffer_lines(child)
+  local unstaged_section = find_line_with(lines, "Unstaged")
+  local untracked_section = find_line_with(lines, "Untracked")
+
+  -- new.txt should be in unstaged now
+  local new_line = find_line_with(lines, "new.txt")
+  assert_truthy(unstaged_section, "Should have Unstaged section")
+  assert_truthy(new_line and new_line > unstaged_section, "new.txt should be in unstaged section")
+
+  -- Should NOT be in untracked
+  if untracked_section then
+    -- If untracked section exists, new.txt should not be in it
+    local untracked_files_start = untracked_section + 1
+    -- Check that new.txt is not after the untracked header
+    assert_truthy(
+      new_line < untracked_section or new_line == nil,
+      "new.txt should not be in untracked section"
+    )
+  end
+
+  -- Verify git state: after git add -N, porcelain shows " A new.txt" (space + A)
+  -- meaning: index unchanged, worktree has added file
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find(" A new.txt"), "Git should show file as intent-to-add ( A)")
+end
+
+T["intent to add"]["gs on non-untracked file shows info message"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create and commit a file
+  create_file(child, repo, "file.txt", "original")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Modify the file (will be unstaged)
+  create_file(child, repo, "file.txt", "modified")
+
+  open_gitlad(child, repo)
+
+  -- Navigate to the unstaged file
+  local lines = get_buffer_lines(child)
+  local file_line = find_line_with(lines, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
+
+  -- Go to that line and press 'gs'
+  child.cmd(tostring(file_line))
+  child.type_keys("gs")
+  wait(child, 100)
+
+  -- File should still be in unstaged (gs is no-op for non-untracked)
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find(" M file.txt"), "Git should show file as unstaged modified")
+end
+
+T["intent to add"]["gs followed by regular staging works"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked file
+  create_file(child, repo, "new.txt", "line 1\nline 2\nline 3")
+
+  -- First, verify file is untracked
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("%?%? new.txt"), "File should start as untracked")
+
+  open_gitlad(child, repo)
+
+  -- Navigate to the untracked file
+  local lines = get_buffer_lines(child)
+  local file_line = find_line_with(lines, "new.txt")
+  assert_truthy(file_line, "Should find new.txt")
+  child.cmd(tostring(file_line))
+
+  -- Press gs to mark intent-to-add
+  child.type_keys("gs")
+  wait(child, 500)
+
+  -- Verify git state changed to intent-to-add
+  status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find(" A new.txt"), "After gs, git should show intent-to-add ( A)")
+
+  -- Close gitlad and reopen to get fresh state
+  child.type_keys("q")
+  wait(child, 100)
+  child.cmd("Gitlad")
+  wait(child, 300)
+
+  -- Now the file should be in unstaged section - find it and stage
+  lines = get_buffer_lines(child)
+  file_line = find_line_with(lines, "new.txt")
+  assert_truthy(file_line, "Should still find new.txt")
+  child.cmd(tostring(file_line))
+
+  -- Stage the whole file
+  child.type_keys("s")
+  wait(child, 300)
+
+  -- Verify file is now fully staged
+  status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("A  new.txt"), "Git should show file as fully staged (A)")
+end
+
 return T
