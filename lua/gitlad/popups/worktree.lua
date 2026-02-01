@@ -345,16 +345,25 @@ function M._move_worktree_direct(repo_state, worktree)
 
     vim.notify("[gitlad] Moving worktree...", vim.log.levels.INFO)
 
-    git.worktree_move(worktree.path, new_path, force, { cwd = repo_state.repo_root }, function(success, err)
-      vim.schedule(function()
-        if success then
-          vim.notify("[gitlad] Worktree moved to " .. new_path, vim.log.levels.INFO)
-          repo_state:refresh_status(true)
-        else
-          vim.notify("[gitlad] Failed to move worktree: " .. (err or "unknown error"), vim.log.levels.ERROR)
-        end
-      end)
-    end)
+    git.worktree_move(
+      worktree.path,
+      new_path,
+      force,
+      { cwd = repo_state.repo_root },
+      function(success, err)
+        vim.schedule(function()
+          if success then
+            vim.notify("[gitlad] Worktree moved to " .. new_path, vim.log.levels.INFO)
+            repo_state:refresh_status(true)
+          else
+            vim.notify(
+              "[gitlad] Failed to move worktree: " .. (err or "unknown error"),
+              vim.log.levels.ERROR
+            )
+          end
+        end)
+      end
+    )
   end)
 end
 
@@ -406,44 +415,52 @@ function M._delete_worktree_direct(repo_state, worktree, popup_data)
 
     vim.notify("[gitlad] Deleting worktree...", vim.log.levels.INFO)
 
-    git.worktree_remove(worktree.path, use_force, { cwd = repo_state.repo_root }, function(success, err)
-      vim.schedule(function()
-        if success then
-          vim.notify("[gitlad] Worktree deleted", vim.log.levels.INFO)
-          repo_state:refresh_status(true)
-        else
-          -- Check if it failed due to uncommitted changes
-          if err and err:match("contains modified") then
-            vim.ui.select({ "Yes, force delete", "No" }, {
-              prompt = "Worktree has uncommitted changes. Force delete?",
-            }, function(force_choice)
-              if force_choice == "Yes, force delete" then
-                git.worktree_remove(
-                  worktree.path,
-                  true,
-                  { cwd = repo_state.repo_root },
-                  function(force_success, force_err)
-                    vim.schedule(function()
-                      if force_success then
-                        vim.notify("[gitlad] Worktree force deleted", vim.log.levels.INFO)
-                        repo_state:refresh_status(true)
-                      else
-                        vim.notify(
-                          "[gitlad] Failed to delete worktree: " .. (force_err or "unknown error"),
-                          vim.log.levels.ERROR
-                        )
-                      end
-                    end)
-                  end
-                )
-              end
-            end)
+    git.worktree_remove(
+      worktree.path,
+      use_force,
+      { cwd = repo_state.repo_root },
+      function(success, err)
+        vim.schedule(function()
+          if success then
+            vim.notify("[gitlad] Worktree deleted", vim.log.levels.INFO)
+            repo_state:refresh_status(true)
           else
-            vim.notify("[gitlad] Failed to delete worktree: " .. (err or "unknown error"), vim.log.levels.ERROR)
+            -- Check if it failed due to uncommitted changes
+            if err and err:match("contains modified") then
+              vim.ui.select({ "Yes, force delete", "No" }, {
+                prompt = "Worktree has uncommitted changes. Force delete?",
+              }, function(force_choice)
+                if force_choice == "Yes, force delete" then
+                  git.worktree_remove(
+                    worktree.path,
+                    true,
+                    { cwd = repo_state.repo_root },
+                    function(force_success, force_err)
+                      vim.schedule(function()
+                        if force_success then
+                          vim.notify("[gitlad] Worktree force deleted", vim.log.levels.INFO)
+                          repo_state:refresh_status(true)
+                        else
+                          vim.notify(
+                            "[gitlad] Failed to delete worktree: " .. (force_err or "unknown error"),
+                            vim.log.levels.ERROR
+                          )
+                        end
+                      end)
+                    end
+                  )
+                end
+              end)
+            else
+              vim.notify(
+                "[gitlad] Failed to delete worktree: " .. (err or "unknown error"),
+                vim.log.levels.ERROR
+              )
+            end
           end
-        end
-      end)
-    end)
+        end)
+      end
+    )
   end)
 end
 
@@ -468,7 +485,10 @@ function M._visit_worktree_direct(repo_state, worktree)
   local status_view = require("gitlad.ui.views.status")
   status_view.open()
 
-  vim.notify("[gitlad] Switched to worktree: " .. vim.fn.fnamemodify(worktree.path, ":~"), vim.log.levels.INFO)
+  vim.notify(
+    "[gitlad] Switched to worktree: " .. vim.fn.fnamemodify(worktree.path, ":~"),
+    vim.log.levels.INFO
+  )
 end
 
 --- Lock a worktree (with selection prompt)
@@ -504,7 +524,10 @@ function M._lock_worktree_direct(repo_state, worktree)
           vim.notify("[gitlad] Worktree locked", vim.log.levels.INFO)
           repo_state:refresh_status(true)
         else
-          vim.notify("[gitlad] Failed to lock worktree: " .. (err or "unknown error"), vim.log.levels.ERROR)
+          vim.notify(
+            "[gitlad] Failed to lock worktree: " .. (err or "unknown error"),
+            vim.log.levels.ERROR
+          )
         end
       end)
     end)
@@ -565,7 +588,10 @@ function M._unlock_worktree_direct(repo_state, worktree)
         vim.notify("[gitlad] Worktree unlocked", vim.log.levels.INFO)
         repo_state:refresh_status(true)
       else
-        vim.notify("[gitlad] Failed to unlock worktree: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        vim.notify(
+          "[gitlad] Failed to unlock worktree: " .. (err or "unknown error"),
+          vim.log.levels.ERROR
+        )
       end
     end)
   end)
@@ -578,7 +604,10 @@ function M._prune_worktrees(repo_state)
   git.worktree_prune(true, { cwd = repo_state.repo_root }, function(success, output, err)
     vim.schedule(function()
       if not success then
-        vim.notify("[gitlad] Failed to check prunable worktrees: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        vim.notify(
+          "[gitlad] Failed to check prunable worktrees: " .. (err or "unknown error"),
+          vim.log.levels.ERROR
+        )
         return
       end
 
@@ -597,19 +626,24 @@ function M._prune_worktrees(repo_state)
 
         vim.notify("[gitlad] Pruning stale worktrees...", vim.log.levels.INFO)
 
-        git.worktree_prune(false, { cwd = repo_state.repo_root }, function(prune_success, prune_output, prune_err)
-          vim.schedule(function()
-            if prune_success then
-              vim.notify("[gitlad] Stale worktrees pruned", vim.log.levels.INFO)
-              repo_state:refresh_status(true)
-            else
-              vim.notify(
-                "[gitlad] Failed to prune worktrees: " .. (prune_err or prune_output or "unknown error"),
-                vim.log.levels.ERROR
-              )
-            end
-          end)
-        end)
+        git.worktree_prune(
+          false,
+          { cwd = repo_state.repo_root },
+          function(prune_success, prune_output, prune_err)
+            vim.schedule(function()
+              if prune_success then
+                vim.notify("[gitlad] Stale worktrees pruned", vim.log.levels.INFO)
+                repo_state:refresh_status(true)
+              else
+                vim.notify(
+                  "[gitlad] Failed to prune worktrees: "
+                    .. (prune_err or prune_output or "unknown error"),
+                  vim.log.levels.ERROR
+                )
+              end
+            end)
+          end
+        )
       end)
     end)
   end)
