@@ -11,3 +11,5 @@
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
 - [ ] improve look and feel of '$' / command history (from screenshot)
+
+some other text
