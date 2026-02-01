@@ -10,6 +10,7 @@ local config = require("gitlad.config")
 local git = require("gitlad.git")
 local hl = require("gitlad.ui.hl")
 local log_list = require("gitlad.ui.components.log_list")
+local sections = require("gitlad.ui.views.status_sections")
 local signs_util = require("gitlad.ui.utils.signs")
 
 -- Namespace for sign column indicators
@@ -296,236 +297,44 @@ local function render(self)
 
   table.insert(lines, "")
 
-  -- === File sections (staged/unstaged/untracked/conflicted) - shown first, magit style ===
+  -- === Configurable sections ===
+  -- Build render context for section functions
+  local render_ctx = {
+    self = self,
+    status = status,
+    cfg = cfg,
+    lines = lines,
+    add_section_header = add_section_header,
+    add_file_line = add_file_line,
+    add_commit_section = add_commit_section,
+    show_tags = show_tags,
+  }
 
-  -- Untracked files
-  if #status.untracked > 0 then
-    local is_expanded = add_section_header("Untracked", "untracked", #status.untracked)
-    if is_expanded then
-      for _, entry in ipairs(status.untracked) do
-        add_file_line(entry, "untracked", cfg.signs.untracked, nil, false)
+  -- Get configured sections (or defaults)
+  local section_list = sections.get_sections()
+
+  -- Track if any file sections were rendered (for "Nothing to commit" message)
+  local rendered_file_sections = false
+  local file_section_names = { untracked = true, unstaged = true, staged = true, conflicted = true }
+
+  -- Render each section in configured order
+  for _, section_entry in ipairs(section_list) do
+    local name, opts = sections.normalize_section(section_entry)
+    local def = sections.SECTION_DEFS[name]
+    if def then
+      local lines_before = #lines
+      def.render(render_ctx, opts)
+      -- Track if file sections rendered content
+      if file_section_names[name] and #lines > lines_before then
+        rendered_file_sections = true
       end
     end
-    table.insert(lines, "")
   end
 
-  -- Unstaged changes
-  if #status.unstaged > 0 then
-    local is_expanded = add_section_header("Unstaged", "unstaged", #status.unstaged)
-    if is_expanded then
-      for _, entry in ipairs(status.unstaged) do
-        add_file_line(entry, "unstaged", cfg.signs.unstaged, entry.worktree_status, false)
-      end
-    end
-    table.insert(lines, "")
-  end
-
-  -- Staged changes
-  if #status.staged > 0 then
-    local is_expanded = add_section_header("Staged", "staged", #status.staged)
-    if is_expanded then
-      for _, entry in ipairs(status.staged) do
-        add_file_line(entry, "staged", cfg.signs.staged, entry.index_status, true)
-      end
-    end
-    table.insert(lines, "")
-  end
-
-  -- Conflicted files
-  if #status.conflicted > 0 then
-    local is_expanded = add_section_header("Conflicted", "conflicted", #status.conflicted)
-    if is_expanded then
-      for _, entry in ipairs(status.conflicted) do
-        add_file_line(entry, "conflicted", cfg.signs.conflict, nil, false)
-      end
-    end
-    table.insert(lines, "")
-  end
-
-  -- Clean working tree message
-  if
-    #status.staged == 0
-    and #status.unstaged == 0
-    and #status.untracked == 0
-    and #status.conflicted == 0
-  then
+  -- Clean working tree message (only if no file sections rendered)
+  if not rendered_file_sections and not sections.has_file_changes(status) then
     table.insert(lines, "Nothing to commit, working tree clean")
     table.insert(lines, "")
-  end
-
-  -- === Stashes section (after file changes, before commit sections) ===
-  if status.stashes and #status.stashes > 0 then
-    local is_collapsed = self.collapsed_sections["stashes"]
-    table.insert(lines, string.format("Stashes (%d)", #status.stashes))
-    self.section_lines[#lines] = { name = "Stashes", section = "stashes" }
-    self.sign_lines[#lines] = { expanded = not is_collapsed }
-
-    if not is_collapsed then
-      for _, stash in ipairs(status.stashes) do
-        table.insert(lines, string.format("%s %s", stash.ref, stash.message))
-        self.line_map[#lines] = {
-          type = "stash",
-          stash = stash,
-          section = "stashes",
-        }
-      end
-    end
-    table.insert(lines, "")
-  end
-
-  -- === Submodules section (after stashes, before commit sections) ===
-  -- Only show if enabled via config or runtime toggle (off by default, like magit)
-  if self.show_submodules_section and status.submodules and #status.submodules > 0 then
-    local is_collapsed = self.collapsed_sections["submodules"]
-    table.insert(lines, string.format("Submodules (%d)", #status.submodules))
-    self.section_lines[#lines] = { name = "Submodules", section = "submodules" }
-    self.sign_lines[#lines] = { expanded = not is_collapsed }
-
-    if not is_collapsed then
-      for _, submodule in ipairs(status.submodules) do
-        -- Format: status indicator, path, (describe or SHA)
-        local status_char = ""
-        if submodule.status == "modified" then
-          status_char = "+"
-        elseif submodule.status == "uninitialized" then
-          status_char = "-"
-        elseif submodule.status == "merge_conflict" then
-          status_char = "U"
-        end
-
-        -- Show describe if available, otherwise abbreviated SHA
-        local info = submodule.describe or submodule.sha:sub(1, 7)
-        local line_text
-        if status_char ~= "" then
-          line_text = string.format("  %s %s (%s)", status_char, submodule.path, info)
-        else
-          line_text = string.format("    %s (%s)", submodule.path, info)
-        end
-
-        table.insert(lines, line_text)
-        self.line_map[#lines] = {
-          type = "submodule",
-          submodule = submodule,
-          section = "submodules",
-        }
-
-        -- Check if submodule is expanded and render SHA diff
-        local cache_key = "submodule:" .. submodule.path
-        if self.expanded_files[cache_key] then
-          local diff_data = self.diff_cache[cache_key]
-          if diff_data and diff_data.is_submodule then
-            self.sign_lines[#lines] = { expanded = true }
-            -- Render the SHA diff lines: -oldsha, +newsha
-            table.insert(lines, "-" .. diff_data.old_sha)
-            self.line_map[#lines] = { type = "submodule_diff", diff_type = "delete" }
-            table.insert(lines, "+" .. diff_data.new_sha)
-            self.line_map[#lines] = { type = "submodule_diff", diff_type = "add" }
-          end
-        else
-          self.sign_lines[#lines] = { expanded = false }
-        end
-      end
-    end
-    table.insert(lines, "")
-  end
-
-  -- === Worktrees section (after submodules, before commit sections) ===
-  -- Only shown when 2+ worktrees exist (like magit)
-  if status.worktrees and #status.worktrees > 1 then
-    local is_collapsed = self.collapsed_sections["worktrees"]
-    table.insert(lines, string.format("Worktrees (%d)", #status.worktrees))
-    self.section_lines[#lines] = { name = "Worktrees", section = "worktrees" }
-    self.sign_lines[#lines] = { expanded = not is_collapsed }
-
-    if not is_collapsed then
-      -- Normalize repo_root path for comparison (remove trailing slash)
-      local current_repo_root = self.repo_state.repo_root:gsub("/$", "")
-
-      for _, worktree in ipairs(status.worktrees) do
-        -- Format: [*] branch  ~/path  (current marked with *, locked marked with L)
-        local prefix = "  "
-        -- Normalize worktree path for comparison (remove trailing slash)
-        local wt_path = worktree.path:gsub("/$", "")
-        if wt_path == current_repo_root then
-          prefix = "* " -- Current worktree
-        elseif worktree.locked then
-          prefix = "L " -- Locked worktree
-        end
-
-        local branch_info = worktree.branch or "(detached)"
-        local short_path = vim.fn.fnamemodify(worktree.path, ":~")
-        local line_text = string.format("  %s%s  %s", prefix, branch_info, short_path)
-
-        table.insert(lines, line_text)
-        self.line_map[#lines] = {
-          type = "worktree",
-          worktree = worktree,
-          section = "worktrees",
-        }
-      end
-    end
-    table.insert(lines, "")
-  end
-
-  -- === Commit sections (unpulled/unpushed/recent) - shown after file changes, magit style ===
-  -- Order: user's commits first, then what to pull, with upstream last (often has many commits)
-
-  -- Track whether we have any unpushed commits (used to decide whether to show recent commits)
-  local has_unpushed_upstream = status.upstream
-    and status.unpushed_upstream
-    and #status.unpushed_upstream > 0
-
-  if status.push_remote then
-    -- Push remote is different from upstream - show push remote sections first
-    -- 1. User's commits to push remote (most important - your own work)
-    add_commit_section(
-      "Unpushed to " .. status.push_remote,
-      status.unpushed_push or {},
-      "unpushed_push"
-    )
-    -- 2. Commits to pull from push remote
-    add_commit_section(
-      "Unpulled from " .. status.push_remote,
-      status.unpulled_push or {},
-      "unpulled_push"
-    )
-    -- 3. User's commits not yet in upstream (if upstream exists)
-    if status.upstream and has_unpushed_upstream then
-      add_commit_section(
-        "Unmerged into " .. status.upstream,
-        status.unpushed_upstream or {},
-        "unpushed_upstream"
-      )
-    end
-    -- 4. Commits to pull from upstream (last - often has many commits)
-    if status.upstream then
-      add_commit_section(
-        "Unpulled from " .. status.upstream,
-        status.unpulled_upstream or {},
-        "unpulled_upstream"
-      )
-    end
-  elseif status.upstream then
-    -- No separate push remote - just show upstream sections
-    -- 1. User's commits first
-    if has_unpushed_upstream then
-      add_commit_section(
-        "Unmerged into " .. status.upstream,
-        status.unpushed_upstream or {},
-        "unpushed_upstream"
-      )
-    end
-    -- 2. Commits to pull (last)
-    add_commit_section(
-      "Unpulled from " .. status.upstream,
-      status.unpulled_upstream or {},
-      "unpulled_upstream"
-    )
-  end
-
-  -- Always show "Recent commits" section for context
-  if status.recent_commits and #status.recent_commits > 0 then
-    add_commit_section("Recent commits", status.recent_commits, "recent")
   end
 
   -- Help line

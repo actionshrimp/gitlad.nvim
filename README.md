@@ -56,6 +56,71 @@ Using lazy.nvim:
 
 > **Note:** The 3-way staging view (`d` then `3` on staged/unstaged files) requires the `3-way-staging` branch from the [actionshrimp/diffview.nvim](https://github.com/actionshrimp/diffview.nvim/tree/3-way-staging) fork. This feature shows HEAD | INDEX | WORKING side-by-side with editable index buffers.
 
+## Configuration
+
+Below are the default settings. You only need to pass options you want to change.
+
+```lua
+require("gitlad").setup({
+  -- Refresh status buffer when Neovim gains focus
+  refresh_on_focus = true,
+
+  -- Watch .git directory for changes and auto-refresh
+  watch_gitdir = true,
+
+  -- Signs shown in the status buffer
+  signs = {
+    staged = "●",
+    unstaged = "○",
+    untracked = "?",
+    conflict = "!",
+  },
+
+  -- Commit editor behavior
+  commit_editor = {
+    split = "above", -- "above" = split above status, "replace" = replace current buffer
+  },
+
+  -- Worktree creation behavior
+  worktree = {
+    directory_strategy = "sibling", -- "sibling" = suggest sibling directory, "prompt" = always prompt
+  },
+
+  -- Status buffer configuration
+  status = {
+    -- Section order and visibility. Omit a section to hide it.
+    -- Use string for defaults, or table for section-specific options.
+    sections = {
+      "untracked",
+      "unstaged",
+      "staged",
+      "conflicted",
+      "stashes",
+      -- "submodules",  -- uncomment to show submodules section
+      { "worktrees", min_count = 2 },  -- only show if >= min_count worktrees
+      "unpushed",
+      "unpulled",
+      { "recent", count = 10 },  -- limit recent commits shown
+    },
+  },
+})
+```
+
+### Available Sections
+
+| Section | Description | Options |
+|---------|-------------|---------|
+| `untracked` | Untracked files | - |
+| `unstaged` | Unstaged changes | - |
+| `staged` | Staged changes | - |
+| `conflicted` | Merge conflicts | - |
+| `stashes` | Stash list | - |
+| `submodules` | Submodule status | - |
+| `worktrees` | Worktree list | `min_count` (default: 2) - minimum worktrees to show section |
+| `unpushed` | Commits not pushed | - |
+| `unpulled` | Commits not pulled | - |
+| `recent` | Recent commits | `count` (default: 10) - max commits to show |
+
 ## Usage
 
 ```vim

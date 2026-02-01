@@ -131,9 +131,6 @@ local function get_or_create_buffer(repo_state)
   -- Initialize Elm-style expansion state
   self.expansion = expansion.reducer.new(2)
   self.status_line_num = nil -- Line number of the status indicator
-  -- Initialize submodules section visibility from config
-  local cfg = require("gitlad.config").get()
-  self.show_submodules_section = cfg.status and cfg.status.show_submodules_section or false
 
   -- Create spinner for refresh indicator
   self.spinner = spinner_util.new()
@@ -239,14 +236,6 @@ function StatusBuffer:open(force_refresh)
 
   -- Trigger refresh
   self.repo_state:refresh_status()
-end
-
---- Toggle the dedicated Submodules section visibility
-function StatusBuffer:toggle_submodules_section()
-  self.show_submodules_section = not self.show_submodules_section
-  self:render()
-  local state_str = self.show_submodules_section and "shown" or "hidden"
-  vim.notify("[gitlad] Submodules section " .. state_str, vim.log.levels.INFO)
 end
 
 --- Close the status buffer

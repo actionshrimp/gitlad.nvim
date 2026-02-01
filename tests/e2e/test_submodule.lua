@@ -108,7 +108,7 @@ T["submodule section"]["shows Submodules section when enabled"] = function()
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section via config
-  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
+  child.lua([[require("gitlad.config").setup({ status = { sections = { "untracked", "unstaged", "staged", "conflicted", "stashes", "submodules", "worktrees", "unpushed", "unpulled", "recent" } } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -356,7 +356,7 @@ T["submodule navigation"]["gj/gk navigates to submodule entries"] = function()
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section for this test
-  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
+  child.lua([[require("gitlad.config").setup({ status = { sections = { "untracked", "unstaged", "staged", "conflicted", "stashes", "submodules", "worktrees", "unpushed", "unpulled", "recent" } } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -403,7 +403,7 @@ T["submodule navigation"]["TAB collapses and expands submodule section"] = funct
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section for this test
-  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
+  child.lua([[require("gitlad.config").setup({ status = { sections = { "untracked", "unstaged", "staged", "conflicted", "stashes", "submodules", "worktrees", "unpushed", "unpulled", "recent" } } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -490,7 +490,7 @@ T["submodule RET"]["RET on submodule opens its directory"] = function()
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section for this test
-  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
+  child.lua([[require("gitlad.config").setup({ status = { sections = { "untracked", "unstaged", "staged", "conflicted", "stashes", "submodules", "worktrees", "unpushed", "unpulled", "recent" } } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -544,7 +544,7 @@ T["submodule popup context"]["' on submodule entry shows submodule path in popup
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section for this test
-  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
+  child.lua([[require("gitlad.config").setup({ status = { sections = { "untracked", "unstaged", "staged", "conflicted", "stashes", "submodules", "worktrees", "unpushed", "unpulled", "recent" } } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -602,7 +602,7 @@ T["submodule popup context"]["' on submodule in unstaged changes shows path in p
   git(child, parent_repo, "submodule update --remote mysub")
 
   -- Disable dedicated submodules section to ensure we test the file entry path
-  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = false } })]])
+  child.lua([[require("gitlad.config").setup({ status = { sections = { "untracked", "unstaged", "staged", "conflicted", "stashes", "worktrees", "unpushed", "unpulled", "recent" } } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -681,7 +681,7 @@ T["submodule diff"]["TAB on submodule in Submodules section shows SHA diff"] = f
   git(child, parent_repo, "submodule update --remote mysub")
 
   -- Enable submodules section for this test
-  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = true } })]])
+  child.lua([[require("gitlad.config").setup({ status = { sections = { "untracked", "unstaged", "staged", "conflicted", "stashes", "submodules", "worktrees", "unpushed", "unpulled", "recent" } } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
@@ -758,7 +758,7 @@ T["submodule diff"]["TAB on submodule in Unstaged section shows SHA diff"] = fun
   git(child, parent_repo, "submodule update --remote mysub")
 
   -- Disable dedicated submodules section - submodule will only appear in Unstaged
-  child.lua([[require("gitlad.config").setup({ status = { show_submodules_section = false } })]])
+  child.lua([[require("gitlad.config").setup({ status = { sections = { "untracked", "unstaged", "staged", "conflicted", "stashes", "worktrees", "unpushed", "unpulled", "recent" } } })]])
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
