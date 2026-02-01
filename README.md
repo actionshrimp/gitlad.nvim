@@ -109,7 +109,7 @@ require("gitlad").setup({
 | `staged` | Staged changes | - |
 | `conflicted` | Merge conflicts | - |
 | `stashes` | Stash list | - |
-| `submodules` | Submodule status | - |
+| `submodules` | Submodule status (changed submodules appear in unstaged/staged without this) | - |
 | `worktrees` | Worktree list | `min_count` (default: 2) - minimum worktrees to show section |
 | `unpushed` | Commits not pushed | - |
 | `unpulled` | Commits not pulled | - |
