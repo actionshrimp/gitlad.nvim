@@ -13,5 +13,6 @@
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
 - [ ] improve look and feel of '$' / command history (from screenshot)
+- [ ] hook output window should only appear if hooks are actually configured. Before implementing, consider a holistic approach: detect configured hooks and show progress/output for all git operations that may trigger them (commit, push, etc.). This may warrant a dedicated phase in PLAN.md.
 
 some other text
