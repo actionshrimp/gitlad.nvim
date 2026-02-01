@@ -21,6 +21,7 @@ local git_rebase = require("gitlad.git.git_rebase")
 local git_stash = require("gitlad.git.git_stash")
 local git_reflog = require("gitlad.git.git_reflog")
 local git_remotes = require("gitlad.git.git_remotes")
+local git_worktree = require("gitlad.git.git_worktree")
 
 -- Branch operations
 M.branches = git_branches.branches
@@ -77,6 +78,16 @@ M.stash_pop = git_stash.stash_pop
 M.stash_apply = git_stash.stash_apply
 M.stash_drop = git_stash.stash_drop
 M.stash_list = git_stash.stash_list
+
+-- Worktree operations
+M.worktree_list = git_worktree.worktree_list
+M.worktree_add = git_worktree.worktree_add
+M.worktree_add_new_branch = git_worktree.worktree_add_new_branch
+M.worktree_remove = git_worktree.worktree_remove
+M.worktree_move = git_worktree.worktree_move
+M.worktree_lock = git_worktree.worktree_lock
+M.worktree_unlock = git_worktree.worktree_unlock
+M.worktree_prune = git_worktree.worktree_prune
 
 -- Reflog operations
 M.reflog = git_reflog.reflog

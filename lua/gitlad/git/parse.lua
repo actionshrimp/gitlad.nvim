@@ -430,6 +430,17 @@ end
 ---@field subject string Full reflog subject (e.g., "commit: message", "checkout: moving from X to Y")
 ---@field action_type string Extracted action type (e.g., "commit", "checkout", "reset")
 
+---@class WorktreeEntry
+---@field path string Absolute path to worktree directory
+---@field head string HEAD commit SHA (40 chars)
+---@field branch string|nil Branch name (nil if detached HEAD)
+---@field is_main boolean Whether this is the main worktree (first in list)
+---@field is_bare boolean Whether this is a bare repository
+---@field locked boolean Whether the worktree is locked
+---@field lock_reason string|nil Reason for locking (if locked)
+---@field prunable boolean Whether the worktree is prunable (stale)
+---@field prune_reason string|nil Reason why it's prunable
+
 ---@class GitRemote
 ---@field name string Remote name (e.g., "origin")
 ---@field fetch_url string Fetch URL
@@ -880,6 +891,78 @@ function M.parse_reflog(lines)
   end
 
   return entries
+end
+
+--- Parse git worktree list --porcelain output
+--- Format (repeated for each worktree, separated by blank lines):
+---   worktree /path/to/worktree
+---   HEAD abc123...
+---   branch refs/heads/branch-name  (or "detached" if detached HEAD)
+---   [bare]                          (present if bare repository)
+---   [locked [reason]]               (present if locked, optionally with reason)
+---   [prunable [reason]]             (present if prunable/stale)
+---@param lines string[] Output from git worktree list --porcelain
+---@return WorktreeEntry[]
+function M.parse_worktree_list(lines)
+  local worktrees = {}
+  local current = nil
+
+  for _, line in ipairs(lines) do
+    if line == "" then
+      -- Blank line = end of entry
+      if current then
+        table.insert(worktrees, current)
+        current = nil
+      end
+    elseif line:match("^worktree ") then
+      -- Start of a new worktree entry
+      current = {
+        path = line:match("^worktree (.+)$"),
+        head = "",
+        branch = nil,
+        is_main = false,
+        is_bare = false,
+        locked = false,
+        lock_reason = nil,
+        prunable = false,
+        prune_reason = nil,
+      }
+    elseif current then
+      if line:match("^HEAD ") then
+        current.head = line:match("^HEAD (.+)$")
+      elseif line:match("^branch ") then
+        -- Format: "branch refs/heads/branch-name"
+        local branch = line:match("^branch (.+)$")
+        -- Strip refs/heads/ prefix to get clean branch name
+        current.branch = branch:gsub("^refs/heads/", "")
+      elseif line == "detached" then
+        -- Detached HEAD - branch stays nil
+        current.branch = nil
+      elseif line == "bare" then
+        current.is_bare = true
+      elseif line:match("^locked") then
+        current.locked = true
+        -- Reason is on the same line after "locked " (optional)
+        current.lock_reason = line:match("^locked (.+)$")
+      elseif line:match("^prunable") then
+        current.prunable = true
+        -- Reason is on the same line after "prunable " (optional)
+        current.prune_reason = line:match("^prunable (.+)$")
+      end
+    end
+  end
+
+  -- Don't forget the last entry (if file doesn't end with blank line)
+  if current then
+    table.insert(worktrees, current)
+  end
+
+  -- Mark first worktree as main (primary worktree is always first)
+  if #worktrees > 0 then
+    worktrees[1].is_main = true
+  end
+
+  return worktrees
 end
 
 return M

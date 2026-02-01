@@ -55,4 +55,24 @@ T["config"]["reset clears configuration"] = function()
   eq(cfg.refresh_on_focus, true) -- Back to default
 end
 
+T["config"]["has worktree defaults"] = function()
+  local config = require("gitlad.config")
+  local cfg = config.get()
+
+  expect.equality(type(cfg.worktree), "table")
+  eq(cfg.worktree.directory_strategy, "sibling")
+end
+
+T["config"]["allows configuring worktree strategy"] = function()
+  local config = require("gitlad.config")
+  config.setup({
+    worktree = {
+      directory_strategy = "prompt",
+    },
+  })
+
+  local cfg = config.get()
+  eq(cfg.worktree.directory_strategy, "prompt")
+end
+
 return T

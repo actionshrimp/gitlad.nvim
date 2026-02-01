@@ -7,12 +7,16 @@ local M = {}
 ---@class GitladStatusConfig
 ---@field show_submodules_section boolean Whether to show the dedicated Submodules section (default: false, like magit)
 
+---@class GitladWorktreeConfig
+---@field directory_strategy "sibling"|"prompt" How to suggest worktree paths ("sibling" = suggest sibling directory, "prompt" = always prompt for path)
+
 ---@class GitladConfig
 ---@field refresh_on_focus boolean
 ---@field watch_gitdir boolean
 ---@field signs GitladSigns
 ---@field commit_editor GitladCommitEditorConfig
 ---@field status GitladStatusConfig
+---@field worktree GitladWorktreeConfig
 local defaults = {
   refresh_on_focus = true,
   watch_gitdir = true,
@@ -27,6 +31,9 @@ local defaults = {
   },
   status = {
     show_submodules_section = false, -- Off by default, like magit
+  },
+  worktree = {
+    directory_strategy = "sibling", -- "sibling" or "prompt"
   },
 }
 
