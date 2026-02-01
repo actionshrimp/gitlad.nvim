@@ -7,6 +7,7 @@
 - [x] update casing of 'pushremote' in places where it's all lower case to 'pushRemote'
 - [x] is there some way we can make partial staging of untracked files work? perhaps with `git add -N` followed by a similar approach to how we do staging of visually selected lines for unstaged changes?
 - [x] add 'o' to push popup (push other branch)
+- [x] 'no upstream configured for main, cannot spin off'
 - [ ] add a 'view is stale' indicator
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
