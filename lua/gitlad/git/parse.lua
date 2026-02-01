@@ -568,7 +568,7 @@ end
 --- Get the git log format string for parse_log_format
 ---@return string
 function M.get_log_format_string()
-  return "%h"
+  return "%H"
     .. LOG_FORMAT_SEP
     .. "%D"
     .. LOG_FORMAT_SEP

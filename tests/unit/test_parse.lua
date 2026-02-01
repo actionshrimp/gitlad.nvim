@@ -385,8 +385,8 @@ T["parse_log_format"]["get_log_format_string returns expected format"] = functio
 
   local format = parse.get_log_format_string()
 
-  -- Should contain placeholders for hash, decorations, author, date, subject
-  expect.equality(format:match("%%h"), "%h")
+  -- Should contain placeholders for hash (full), decorations, author, date, subject
+  expect.equality(format:match("%%H"), "%H")
   expect.equality(format:match("%%D"), "%D")
   expect.equality(format:match("%%an"), "%an")
   expect.equality(format:match("%%ar"), "%ar")
