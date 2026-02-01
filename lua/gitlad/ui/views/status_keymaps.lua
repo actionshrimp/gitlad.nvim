@@ -472,13 +472,15 @@ local function setup_keymaps(self)
     remote_popup.open(self.repo_state)
   end, "Remote popup")
 
-  -- Worktree popup (evil-collection-magit style: % for worktree)
-  keymap.set(bufnr, "n", "%", function()
+  -- Worktree popup (evil-collection-magit style: Z default, % also works)
+  local function open_worktree_popup()
     local worktree_popup = require("gitlad.popups.worktree")
     local worktree = get_current_worktree(self)
     local context = worktree and { worktree = worktree } or nil
     worktree_popup.open(self.repo_state, context)
-  end, "Worktree popup")
+  end
+  keymap.set(bufnr, "n", "Z", open_worktree_popup, "Worktree popup")
+  keymap.set(bufnr, "n", "%", open_worktree_popup, "Worktree popup")
 end
 
 --- Attach keymap methods to StatusBuffer class

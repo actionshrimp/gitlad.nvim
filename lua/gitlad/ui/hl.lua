@@ -77,6 +77,7 @@ local highlight_groups = {
   GitladSectionRecent = { link = "GitladSectionHeader" },
   GitladSectionStashes = { link = "GitladSectionHeader" },
   GitladSectionSubmodules = { link = "GitladSectionHeader" },
+  GitladSectionWorktrees = { link = "GitladSectionHeader" },
 
   -- Stash entries
   GitladStashRef = { link = "Constant" },
@@ -86,6 +87,12 @@ local highlight_groups = {
   GitladSubmodulePath = { link = "Directory" },
   GitladSubmoduleStatus = { link = "Special" },
   GitladSubmoduleInfo = { link = "Comment" },
+
+  -- Worktree entries
+  GitladWorktreeBranch = { link = "Identifier" },
+  GitladWorktreePath = { link = "Directory" },
+  GitladWorktreeCurrent = { link = "DiagnosticOk" }, -- * indicator for current worktree
+  GitladWorktreeLocked = { link = "DiagnosticWarn" }, -- L indicator for locked worktree
 
   -- File entries
   GitladFileAdded = { link = "DiffAdd" },

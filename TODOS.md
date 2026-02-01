@@ -12,5 +12,6 @@
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
 - [ ] improve look and feel of '$' / command history (from screenshot)
+- [ ] configurable status buffer sections: allow users to configure the order and presence of different sections (staged, unstaged, untracked, worktrees, stashes, etc.) - some users may not want certain sections shown or may prefer them at different positions. Could also include section-specific options like 'number of recent commits' to display.
 
 some other text

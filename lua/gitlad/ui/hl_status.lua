@@ -23,9 +23,10 @@ local section_hl = {
   unstaged = "GitladSectionUnstaged",
   untracked = "GitladSectionUntracked",
   conflicted = "GitladSectionConflicted",
-  -- Stash and submodule sections
+  -- Stash, submodule, and worktree sections
   stashes = "GitladSectionStashes",
   submodules = "GitladSectionSubmodules",
+  worktrees = "GitladSectionWorktrees",
   -- Commit sections
   unpulled_upstream = "GitladSectionUnpulled",
   unpushed_upstream = "GitladSectionUnpushed",
@@ -522,6 +523,48 @@ function M.apply_status_highlights(
       local info_start, info_end = line:find("%(.-%)$")
       if info_start then
         hl_module.set(bufnr, ns_status, line_idx, info_start - 1, info_end, "GitladSubmoduleInfo")
+      end
+
+      -- Worktree entries: "  * branch  ~/path" or "  L branch  ~/path" or "    branch  ~/path"
+    elseif line_map[i] and line_map[i].type == "worktree" then
+      -- Check for indicator (* for current, L for locked)
+      local indicator = line:match("^%s+([%*L])%s")
+      if indicator then
+        local ind_start = line:find("[%*L]")
+        if ind_start then
+          local hl_group = indicator == "*" and "GitladWorktreeCurrent" or "GitladWorktreeLocked"
+          hl_module.set(bufnr, ns_status, line_idx, ind_start - 1, ind_start, hl_group)
+        end
+      end
+      -- Find branch name (after indicator/spaces, before double space and path)
+      -- Pattern: leading spaces, optional indicator + space, then branch name, then double space, then path
+      local branch_match = line:match("^%s+[%*L ]%s([^%s]+)")
+      if branch_match then
+        local branch_start = line:find(branch_match, 1, true)
+        if branch_start then
+          hl_module.set(
+            bufnr,
+            ns_status,
+            line_idx,
+            branch_start - 1,
+            branch_start - 1 + #branch_match,
+            "GitladWorktreeBranch"
+          )
+        end
+      end
+      -- Find path (after double space, starts with ~/ or /)
+      local path_start = line:find("%s%s[~/]")
+      if path_start then
+        -- Skip the double space
+        local actual_path_start = path_start + 2
+        hl_module.set(
+          bufnr,
+          ns_status,
+          line_idx,
+          actual_path_start - 1,
+          #line,
+          "GitladWorktreePath"
+        )
       end
 
       -- Help line
