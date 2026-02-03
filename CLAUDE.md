@@ -88,7 +88,9 @@ This is the most important rule in this codebase. Code without tests is incomple
 
 - Tests must be deterministic (no flaky tests)
 - Tests must be isolated (no shared state between tests)
-- Tests must be fast (unit tests < 1s each)
+- Unit tests must be very fast (unit tests < 1s each)
+- **Important**: E2E tests should aim to be cover as many user-facing scenarios as possible.
+- **Important**: E2E tests should use condition based waits where possible - see the `helpers.wait_for_*` functions
 - Test names must describe the expected behavior
 - Use `before_each` hooks to reset state
 

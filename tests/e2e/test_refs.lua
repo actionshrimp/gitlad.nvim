@@ -1,6 +1,7 @@
 -- E2E tests for refs functionality
 local MiniTest = require("mini.test")
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
+local helpers = require("tests.helpers")
 
 local child = MiniTest.new_child_neovim()
 
@@ -77,11 +78,11 @@ T["refs popup"]["opens from status buffer with yr key"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Press yr to open refs popup
   child.type_keys("yr")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Should have a popup window
   local win_count = child.lua_get("vim.fn.winnr('$')")
@@ -110,10 +111,10 @@ T["refs popup"]["has correct actions"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   child.type_keys("yr")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -135,15 +136,15 @@ T["refs popup"]["closes with q"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   child.type_keys("yr")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local win_count_before = child.lua_get("vim.fn.winnr('$')")
 
   child.type_keys("q")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup_closed(child)
 
   local win_count_after = child.lua_get("vim.fn.winnr('$')")
 
@@ -168,14 +169,14 @@ T["refs view"]["opens when action is triggered"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs popup and trigger "show refs at HEAD" action
   child.type_keys("yr")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   child.type_keys("y")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
 
   -- Should now be in refs buffer
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -196,11 +197,12 @@ T["refs view"]["displays local branches"] = function()
   git(child, repo, "branch feature-branch")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Local")
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -226,11 +228,12 @@ T["refs view"]["displays tags"] = function()
   git(child, repo, "tag v1.0.0")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Tags")
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -255,11 +258,12 @@ T["refs view"]["shows current branch with * marker"] = function()
   git(child, repo, "branch other-branch")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Local")
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
@@ -285,11 +289,11 @@ T["refs view"]["gj/gk keymaps are set up"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
 
   -- Check that gj and gk keymaps exist
   child.lua([[
@@ -318,11 +322,11 @@ T["refs view"]["closes with q"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
 
   -- Verify in refs buffer
   local buf_name_before = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -330,7 +334,7 @@ T["refs view"]["closes with q"] = function()
 
   -- Close with q
   child.type_keys("q")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_short(child, 100)
 
   -- Should be back in status or previous buffer
   local buf_name_after = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -348,11 +352,12 @@ T["refs view"]["buffer is not modifiable"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Local")
 
   -- Check that buffer is not modifiable
   local modifiable = child.lua_get("vim.bo.modifiable")
@@ -370,11 +375,11 @@ T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
 
   -- Check that popup keymaps exist
   child.lua([[
@@ -410,11 +415,11 @@ T["refs view"]["has delete keymap x"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
 
   -- Check that x keymap exists in normal mode
   child.lua([[
@@ -439,11 +444,11 @@ T["refs view"]["has visual mode delete keymap x"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
 
   -- Check that x keymap exists in visual mode
   child.lua([[
@@ -468,11 +473,11 @@ T["refs view"]["has Tab keymap for expansion"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
 
   -- Check that Tab keymap exists
   child.lua([[
@@ -497,11 +502,11 @@ T["refs view"]["has yank keymap y"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
 
   -- Check that y keymap exists
   child.lua([[
@@ -526,11 +531,12 @@ T["refs view"]["shows header with base ref"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view at HEAD
   child.type_keys("yry")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "References")
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -560,11 +566,13 @@ T["refs view"]["cherry commits are displayed without indentation"] = function()
   git(child, repo, "checkout -")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view at HEAD (main)
   child.type_keys("yry")
-  child.lua("vim.wait(1500, function() end)") -- Wait for refs and cherry prefetch
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  -- Wait for cherry prefetch
+  helpers.wait_for_buffer_content(child, "feature-branch", 1500)
 
   -- Navigate to feature-branch and expand it
   child.lua([[
@@ -579,7 +587,7 @@ T["refs view"]["cherry commits are displayed without indentation"] = function()
 
   -- Press Tab to expand cherry commits
   child.type_keys("<Tab>")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_short(child, 200)
 
   -- Get buffer lines and check for cherry commits
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -628,11 +636,13 @@ T["refs view"]["diff popup on cherry commit shows commit context"] = function()
   git(child, repo, "checkout -")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view at HEAD (main)
   child.type_keys("yry")
-  child.lua("vim.wait(1500, function() end)") -- Wait for refs and cherry prefetch
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  -- Wait for cherry prefetch
+  helpers.wait_for_buffer_content(child, "feature-branch", 1500)
 
   -- Navigate to feature-branch and expand it
   child.lua([[
@@ -647,7 +657,7 @@ T["refs view"]["diff popup on cherry commit shows commit context"] = function()
 
   -- Press Tab to expand cherry commits
   child.type_keys("<Tab>")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_short(child, 200)
 
   -- Navigate to the cherry commit line
   child.lua([[
@@ -662,7 +672,7 @@ T["refs view"]["diff popup on cherry commit shows commit context"] = function()
 
   -- Open diff popup on cherry commit line
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Get popup buffer lines
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -693,11 +703,13 @@ T["refs view"]["diff popup on ref shows context-aware range action"] = function(
   git(child, repo, "checkout -")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open refs view at HEAD (main)
   child.type_keys("yry")
-  child.lua("vim.wait(1500, function() end)") -- Wait for refs and cherry prefetch
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  -- Wait for cherry prefetch
+  helpers.wait_for_buffer_content(child, "feature-branch", 1500)
 
   -- Navigate to feature-branch ref line
   child.lua([[
@@ -712,7 +724,7 @@ T["refs view"]["diff popup on ref shows context-aware range action"] = function(
 
   -- Open diff popup on ref line
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Get popup buffer lines
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
