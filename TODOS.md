@@ -10,11 +10,11 @@
 - [x] 'no upstream configured for main, cannot spin off'
 - [x] configurable status buffer sections: allow users to configure the order and presence of different sections (staged, unstaged, untracked, worktrees, stashes, etc.) - some users may not want certain sections shown or may prefer them at different positions. Could also include section-specific options like 'number of recent commits' to display.
 - [x] Can we add a 'view is stale' indicator? I dont want it to actually ever interrupt what the user is doing, but if we async detect the git state has changed, we should update our 'idle/loading' header (which shows the spinner) to some kind of alert state to prompt the user to do a manual refresh. this might be a good case for an actual background/file watcher as an initial test run. but this should be configurable, some users may not want it turned on.
-- [ ] for a moved file, only show the actual file changes in the diff
-- [ ] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - i think this is actually sidekick.nvim
-- [ ] improve look and feel of '$' / command history (from screenshot)
-- [ ] hook output window should only appear if hooks are actually configured. Before implementing, consider a holistic approach: detect configured hooks and show progress/output for all git operations that may trigger them (commit, push, etc.). This may warrant a dedicated phase in PLAN.md.
+- [x] Weird highlighting issue where line highlighting somehow gets enabled and line numbers disappear - this is actually my themes 'terminal' styles and nvim's default behaviour to open new files in buffers other than `nofile` buffers. need to adapt workflow
 - [ ] something is a bit off when staging an entirely new (previously untracked) directory - we just see the dir staged and not the individual files, which show up as hunks for some reason. we _do_ expect to see just the directory name in the 'untracked' section, but when staged it should expand to the individual files
 - [ ] display of renamed files could be better, using the /common/path/to/{suba/a.txt -> subb/b.txt} style
+- [ ] for a moved file, only show the actual file changes in the diff
+- [ ] improve look and feel of '$' / command history (from screenshot)
+- [ ] hook output window should only appear if hooks are actually configured. Before implementing, consider a holistic approach: detect configured hooks and show progress/output for all git operations that may trigger them (commit, push, etc.). This may warrant a dedicated phase in PLAN.md.
 - [ ] setting upstream to a local branch doesnt work properly
 - [ ] git rebase continue fails if there are conflicts and you need to confirm the updated commit message (with Conflicts: section) - not implemented

@@ -427,11 +427,11 @@ See PLAN.md for the detailed roadmap.
 
 Cloned in parent directory for reference:
 
-- `../magit/` - Popup system architecture, comprehensive features
-- `../evil-collection/` - Canonical keybindings reference
-- `../vim-fugitive/` - Performance patterns, vim-way design
-- `../neogit/` - Popup system architecture, neovim implementation details, comprehensive features
-- `../lazygit/` - AsyncHandler pattern, loader architecture
+- `dev/magit/` - Popup system architecture, comprehensive features
+- `dev/evil-collection/` - Canonical keybindings reference
+- `dev/vim-fugitive/` - Performance patterns, vim-way design
+- `dev//lazygit/` - AsyncHandler pattern, loader architecture
+- `dev/neogit/` - Useful for any neovim or neogit specific details, but strongly prefer magit for any overarching design or git integration!
 
 External dependency (integrate, don't reinvent):
 
