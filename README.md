@@ -34,6 +34,32 @@ In large monorepos (1M+ files), `git status` can take seconds. gitlad.nvim avoid
 
 This means the UI may occasionally be out of sync with git (if you run git commands outside the plugin), but `gr` is always available to resync.
 
+### File Watcher
+
+By default, gitlad.nvim watches the `.git/` directory for changes made by external tools (terminal commands, other git clients, etc.). When changes are detected:
+
+- **Indicator mode** (default): Shows a `⚠ Stale (gr to refresh)` indicator in the status line, prompting you to refresh
+- **Auto-refresh mode**: Automatically triggers a refresh after a configurable debounce period
+
+The watcher intelligently ignores gitlad's own operations via a cooldown mechanism to avoid false positives. In large repos where automatic refreshes might be slow, the indicator mode provides awareness without the performance cost of constant refreshes.
+
+```lua
+-- Use auto-refresh mode
+require("gitlad").setup({
+  watcher = {
+    mode = "auto_refresh",
+    auto_refresh_debounce_ms = 1000, -- wait 1s before refreshing
+  },
+})
+
+-- Disable watcher entirely (for performance-sensitive environments)
+require("gitlad").setup({
+  watcher = {
+    enabled = false,
+  },
+})
+```
+
 ## Installation
 
 Using lazy.nvim:
@@ -78,6 +104,14 @@ require("gitlad").setup({
   -- Worktree creation behavior
   worktree = {
     directory_strategy = "sibling", -- "sibling" = suggest sibling directory, "prompt" = always prompt
+  },
+
+  -- File watcher configuration (detects external git changes)
+  watcher = {
+    enabled = true, -- Enable file watching (disable for performance-sensitive environments)
+    mode = "indicator", -- "indicator" = show stale marker, "auto_refresh" = refresh automatically
+    cooldown_ms = 1000, -- Ignore events for this duration after gitlad operations
+    auto_refresh_debounce_ms = 500, -- Debounce delay before auto-refresh triggers
   },
 
   -- Status buffer configuration
