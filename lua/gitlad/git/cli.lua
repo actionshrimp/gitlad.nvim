@@ -82,6 +82,10 @@ function M.run_async(args, opts, callback)
   local cwd = opts.cwd or vim.fn.getcwd()
   local start_time = vim.loop.hrtime()
 
+  -- Mark operation time for watcher cooldown (lazy require to avoid circular deps)
+  local state = require("gitlad.state")
+  state.mark_operation_time(cwd)
+
   local stdout_data = {}
   local stderr_data = {}
   local job_id
@@ -235,6 +239,10 @@ function M.run_sync(args, opts)
   local cwd = opts.cwd or vim.fn.getcwd()
   local start_time = vim.loop.hrtime()
 
+  -- Mark operation time for watcher cooldown (lazy require to avoid circular deps)
+  local state = require("gitlad.state")
+  state.mark_operation_time(cwd)
+
   local result = vim.fn.systemlist(cmd)
   local code = vim.v.shell_error
 
@@ -278,6 +286,10 @@ function M.run_async_with_stdin(args, stdin_lines, opts, callback)
   local cmd = build_command(args)
   local cwd = opts.cwd or vim.fn.getcwd()
   local start_time = vim.loop.hrtime()
+
+  -- Mark operation time for watcher cooldown (lazy require to avoid circular deps)
+  local state = require("gitlad.state")
+  state.mark_operation_time(cwd)
 
   local stdout_data = {}
   local stderr_data = {}

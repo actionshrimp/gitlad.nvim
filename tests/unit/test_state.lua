@@ -87,4 +87,21 @@ T["refresh_status callback"]["pending callback field pattern"] = function()
   eq(state._pending_refresh_callback, nil)
 end
 
+T["mark_operation_time"] = MiniTest.new_set()
+
+T["mark_operation_time"]["function exists"] = function()
+  local state = require("gitlad.state")
+  eq(type(state.mark_operation_time), "function")
+end
+
+T["mark_operation_time"]["does not error when no repo state exists"] = function()
+  local state = require("gitlad.state")
+  state.clear_all()
+
+  -- Should not error even when no repo states exist
+  MiniTest.expect.no_error(function()
+    state.mark_operation_time("/nonexistent/path")
+  end)
+end
+
 return T

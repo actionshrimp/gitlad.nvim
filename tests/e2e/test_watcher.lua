@@ -499,4 +499,86 @@ T["watcher integration"]["creates watcher in auto_refresh mode when configured"]
   cleanup_test_repo(child, repo)
 end
 
+-- =============================================================================
+-- Git command cooldown tests
+-- =============================================================================
+
+T["git command cooldown"] = MiniTest.new_set()
+
+T["git command cooldown"]["git commands set last_operation_time"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "init")
+  git(child, repo, "add init.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
+
+  -- Open status buffer to initialize repo_state
+  child.cmd("Gitlad")
+  wait(child, 500)
+
+  -- Record initial last_operation_time
+  child.lua([[_G.test_initial_time = require("gitlad.state").get().last_operation_time]])
+  local initial_time = child.lua_get("_G.test_initial_time")
+
+  -- Wait a bit to ensure time difference
+  wait(child, 100)
+
+  -- Run a git command through gitlad's CLI module
+  child.lua([[
+    local cli = require("gitlad.git.cli")
+    cli.run_async({ "status" }, { cwd = vim.fn.getcwd() }, function() end)
+  ]])
+  wait(child, 200)
+
+  -- Check that last_operation_time was updated
+  child.lua([[_G.test_new_time = require("gitlad.state").get().last_operation_time]])
+  local new_time = child.lua_get("_G.test_new_time")
+
+  -- The new time should be greater than the initial time
+  eq(new_time > initial_time, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["git command cooldown"]["watcher is in cooldown after git command"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "init")
+  git(child, repo, "add init.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, cooldown_ms = 2000 } })]])
+
+  -- Open status buffer to initialize repo_state and watcher
+  child.cmd("Gitlad")
+  wait(child, 500)
+
+  -- Run a git command through gitlad's CLI module
+  child.lua([[
+    local cli = require("gitlad.git.cli")
+    cli.run_async({ "status" }, { cwd = vim.fn.getcwd() }, function() end)
+  ]])
+  wait(child, 100)
+
+  -- Check that watcher is in cooldown
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_in_cooldown = buf and buf.watcher and buf.watcher:is_in_cooldown()
+  ]])
+  local in_cooldown = child.lua_get("_G.test_in_cooldown")
+
+  eq(in_cooldown, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 return T

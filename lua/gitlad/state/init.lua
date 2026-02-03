@@ -685,4 +685,22 @@ function M.clear_all()
   repo_states = {}
 end
 
+--- Mark operation time for watcher cooldown
+--- Call this before running git commands to prevent false stale indicators
+---@param cwd? string Working directory (used to find the repo state)
+function M.mark_operation_time(cwd)
+  -- Normalize and find the repo state for this cwd
+  cwd = cwd or vim.fn.getcwd()
+  local normalized_cwd = vim.fn.fnamemodify(cwd, ":p")
+
+  -- Check if we have a repo state for this cwd
+  for git_dir, state in pairs(repo_states) do
+    -- Check if the cwd is within this repo's root
+    if vim.startswith(normalized_cwd, state.repo_root) or normalized_cwd == state.repo_root then
+      state.last_operation_time = vim.loop.now()
+      return
+    end
+  end
+end
+
 return M
