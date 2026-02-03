@@ -42,7 +42,7 @@ local defaults = {
     directory_strategy = "sibling", -- "sibling" or "prompt"
   },
   watcher = {
-    enabled = false, -- Off by default for performance-sensitive users
+    enabled = true, -- Can disable for performance-sensitive users
     cooldown_ms = 1000, -- Ignore events for 1s after gitlad operations
   },
 }
