@@ -34,22 +34,28 @@ local repo_states = {}
 ---@param path? string Path inside repository (defaults to cwd)
 ---@return RepoState|nil
 function M.get(path)
-  local git_dir = git.repo_root(path)
-  if not git_dir then
+  local repo_root = git.repo_root(path)
+  if not repo_root then
     return nil
   end
 
   -- Normalize to absolute path
-  git_dir = vim.fn.fnamemodify(git_dir, ":p")
+  repo_root = vim.fn.fnamemodify(repo_root, ":p")
 
-  if repo_states[git_dir] then
-    return repo_states[git_dir]
+  if repo_states[repo_root] then
+    return repo_states[repo_root]
+  end
+
+  -- Get the actual git directory (handles worktrees correctly)
+  local git_dir = git.git_dir(path)
+  if not git_dir then
+    return nil
   end
 
   -- Create new state
   local state = setmetatable({}, RepoState)
-  state.repo_root = git_dir
-  state.git_dir = git_dir .. ".git"
+  state.repo_root = repo_root
+  state.git_dir = git_dir
   state.status = nil
   state.refreshing = false
   state.stale = false
@@ -75,7 +81,7 @@ function M.get(path)
     end
   end)
 
-  repo_states[git_dir] = state
+  repo_states[repo_root] = state
   return state
 end
 

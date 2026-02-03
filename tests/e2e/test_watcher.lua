@@ -581,4 +581,98 @@ T["git command cooldown"]["watcher is in cooldown after git command"] = function
   cleanup_test_repo(child, repo)
 end
 
+-- =============================================================================
+-- Worktree watcher tests
+-- =============================================================================
+
+T["worktree watcher"] = MiniTest.new_set()
+
+T["worktree watcher"]["uses correct git_dir for worktree"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit (required for worktrees)
+  create_file(child, repo, "init.txt", "init")
+  git(child, repo, "add init.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create a worktree
+  local worktree_path = child.lua_get("vim.fn.tempname()")
+  git(child, repo, string.format("worktree add -b feature %s", worktree_path))
+
+  -- Change to worktree directory
+  child.lua(string.format([[vim.cmd("cd %s")]], worktree_path))
+
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
+
+  -- Open status buffer in the worktree
+  child.cmd("Gitlad")
+  wait(child, 500)
+
+  -- Check that the git_dir points to the main repo's .git/worktrees/<name>/ directory
+  child.lua([[
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    _G.test_git_dir = repo_state.git_dir
+    _G.test_repo_root = repo_state.repo_root
+  ]])
+
+  local git_dir = child.lua_get("_G.test_git_dir")
+
+  -- git_dir should contain "worktrees" for a worktree
+  eq(git_dir:match("worktrees") ~= nil, true)
+
+  -- Cleanup worktree
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  git(child, repo, string.format("worktree remove %s", worktree_path))
+  cleanup_test_repo(child, repo)
+end
+
+T["worktree watcher"]["watcher watches correct directory for worktree"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit (required for worktrees)
+  create_file(child, repo, "init.txt", "init")
+  git(child, repo, "add init.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create a worktree
+  local worktree_path = child.lua_get("vim.fn.tempname()")
+  git(child, repo, string.format("worktree add -b feature %s", worktree_path))
+
+  -- Change to worktree directory
+  child.lua(string.format([[vim.cmd("cd %s")]], worktree_path))
+
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
+
+  -- Open status buffer in the worktree
+  child.cmd("Gitlad")
+  wait(child, 500)
+
+  -- Check that the watcher is watching the correct git_dir
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_watcher_git_dir = buf and buf.watcher and buf.watcher.git_dir
+    _G.test_watcher_running = buf and buf.watcher and buf.watcher:is_running()
+  ]])
+
+  local watcher_git_dir = child.lua_get("_G.test_watcher_git_dir")
+  local watcher_running = child.lua_get("_G.test_watcher_running")
+
+  -- Watcher should be running
+  eq(watcher_running, true)
+
+  -- Watcher git_dir should contain "worktrees"
+  eq(watcher_git_dir:match("worktrees") ~= nil, true)
+
+  -- Cleanup worktree
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  git(child, repo, string.format("worktree remove %s", worktree_path))
+  cleanup_test_repo(child, repo)
+end
+
 return T
