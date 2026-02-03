@@ -1,11 +1,14 @@
 -- End-to-end tests for gitlad.nvim merge conflict handling
 local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
+local helpers = require("tests.helpers")
+
+local child = MiniTest.new_child_neovim()
 
 -- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
+local function create_test_repo(child_nvim)
+  local repo = child_nvim.lua_get("vim.fn.tempname()")
+  child_nvim.lua(string.format(
     [[
     local repo = %q
     vim.fn.mkdir(repo, "p")
@@ -19,8 +22,8 @@ local function create_test_repo(child)
 end
 
 -- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
+local function create_file(child_nvim, repo, filename, content)
+  child_nvim.lua(string.format(
     [[
     local path = %q .. "/" .. %q
     local f = io.open(path, "w")
@@ -34,29 +37,27 @@ local function create_file(child, repo, filename, content)
 end
 
 -- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
+local function git(child_nvim, repo, args)
+  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
 end
 
 -- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
+local function cleanup_repo(child_nvim, repo)
+  child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
+end
+
+-- Helper to change directory
+local function cd(child_nvim, dir)
+  child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
 end
 
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
-      -- Start fresh child process for each test
-      local child = MiniTest.new_child_neovim()
-      child.start({ "-u", "tests/minimal_init.lua" })
-      _G.child = child
+      child.restart({ "-u", "tests/minimal_init.lua" })
+      child.lua([[require("gitlad").setup({})]])
     end,
-    post_case = function()
-      if _G.child then
-        _G.child.stop()
-        _G.child = nil
-      end
-    end,
+    post_once = child.stop,
   },
 })
 
@@ -64,7 +65,6 @@ local T = MiniTest.new_set({
 T["staging conflicted files"] = MiniTest.new_set()
 
 T["staging conflicted files"]["s on conflicted file stages it (marks as resolved)"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit on main
@@ -90,11 +90,10 @@ T["staging conflicted files"]["s on conflicted file stages it (marks as resolved
   -- Resolve conflict manually
   create_file(child, repo, "test.txt", "line1\nresolved")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-
-  -- Wait for status to load
-  child.lua([[vim.wait(1000, function() return false end)]])
+  cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Conflicted")
 
   -- Verify file is in Conflicted section
   child.lua([[
@@ -123,7 +122,7 @@ T["staging conflicted files"]["s on conflicted file stages it (marks as resolved
   child.type_keys("s")
 
   -- Wait for staging to complete
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_var(child, "_G.gitlad_stage_complete", 1000)
 
   -- Verify file is now staged (in git status)
   local staged_status = git(child, repo, "diff --cached --name-only")
@@ -140,7 +139,7 @@ T["staging conflicted files"]["s on conflicted file stages it (marks as resolved
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.continue_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.continue_result", 2000)
   local continue_result = child.lua_get([[_G.continue_result]])
 
   eq(continue_result.success, true)
@@ -154,7 +153,6 @@ T["staging conflicted files"]["s on conflicted file stages it (marks as resolved
 end
 
 T["staging conflicted files"]["s on Conflicted section header stages all conflicted files"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit on main with two files
@@ -184,11 +182,10 @@ T["staging conflicted files"]["s on Conflicted section header stages all conflic
   create_file(child, repo, "file1.txt", "resolved1")
   create_file(child, repo, "file2.txt", "resolved2")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-
-  -- Wait for status to load
-  child.lua([[vim.wait(1000, function() return false end)]])
+  cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Conflicted")
 
   -- Find Conflicted section header
   child.lua([[
@@ -212,7 +209,7 @@ T["staging conflicted files"]["s on Conflicted section header stages all conflic
   child.type_keys("s")
 
   -- Wait for staging to complete
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_var(child, "_G.gitlad_stage_complete", 1000)
 
   -- Verify both files are now staged
   local staged_status = git(child, repo, "diff --cached --name-only")
@@ -226,7 +223,6 @@ end
 T["conflict marker safeguard"] = MiniTest.new_set()
 
 T["conflict marker safeguard"]["s on file with conflict markers shows confirmation prompt"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit on main
@@ -253,9 +249,10 @@ T["conflict marker safeguard"]["s on file with conflict markers shows confirmati
   local file_content = git(child, repo, "cat test.txt || cat " .. repo .. "/test.txt")
   eq(file_content:match("<<<<<<<") ~= nil, true)
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Conflicted")
 
   -- Find the conflicted file line
   child.lua([[
@@ -292,7 +289,7 @@ T["conflict marker safeguard"]["s on file with conflict markers shows confirmati
   -- Navigate to conflicted file and press s
   child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
   child.type_keys("s")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Check if vim.ui.select was called
   local ui_select_called = child.lua_get([[_G.ui_select_called]])
@@ -304,7 +301,6 @@ T["conflict marker safeguard"]["s on file with conflict markers shows confirmati
 end
 
 T["conflict marker safeguard"]["s on resolved file without markers stages immediately"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit on main
@@ -330,11 +326,10 @@ T["conflict marker safeguard"]["s on resolved file without markers stages immedi
   -- Resolve conflict by writing clean content (no conflict markers)
   create_file(child, repo, "test.txt", "resolved content")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-
-  -- Wait for status to load
-  child.lua([[vim.wait(1000, function() return false end)]])
+  cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Conflicted")
 
   -- Find the conflicted file line
   child.lua([[
@@ -362,7 +357,7 @@ T["conflict marker safeguard"]["s on resolved file without markers stages immedi
   child.type_keys("s")
 
   -- Wait for staging to complete (no prompt expected)
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_var(child, "_G.gitlad_stage_complete", 1000)
 
   -- File should be staged since there were no conflict markers
   local staged_status = git(child, repo, "diff --cached --name-only")
@@ -375,7 +370,6 @@ end
 T["diffview integration"] = MiniTest.new_set()
 
 T["diffview integration"]["e keybinding is mapped in status buffer"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -383,11 +377,9 @@ T["diffview integration"]["e keybinding is mapped in status buffer"] = function(
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-
-  -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Check that 'e' keybinding exists using a helper function
   child.lua([[
@@ -408,7 +400,6 @@ T["diffview integration"]["e keybinding is mapped in status buffer"] = function(
 end
 
 T["diffview integration"]["e keybinding appears in help"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -416,13 +407,13 @@ T["diffview integration"]["e keybinding appears in help"] = function()
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
-  child.lua([[vim.wait(300, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Check for 'e' in help
   child.lua([[
@@ -448,7 +439,6 @@ end
 T["diffview fallback"] = MiniTest.new_set()
 
 T["diffview fallback"]["shows message when diffview not installed"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create merge conflict
@@ -468,9 +458,10 @@ T["diffview fallback"]["shows message when diffview not installed"] = function()
 
   git(child, repo, "merge feature --no-edit || true")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Conflicted")
 
   -- Ensure diffview is not available
   child.lua([[
@@ -509,7 +500,7 @@ T["diffview fallback"]["shows message when diffview not installed"] = function()
   if conflicted_line then
     child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
     child.type_keys("e")
-    child.lua([[vim.wait(500, function() return false end)]])
+    helpers.wait_short(child, 200)
 
     local notifications = child.lua_get([[_G.notifications]])
 
@@ -528,7 +519,6 @@ T["diffview fallback"]["shows message when diffview not installed"] = function()
 end
 
 T["diffview fallback"]["opens file directly when diffview not installed"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create merge conflict
@@ -548,9 +538,10 @@ T["diffview fallback"]["opens file directly when diffview not installed"] = func
 
   git(child, repo, "merge feature --no-edit || true")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Conflicted")
 
   -- Ensure diffview is not available
   child.lua([[
@@ -580,7 +571,7 @@ T["diffview fallback"]["opens file directly when diffview not installed"] = func
   if conflicted_line then
     child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
     child.type_keys("e")
-    child.lua([[vim.wait(500, function() return false end)]])
+    helpers.wait_for_buffer(child, "test%.txt")
 
     -- Should now be editing test.txt
     local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -594,7 +585,6 @@ end
 T["auto-staging"] = MiniTest.new_set()
 
 T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create merge conflict
@@ -614,7 +604,7 @@ T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] =
 
   git(child, repo, "merge feature --no-edit || true")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  cd(child, repo)
 
   -- Manually resolve the conflict (remove markers)
   create_file(child, repo, "test.txt", "line1\nresolved")
@@ -627,8 +617,9 @@ T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] =
     }
   ]])
 
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Conflicted")
 
   -- Find conflicted file and press 'e' to trigger diffview integration
   child.lua([[
@@ -652,11 +643,11 @@ T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] =
   if conflicted_line then
     child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
     child.type_keys("e")
-    child.lua([[vim.wait(500, function() return false end)]])
+    helpers.wait_short(child, 200)
 
     -- Fire the DiffviewViewClosed event to simulate closing diffview
     child.lua([[vim.api.nvim_exec_autocmds("User", { pattern = "DiffviewViewClosed" })]])
-    child.lua([[vim.wait(1000, function() return false end)]])
+    helpers.wait_short(child, 500)
 
     -- File should now be resolved (no longer in unmerged list)
     -- When a file is staged during merge, it's removed from the unmerged list
@@ -669,7 +660,6 @@ T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] =
 end
 
 T["auto-staging"]["does not stage files that still have conflict markers"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create merge conflict
@@ -689,7 +679,7 @@ T["auto-staging"]["does not stage files that still have conflict markers"] = fun
 
   git(child, repo, "merge feature --no-edit || true")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  cd(child, repo)
 
   -- DON'T resolve the conflict - leave markers in place
 
@@ -700,8 +690,9 @@ T["auto-staging"]["does not stage files that still have conflict markers"] = fun
     }
   ]])
 
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Conflicted")
 
   -- Find conflicted file and press 'e'
   child.lua([[
@@ -725,11 +716,11 @@ T["auto-staging"]["does not stage files that still have conflict markers"] = fun
   if conflicted_line then
     child.lua(string.format([[vim.api.nvim_win_set_cursor(0, {%d, 0})]], conflicted_line))
     child.type_keys("e")
-    child.lua([[vim.wait(500, function() return false end)]])
+    helpers.wait_short(child, 200)
 
     -- Fire the DiffviewViewClosed event
     child.lua([[vim.api.nvim_exec_autocmds("User", { pattern = "DiffviewViewClosed" })]])
-    child.lua([[vim.wait(1000, function() return false end)]])
+    helpers.wait_short(child, 500)
 
     -- File should still be unmerged (not resolved) since it has conflict markers
     -- Use git ls-files -u to check if file is still unmerged

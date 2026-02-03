@@ -1,11 +1,14 @@
 -- End-to-end tests for gitlad.nvim submodule support
 local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
+local helpers = require("tests.helpers")
+
+local child = MiniTest.new_child_neovim()
 
 -- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
+local function create_test_repo(child_nvim)
+  local repo = child_nvim.lua_get("vim.fn.tempname()")
+  child_nvim.lua(string.format(
     [[
     local repo = %q
     vim.fn.mkdir(repo, "p")
@@ -19,8 +22,8 @@ local function create_test_repo(child)
 end
 
 -- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
+local function create_file(child_nvim, repo, filename, content)
+  child_nvim.lua(string.format(
     [[
     local path = %q .. "/" .. %q
     local f = io.open(path, "w")
@@ -34,20 +37,20 @@ local function create_file(child, repo, filename, content)
 end
 
 -- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
+local function git(child_nvim, repo, args)
+  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
 end
 
 -- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
+local function cleanup_repo(child_nvim, repo)
+  child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
 end
 
 -- Helper to create a repo with a submodule
-local function create_repo_with_submodule(child)
+local function create_repo_with_submodule(child_nvim)
   -- Create the submodule repo first
-  local submodule_repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
+  local submodule_repo = child_nvim.lua_get("vim.fn.tempname()")
+  child_nvim.lua(string.format(
     [[
     local repo = %q
     vim.fn.mkdir(repo, "p")
@@ -59,26 +62,26 @@ local function create_repo_with_submodule(child)
   ))
 
   -- Create initial commit in submodule
-  create_file(child, submodule_repo, "subfile.txt", "submodule content")
-  git(child, submodule_repo, "add subfile.txt")
-  git(child, submodule_repo, 'commit -m "Initial submodule commit"')
+  create_file(child_nvim, submodule_repo, "subfile.txt", "submodule content")
+  git(child_nvim, submodule_repo, "add subfile.txt")
+  git(child_nvim, submodule_repo, 'commit -m "Initial submodule commit"')
 
   -- Create the parent repo
-  local parent_repo = create_test_repo(child)
-  create_file(child, parent_repo, "main.txt", "main content")
-  git(child, parent_repo, "add main.txt")
-  git(child, parent_repo, 'commit -m "Initial commit"')
+  local parent_repo = create_test_repo(child_nvim)
+  create_file(child_nvim, parent_repo, "main.txt", "main content")
+  git(child_nvim, parent_repo, "add main.txt")
+  git(child_nvim, parent_repo, 'commit -m "Initial commit"')
 
   -- Add submodule to parent
   -- Use -c protocol.file.allow=always to allow file:// protocol (Git security feature)
-  child.lua(
+  child_nvim.lua(
     string.format(
       [[vim.fn.system("git -c protocol.file.allow=always -C %s submodule add %s mysub")]],
       parent_repo,
       submodule_repo
     )
   )
-  git(child, parent_repo, 'commit -m "Add submodule"')
+  git(child_nvim, parent_repo, 'commit -m "Add submodule"')
 
   return parent_repo, submodule_repo
 end
@@ -86,17 +89,10 @@ end
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
-      -- Start fresh child process for each test
-      local child = MiniTest.new_child_neovim()
-      child.start({ "-u", "tests/minimal_init.lua" })
-      _G.child = child
+      child.restart({ "-u", "tests/minimal_init.lua" })
+      child.lua([[require("gitlad").setup({})]])
     end,
-    post_case = function()
-      if _G.child then
-        _G.child.stop()
-        _G.child = nil
-      end
-    end,
+    post_once = child.stop,
   },
 })
 
@@ -104,7 +100,6 @@ local T = MiniTest.new_set({
 T["submodule section"] = MiniTest.new_set()
 
 T["submodule section"]["shows Submodules section when enabled"] = function()
-  local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section via config
@@ -113,9 +108,10 @@ T["submodule section"]["shows Submodules section when enabled"] = function()
   )
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.cd(child, parent_repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Submodules")
 
   -- Get buffer lines
   child.lua([[
@@ -144,7 +140,6 @@ T["submodule section"]["shows Submodules section when enabled"] = function()
 end
 
 T["submodule section"]["hides Submodules section when no submodules"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit only (no submodules)
@@ -153,9 +148,9 @@ T["submodule section"]["hides Submodules section when no submodules"] = function
   git(child, repo, 'commit -m "Initial"')
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Get buffer lines
   child.lua([[
@@ -181,7 +176,6 @@ end
 T["submodule popup"] = MiniTest.new_set()
 
 T["submodule popup"]["opens from status buffer with ' key"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -190,14 +184,13 @@ T["submodule popup"]["opens from status buffer with ' key"] = function()
   git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-
-  -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Press ' to open submodule popup
   child.type_keys("'")
+  helpers.wait_for_popup(child)
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -236,7 +229,6 @@ T["submodule popup"]["opens from status buffer with ' key"] = function()
 end
 
 T["submodule popup"]["has all expected switches"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -244,11 +236,12 @@ T["submodule popup"]["has all expected switches"] = function()
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   child.type_keys("'")
+  helpers.wait_for_popup(child)
 
   -- Check for switches in popup
   child.lua([[
@@ -282,7 +275,6 @@ T["submodule popup"]["has all expected switches"] = function()
 end
 
 T["submodule popup"]["closes with q"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -290,18 +282,19 @@ T["submodule popup"]["closes with q"] = function()
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Open submodule popup
   child.type_keys("'")
+  helpers.wait_for_popup(child)
   local win_count_popup = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_popup, 2)
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -315,7 +308,6 @@ T["submodule popup"]["closes with q"] = function()
 end
 
 T["submodule popup"]["' keybinding appears in help"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -323,12 +315,13 @@ T["submodule popup"]["' keybinding appears in help"] = function()
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
+  helpers.wait_for_popup(child)
 
   -- Check for submodule popup in help
   child.lua([[
@@ -354,7 +347,6 @@ end
 T["submodule navigation"] = MiniTest.new_set()
 
 T["submodule navigation"]["gj/gk navigates to submodule entries"] = function()
-  local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section for this test
@@ -363,9 +355,10 @@ T["submodule navigation"]["gj/gk navigates to submodule entries"] = function()
   )
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.cd(child, parent_repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Submodules")
 
   -- Get buffer content and find submodule line
   child.lua([[
@@ -403,7 +396,6 @@ T["submodule navigation"]["gj/gk navigates to submodule entries"] = function()
 end
 
 T["submodule navigation"]["TAB collapses and expands submodule section"] = function()
-  local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section for this test
@@ -412,9 +404,10 @@ T["submodule navigation"]["TAB collapses and expands submodule section"] = funct
   )
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.cd(child, parent_repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Submodules")
 
   -- Find and navigate to Submodules section header
   child.lua([[
@@ -450,7 +443,7 @@ T["submodule navigation"]["TAB collapses and expands submodule section"] = funct
 
   -- Press TAB to collapse
   child.type_keys("<Tab>")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_short(child, 100)
 
   -- Check submodule entry is now hidden
   child.lua([[
@@ -468,7 +461,7 @@ T["submodule navigation"]["TAB collapses and expands submodule section"] = funct
 
   -- Press TAB again to expand
   child.type_keys("<Tab>")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_short(child, 100)
 
   -- Check submodule entry is visible again
   child.lua([[
@@ -492,7 +485,6 @@ end
 T["submodule RET"] = MiniTest.new_set()
 
 T["submodule RET"]["RET on submodule opens its directory"] = function()
-  local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section for this test
@@ -501,9 +493,10 @@ T["submodule RET"]["RET on submodule opens its directory"] = function()
   )
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.cd(child, parent_repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Submodules", 1500)
 
   -- Find and navigate to submodule entry
   child.lua([[
@@ -528,13 +521,13 @@ T["submodule RET"]["RET on submodule opens its directory"] = function()
   end
 
   -- Give status buffer time to set up keymaps
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_short(child, 100)
 
   -- Press RET to visit the submodule (use feedkeys for better keymap handling)
   child.lua(
     [[vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, true, true), "x", true)]]
   )
-  child.lua([[vim.wait(300, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Verify the buffer name contains the submodule path
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -548,7 +541,6 @@ end
 T["submodule popup context"] = MiniTest.new_set()
 
 T["submodule popup context"]["' on submodule entry shows submodule path in popup"] = function()
-  local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Enable submodules section for this test
@@ -557,9 +549,10 @@ T["submodule popup context"]["' on submodule entry shows submodule path in popup
   )
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.cd(child, parent_repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Submodules")
 
   -- Find and navigate to submodule entry
   child.lua([[
@@ -575,7 +568,7 @@ T["submodule popup context"]["' on submodule entry shows submodule path in popup
 
   -- Press ' to open submodule popup
   child.type_keys("'")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Get popup content
   child.lua([[
@@ -600,7 +593,6 @@ T["submodule popup context"]["' on submodule entry shows submodule path in popup
 end
 
 T["submodule popup context"]["' on submodule in unstaged changes shows path in popup"] = function()
-  local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Modify the submodule (create a new commit in it) so it appears in Unstaged changes
@@ -617,9 +609,10 @@ T["submodule popup context"]["' on submodule in unstaged changes shows path in p
   )
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.cd(child, parent_repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Unstaged")
 
   -- Find the submodule in Unstaged changes section (should be a file entry)
   child.lua([[
@@ -653,7 +646,7 @@ T["submodule popup context"]["' on submodule in unstaged changes shows path in p
 
   -- Press ' to open submodule popup
   child.type_keys("'")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Get popup content
   child.lua([[
@@ -681,7 +674,6 @@ end
 T["submodule diff"] = MiniTest.new_set()
 
 T["submodule diff"]["TAB on submodule in Submodules section shows SHA diff"] = function()
-  local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Modify the submodule (create a new commit in it)
@@ -698,9 +690,10 @@ T["submodule diff"]["TAB on submodule in Submodules section shows SHA diff"] = f
   )
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.cd(child, parent_repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Submodules")
 
   -- Find the submodule entry in the Submodules section (has "remotes" or similar describe info)
   child.lua([[
@@ -733,7 +726,7 @@ T["submodule diff"]["TAB on submodule in Submodules section shows SHA diff"] = f
 
   -- Press TAB to expand diff
   child.type_keys("<Tab>")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_short(child, 300)
 
   -- Get buffer content and look for SHA diff lines
   child.lua([[
@@ -760,7 +753,6 @@ T["submodule diff"]["TAB on submodule in Submodules section shows SHA diff"] = f
 end
 
 T["submodule diff"]["TAB on submodule in Unstaged section shows SHA diff"] = function()
-  local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Modify the submodule (create a new commit in it)
@@ -777,9 +769,10 @@ T["submodule diff"]["TAB on submodule in Unstaged section shows SHA diff"] = fun
   )
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.cd(child, parent_repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Unstaged")
 
   -- Find the submodule entry in the Unstaged section
   child.lua([[
@@ -812,7 +805,7 @@ T["submodule diff"]["TAB on submodule in Unstaged section shows SHA diff"] = fun
 
   -- Press TAB to expand diff
   child.type_keys("<Tab>")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_short(child, 300)
 
   -- Get buffer content and look for SHA diff lines immediately after the submodule line
   child.lua(string.format(
@@ -824,10 +817,10 @@ T["submodule diff"]["TAB on submodule in Unstaged section shows SHA diff"] = fun
     -- Look for SHA diff lines right after the submodule entry
     for i = %d + 1, math.min(%d + 3, #lines) do
       local line = lines[i]
-      if line:match("^%s*%-[0-9a-f]+$") then
+      if line:match("^%%s*%%-[0-9a-f]+$") then
         _G.found_minus_sha = true
       end
-      if line:match("^%s*%+[0-9a-f]+$") then
+      if line:match("^%%s*%%+[0-9a-f]+$") then
         _G.found_plus_sha = true
       end
     end
@@ -848,13 +841,12 @@ end
 T["submodule list"] = MiniTest.new_set()
 
 T["submodule list"]["l action triggers submodule list"] = function()
-  local child = _G.child
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Open status view
-  child.lua(string.format([[vim.cmd("cd %s")]], parent_repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.cd(child, parent_repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Mock vim.ui.select to capture the list action
   child.lua([[
@@ -871,9 +863,10 @@ T["submodule list"]["l action triggers submodule list"] = function()
 
   -- Open submodule popup and press l for list
   child.type_keys("'")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("l")
-  child.lua([[vim.wait(500, function() return _G.ui_select_called end)]])
+  -- Wait for async submodule list and vim.ui.select to be called
+  child.lua([[vim.wait(1500, function() return _G.ui_select_called == true end, 10)]])
 
   eq(child.lua_get([[_G.ui_select_called]]), true)
 

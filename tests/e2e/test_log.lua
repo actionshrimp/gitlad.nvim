@@ -1,6 +1,7 @@
 -- E2E tests for log functionality
 local MiniTest = require("mini.test")
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
+local helpers = require("tests.helpers")
 
 local child = MiniTest.new_child_neovim()
 
@@ -77,11 +78,11 @@ T["log popup"]["opens from status buffer with l key"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Press l to open log popup
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Should have a popup window
   local win_count = child.lua_get("vim.fn.winnr('$')")
@@ -110,10 +111,10 @@ T["log popup"]["has switches and options"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -139,15 +140,15 @@ T["log popup"]["closes with q"] = function()
   git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local win_count_before = child.lua_get("vim.fn.winnr('$')")
 
   child.type_keys("q")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup_closed(child)
 
   local win_count_after = child.lua_get("vim.fn.winnr('$')")
 
@@ -177,15 +178,15 @@ T["log view"]["opens when action is triggered"] = function()
   git(child, repo, "commit -m 'Add file2'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log popup
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Trigger "log current branch" action
   child.type_keys("l")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
 
   -- Should now be in log buffer
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -208,11 +209,12 @@ T["log view"]["displays commits"] = function()
   git(child, repo, "commit -m 'Second commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "First commit")
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -234,11 +236,12 @@ T["log view"]["commit lines have no leading indent"] = function()
   git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
@@ -267,19 +270,20 @@ T["log view"]["can yank commit hash with y"] = function()
   git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
 
   -- Navigate to first commit (after header)
   child.type_keys("j")
-  child.lua("vim.wait(100, function() end)")
+  helpers.wait_short(child)
 
   -- Yank the hash
   child.type_keys("y")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_short(child, 100)
 
   -- Check clipboard has a hash-like value
   local reg = child.lua_get("vim.fn.getreg('\"')")
@@ -298,11 +302,12 @@ T["log view"]["closes with q"] = function()
   git(child, repo, "commit -m 'Test'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test")
 
   -- Verify in log buffer
   local buf_name_before = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -310,7 +315,7 @@ T["log view"]["closes with q"] = function()
 
   -- Close with q
   child.type_keys("q")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_short(child, 100)
 
   -- Should be back in status or previous buffer
   local buf_name_after = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -333,11 +338,12 @@ T["log view"]["gj/gk keymaps are set up"] = function()
   git(child, repo, "commit -m 'Commit 2'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Commit")
 
   -- Verify we're in the log buffer
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -371,11 +377,12 @@ T["log view"]["buffer is not modifiable"] = function()
   git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
 
   -- Check that buffer is not modifiable
   local modifiable = child.lua_get("vim.bo.modifiable")
@@ -398,11 +405,12 @@ T["log view"]["has sign column with expand indicators"] = function()
   git(child, repo, "commit -m 'Second commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "First commit")
 
   -- Check sign column is enabled
   local signcolumn = child.lua_get("vim.wo.signcolumn")
@@ -437,11 +445,12 @@ T["log view"]["sign indicator changes when commit is expanded"] = function()
   git(child, repo, 'commit -m "Test commit" -m "This is the body of the commit"')
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
 
   -- Get sign text before expansion
   child.lua([[
@@ -465,7 +474,7 @@ T["log view"]["sign indicator changes when commit is expanded"] = function()
   -- Navigate to commit line and expand it
   child.type_keys("gj") -- Go to first commit
   child.type_keys("<Tab>")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_short(child, 200)
 
   -- Get sign text after expansion
   child.lua([[
@@ -499,11 +508,12 @@ T["log view"]["has popup keymaps (b, r, A, _, X)"] = function()
   git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
 
   -- Check that popup keymaps exist
   child.lua([[
@@ -543,17 +553,18 @@ T["log view"]["branch popup opens from log view"] = function()
   git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
 
   local win_count_before = child.lua_get("vim.fn.winnr('$')")
 
   -- Open branch popup
   child.type_keys("b")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Should have opened a popup window
   local win_count_after = child.lua_get("vim.fn.winnr('$')")
@@ -576,19 +587,20 @@ T["log view"]["reset popup opens with commit context"] = function()
   git(child, repo, "commit -m 'Second commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "First commit")
 
   local win_count_before = child.lua_get("vim.fn.winnr('$')")
 
   -- Navigate to first commit and open reset popup
   child.type_keys("gj")
-  child.lua("vim.wait(100, function() end)")
+  helpers.wait_short(child)
   child.type_keys("X")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Should have opened a popup window
   local win_count_after = child.lua_get("vim.fn.winnr('$')")

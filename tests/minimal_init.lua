@@ -5,6 +5,9 @@
 local plugin_root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h:h")
 vim.opt.runtimepath:prepend(plugin_root)
 
+-- Add tests directory to Lua path for test helpers
+package.path = plugin_root .. "/?.lua;" .. package.path
+
 -- Add mini.nvim to runtimepath if available (for mini.test)
 local mini_path = vim.fn.stdpath("data") .. "/site/pack/deps/start/mini.nvim"
 if vim.fn.isdirectory(mini_path) == 1 then

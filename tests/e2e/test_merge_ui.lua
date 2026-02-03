@@ -1,11 +1,14 @@
 -- End-to-end tests for gitlad.nvim merge UI interactions
 local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
+local helpers = require("tests.helpers")
+
+local child = MiniTest.new_child_neovim()
 
 -- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
+local function create_test_repo(child_nvim)
+  local repo = child_nvim.lua_get("vim.fn.tempname()")
+  child_nvim.lua(string.format(
     [[
     local repo = %q
     vim.fn.mkdir(repo, "p")
@@ -19,8 +22,8 @@ local function create_test_repo(child)
 end
 
 -- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
+local function create_file(child_nvim, repo, filename, content)
+  child_nvim.lua(string.format(
     [[
     local path = %q .. "/" .. %q
     local f = io.open(path, "w")
@@ -34,29 +37,22 @@ local function create_file(child, repo, filename, content)
 end
 
 -- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
+local function git(child_nvim, repo, args)
+  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
 end
 
 -- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
+local function cleanup_repo(child_nvim, repo)
+  child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
 end
 
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
-      -- Start fresh child process for each test
-      local child = MiniTest.new_child_neovim()
-      child.start({ "-u", "tests/minimal_init.lua" })
-      _G.child = child
+      child.restart({ "-u", "tests/minimal_init.lua" })
+      child.lua([[require("gitlad").setup({})]])
     end,
-    post_case = function()
-      if _G.child then
-        _G.child.stop()
-        _G.child = nil
-      end
-    end,
+    post_once = child.stop,
   },
 })
 
@@ -64,7 +60,6 @@ local T = MiniTest.new_set({
 T["merge popup"] = MiniTest.new_set()
 
 T["merge popup"]["opens from status buffer with m key"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -73,17 +68,13 @@ T["merge popup"]["opens from status buffer with m key"] = function()
   git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-
-  -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Press m to open merge popup
   child.type_keys("m")
-
-  -- Wait for async popup to open
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -116,7 +107,6 @@ T["merge popup"]["opens from status buffer with m key"] = function()
 end
 
 T["merge popup"]["has all expected switches"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -124,12 +114,12 @@ T["merge popup"]["has all expected switches"] = function()
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   child.type_keys("m")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Check for switches in popup
   child.lua([[
@@ -158,7 +148,6 @@ T["merge popup"]["has all expected switches"] = function()
 end
 
 T["merge popup"]["closes with q"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -166,19 +155,19 @@ T["merge popup"]["closes with q"] = function()
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Open merge popup
   child.type_keys("m")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
   local win_count_popup = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_popup, 2)
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -192,7 +181,6 @@ T["merge popup"]["closes with q"] = function()
 end
 
 T["merge popup"]["m keybinding appears in help"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit
@@ -200,12 +188,13 @@ T["merge popup"]["m keybinding appears in help"] = function()
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
+  helpers.wait_for_popup(child)
 
   -- Check for merge in help
   child.lua([[
@@ -228,7 +217,6 @@ T["merge popup"]["m keybinding appears in help"] = function()
 end
 
 T["merge popup"]["shows in-progress popup during merge conflict"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit on main
@@ -251,11 +239,10 @@ T["merge popup"]["shows in-progress popup during merge conflict"] = function()
   -- Start merge with conflict
   git(child, repo, "merge feature --no-edit || true")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-
-  -- Wait for status to load fully
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_for_buffer_content(child, "Conflicted", 1500)
 
   -- Verify merge state is detected
   child.lua(string.format(
@@ -267,20 +254,11 @@ T["merge popup"]["shows in-progress popup during merge conflict"] = function()
   ]],
     repo
   ))
-  child.lua([[vim.wait(500, function() return _G.merge_state ~= nil end)]])
+  helpers.wait_for_var(child, "_G.merge_state", 500)
 
   -- Open merge popup
   child.type_keys("m")
-
-  -- Wait for async popup to open (merge state detection is async)
-  child.lua([[vim.wait(2000, function() return false end)]])
-
-  -- Wait for popup window to appear
-  child.lua([[
-    vim.wait(500, function()
-      return #vim.api.nvim_list_wins() > 1
-    end)
-  ]])
+  helpers.wait_for_popup(child, 2000)
 
   -- Verify popup shows in-progress state
   -- The popup name (with "in progress") is shown in window title, not buffer content
@@ -322,7 +300,6 @@ end
 T["branch selection"] = MiniTest.new_set()
 
 T["branch selection"]["prompts with vim.ui.select when no context branch"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit on main
@@ -337,9 +314,9 @@ T["branch selection"]["prompts with vim.ui.select when no context branch"] = fun
   git(child, repo, 'commit -m "Feature"')
   git(child, repo, "checkout main")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Mock vim.ui.select to capture the call
   child.lua([[
@@ -355,9 +332,10 @@ T["branch selection"]["prompts with vim.ui.select when no context branch"] = fun
 
   -- Open merge popup and trigger merge action
   child.type_keys("m")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("m") -- Press 'm' again to trigger merge action
-  child.lua([[vim.wait(500, function() return false end)]])
+  -- Wait for async branch list to fetch and vim.ui.select to be called
+  child.lua([[vim.wait(1000, function() return _G.select_called == true end, 10)]])
 
   local select_called = child.lua_get([[_G.select_called]])
   eq(select_called, true)
@@ -380,7 +358,6 @@ T["branch selection"]["prompts with vim.ui.select when no context branch"] = fun
 end
 
 T["branch selection"]["excludes current branch from selection list"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit on main
@@ -393,9 +370,9 @@ T["branch selection"]["excludes current branch from selection list"] = function(
   git(child, repo, "checkout -b feature2")
   git(child, repo, "checkout main")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Mock vim.ui.select
   child.lua([[
@@ -408,9 +385,9 @@ T["branch selection"]["excludes current branch from selection list"] = function(
   ]])
 
   child.type_keys("m")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("m")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_var(child, "_G.select_items", 500)
 
   local select_items = child.lua_get([[_G.select_items]])
 
@@ -430,7 +407,6 @@ T["branch selection"]["excludes current branch from selection list"] = function(
 end
 
 T["branch selection"]["shows notification when no branches available"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create initial commit on main - only one branch exists
@@ -438,9 +414,9 @@ T["branch selection"]["shows notification when no branches available"] = functio
   git(child, repo, "add test.txt")
   git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Track notifications
   child.lua([[
@@ -452,9 +428,9 @@ T["branch selection"]["shows notification when no branches available"] = functio
   ]])
 
   child.type_keys("m")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("m")
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_short(child, 500)
 
   local notifications = child.lua_get([[_G.notifications]])
 
@@ -475,7 +451,6 @@ end
 T["abort confirmation"] = MiniTest.new_set()
 
 T["abort confirmation"]["does not abort when user selects No"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create merge conflict
@@ -495,7 +470,7 @@ T["abort confirmation"]["does not abort when user selects No"] = function()
 
   git(child, repo, "merge feature --no-edit || true")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  helpers.cd(child, repo)
 
   -- Verify merge is in progress
   local in_progress_before =
@@ -521,7 +496,7 @@ T["abort confirmation"]["does not abort when user selects No"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_short(child, 300)
 
   -- Merge should still be in progress
   local in_progress_after =
@@ -533,7 +508,6 @@ T["abort confirmation"]["does not abort when user selects No"] = function()
 end
 
 T["abort confirmation"]["aborts when user selects Yes"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   -- Create merge conflict
@@ -553,7 +527,7 @@ T["abort confirmation"]["aborts when user selects Yes"] = function()
 
   git(child, repo, "merge feature --no-edit || true")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  helpers.cd(child, repo)
 
   -- Mock vim.ui.select to select "Yes"
   child.lua([[
@@ -574,7 +548,7 @@ T["abort confirmation"]["aborts when user selects Yes"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_short(child, 500)
 
   -- Merge should no longer be in progress
   local in_progress_after =
@@ -589,7 +563,6 @@ end
 T["switch toggling"] = MiniTest.new_set()
 
 T["switch toggling"]["multiple switches can be combined"] = function()
-  local child = _G.child
   local repo = create_test_repo(child)
 
   create_file(child, repo, "test.txt", "hello")
@@ -603,17 +576,17 @@ T["switch toggling"]["multiple switches can be combined"] = function()
 
   git(child, repo, "checkout main")
 
-  child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.cd(child, repo)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
 
   -- Open merge popup and enable switches
   child.type_keys("m")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Toggle ff-only switch
   child.type_keys("-f")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_short(child, 100)
 
   -- Verify switch is shown as enabled in popup
   child.lua([[
