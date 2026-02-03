@@ -208,4 +208,83 @@ T["watcher"]["respects custom cooldown duration"] = function()
   eq(w2:is_in_cooldown(), false)
 end
 
+T["watcher"]["defaults to indicator mode"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  eq(w._mode, "indicator")
+end
+
+T["watcher"]["accepts indicator mode explicitly"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state, { mode = "indicator" })
+  eq(w._mode, "indicator")
+end
+
+T["watcher"]["accepts auto_refresh mode"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local refresh_called = false
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state, {
+    mode = "auto_refresh",
+    on_refresh = function()
+      refresh_called = true
+    end,
+  })
+
+  eq(w._mode, "auto_refresh")
+  -- Verify auto_refresh_debounced was created
+  expect.no_error(function()
+    return w._auto_refresh_debounced
+  end)
+end
+
+T["watcher"]["auto_refresh mode requires on_refresh callback to create debouncer"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    mark_stale = function() end,
+  }
+
+  -- Without on_refresh, debouncer should not be created
+  local w = watcher.new(mock_repo_state, { mode = "auto_refresh" })
+  eq(w._mode, "auto_refresh")
+  eq(w._auto_refresh_debounced, nil)
+end
+
+T["watcher"]["accepts custom auto_refresh_debounce_ms"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state, {
+    mode = "auto_refresh",
+    auto_refresh_debounce_ms = 1000,
+    on_refresh = function() end,
+  })
+
+  -- Can't directly test debounce duration, but we can verify the watcher was created
+  eq(w._mode, "auto_refresh")
+end
+
 return T

@@ -18,8 +18,10 @@ local M = {}
 ---@field directory_strategy "sibling"|"prompt" How to suggest worktree paths ("sibling" = suggest sibling directory, "prompt" = always prompt for path)
 
 ---@class GitladWatcherConfig
----@field enabled boolean Whether to enable file watching for stale view detection (default: false)
----@field cooldown_ms number Cooldown period in ms after gitlad operations before events trigger stale (default: 1000)
+---@field enabled boolean Whether to enable file watching for git state changes (default: true)
+---@field mode "indicator"|"auto_refresh" How to respond to external changes: "indicator" shows stale indicator, "auto_refresh" triggers refresh (default: "indicator")
+---@field cooldown_ms number Cooldown period in ms after gitlad operations before events are processed (default: 1000)
+---@field auto_refresh_debounce_ms number Debounce period in ms before triggering auto-refresh (default: 500)
 
 ---@class GitladConfig
 ---@field signs GitladSigns
@@ -43,7 +45,9 @@ local defaults = {
   },
   watcher = {
     enabled = true, -- Can disable for performance-sensitive users
+    mode = "indicator", -- "indicator" shows stale indicator, "auto_refresh" triggers refresh
     cooldown_ms = 1000, -- Ignore events for 1s after gitlad operations
+    auto_refresh_debounce_ms = 500, -- Debounce for auto_refresh mode
   },
 }
 

@@ -70,18 +70,48 @@ local T = MiniTest.new_set({
 
 T["watcher config"] = MiniTest.new_set()
 
-T["watcher config"]["is disabled by default"] = function()
+T["watcher config"]["is enabled by default"] = function()
   child.lua([[require("gitlad").setup({})]])
+
+  local enabled = child.lua_get([[require("gitlad.config").get().watcher.enabled]])
+  eq(enabled, true)
+end
+
+T["watcher config"]["can be disabled via setup"] = function()
+  child.lua([[require("gitlad").setup({ watcher = { enabled = false } })]])
 
   local enabled = child.lua_get([[require("gitlad.config").get().watcher.enabled]])
   eq(enabled, false)
 end
 
-T["watcher config"]["can be enabled via setup"] = function()
-  child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
+T["watcher config"]["defaults to indicator mode"] = function()
+  child.lua([[require("gitlad").setup({})]])
 
-  local enabled = child.lua_get([[require("gitlad.config").get().watcher.enabled]])
-  eq(enabled, true)
+  local mode = child.lua_get([[require("gitlad.config").get().watcher.mode]])
+  eq(mode, "indicator")
+end
+
+T["watcher config"]["can be set to auto_refresh mode"] = function()
+  child.lua([[require("gitlad").setup({ watcher = { mode = "auto_refresh" } })]])
+
+  local mode = child.lua_get([[require("gitlad.config").get().watcher.mode]])
+  eq(mode, "auto_refresh")
+end
+
+T["watcher config"]["has default auto_refresh_debounce_ms"] = function()
+  child.lua([[require("gitlad").setup({})]])
+
+  local debounce =
+    child.lua_get([[require("gitlad.config").get().watcher.auto_refresh_debounce_ms]])
+  eq(debounce, 500)
+end
+
+T["watcher config"]["can configure auto_refresh_debounce_ms"] = function()
+  child.lua([[require("gitlad").setup({ watcher = { auto_refresh_debounce_ms = 1000 } })]])
+
+  local debounce =
+    child.lua_get([[require("gitlad.config").get().watcher.auto_refresh_debounce_ms]])
+  eq(debounce, 1000)
 end
 
 -- =============================================================================
@@ -355,8 +385,8 @@ T["watcher integration"]["does not create watcher when disabled"] = function()
   git(child, repo, "add init.txt")
   git(child, repo, "commit -m 'Initial commit'")
 
-  -- Setup with watcher disabled (default)
-  child.lua([[require("gitlad").setup({})]])
+  -- Setup with watcher explicitly disabled
+  child.lua([[require("gitlad").setup({ watcher = { enabled = false } })]])
 
   -- Open status buffer
   child.cmd("Gitlad")
@@ -402,6 +432,69 @@ T["watcher integration"]["watcher is running after open"] = function()
   ]])
   local is_running = child.lua_get("_G.test_is_running")
   eq(is_running, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["watcher integration"]["creates watcher in indicator mode by default"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "init")
+  git(child, repo, "add init.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with watcher enabled (defaults to indicator mode)
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  wait(child, 500)
+
+  -- Check watcher mode
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_watcher_mode = buf and buf.watcher and buf.watcher._mode
+  ]])
+  local mode = child.lua_get("_G.test_watcher_mode")
+  eq(mode, "indicator")
+
+  cleanup_test_repo(child, repo)
+end
+
+T["watcher integration"]["creates watcher in auto_refresh mode when configured"] = function()
+  local repo = create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "init")
+  git(child, repo, "add init.txt")
+  git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with auto_refresh mode
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, mode = "auto_refresh" } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  wait(child, 500)
+
+  -- Check watcher mode and that auto_refresh debouncer was created
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_watcher_mode = buf and buf.watcher and buf.watcher._mode
+    _G.test_has_auto_refresh = buf and buf.watcher and buf.watcher._auto_refresh_debounced ~= nil
+  ]])
+  local mode = child.lua_get("_G.test_watcher_mode")
+  local has_auto_refresh = child.lua_get("_G.test_has_auto_refresh")
+  eq(mode, "auto_refresh")
+  eq(has_auto_refresh, true)
 
   cleanup_test_repo(child, repo)
 end
