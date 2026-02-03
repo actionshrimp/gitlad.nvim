@@ -132,4 +132,98 @@ T["spinner"]["returns placeholder after stop"] = function()
   eq(s:get_display(), "· Idle")
 end
 
+-- Stale state tests
+
+T["spinner"]["is_stale returns false initially"] = function()
+  local spinner = require("gitlad.ui.utils.spinner")
+  local s = spinner.new()
+
+  eq(s:is_stale(), false)
+end
+
+T["spinner"]["set_stale marks spinner as stale"] = function()
+  local spinner = require("gitlad.ui.utils.spinner")
+  local s = spinner.new()
+
+  s:set_stale()
+  eq(s:is_stale(), true)
+end
+
+T["spinner"]["clear_stale clears stale flag"] = function()
+  local spinner = require("gitlad.ui.utils.spinner")
+  local s = spinner.new()
+
+  s:set_stale()
+  eq(s:is_stale(), true)
+
+  s:clear_stale()
+  eq(s:is_stale(), false)
+end
+
+T["spinner"]["get_display shows stale message when stale"] = function()
+  local spinner = require("gitlad.ui.utils.spinner")
+  local s = spinner.new()
+
+  s:set_stale()
+  local display = s:get_display()
+
+  eq(display:match("Stale") ~= nil, true)
+  eq(display:match("gr to refresh") ~= nil, true)
+end
+
+T["spinner"]["get_char returns warning icon when stale"] = function()
+  local spinner = require("gitlad.ui.utils.spinner")
+  local s = spinner.new()
+
+  s:set_stale()
+  eq(s:get_char(), "⚠")
+end
+
+T["spinner"]["spinning takes priority over stale"] = function()
+  local spinner = require("gitlad.ui.utils.spinner")
+  local s = spinner.new()
+
+  -- Set stale first
+  s:set_stale()
+  eq(s:is_stale(), true)
+
+  -- Then start spinning
+  s:start(function() end)
+
+  -- Spinning should take priority
+  local display = s:get_display()
+  eq(display:match("Refreshing") ~= nil, true)
+  eq(display:match("Stale") == nil, true)
+
+  -- But stale flag should still be set
+  eq(s:is_stale(), true)
+
+  -- Clean up
+  s:stop()
+end
+
+T["spinner"]["stale persists after stop"] = function()
+  local spinner = require("gitlad.ui.utils.spinner")
+  local s = spinner.new()
+
+  s:set_stale()
+  s:start(function() end)
+  s:stop()
+
+  -- Stale should still be set (not cleared by stop)
+  eq(s:is_stale(), true)
+  eq(s:get_display():match("Stale") ~= nil, true)
+end
+
+T["spinner"]["shows idle after stale is cleared"] = function()
+  local spinner = require("gitlad.ui.utils.spinner")
+  local s = spinner.new()
+
+  s:set_stale()
+  eq(s:get_display():match("Stale") ~= nil, true)
+
+  s:clear_stale()
+  eq(s:get_display(), "· Idle")
+end
+
 return T

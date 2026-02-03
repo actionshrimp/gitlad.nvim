@@ -15,6 +15,8 @@ local state = require("gitlad.state")
 local utils = require("gitlad.utils")
 local spinner_util = require("gitlad.ui.utils.spinner")
 local expansion = require("gitlad.state.expansion")
+local config = require("gitlad.config")
+local watcher_mod = require("gitlad.watcher")
 
 -- Import component modules
 local status_render = require("gitlad.ui.views.status_render")
@@ -82,6 +84,7 @@ local status_navigation = require("gitlad.ui.views.status_navigation")
 ---@field remembered_file_states table<string, table<number, boolean>> Saved hunk states when files collapse (for restoring on re-expand)
 ---@field remembered_section_states table<string, RememberedSectionState> Saved file states when sections collapse (for restoring on re-expand)
 ---@field expansion ExpansionState Elm-style expansion state (source of truth)
+---@field watcher Watcher|nil File system watcher instance (if enabled)
 local StatusBuffer = {}
 StatusBuffer.__index = StatusBuffer
 
@@ -161,6 +164,8 @@ local function get_or_create_buffer(repo_state)
         end)
       else
         self.spinner:stop()
+        -- Clear stale flag since we just refreshed
+        self.spinner:clear_stale()
         -- Mark initial load as complete once data arrives
         if not self.initial_load_complete then
           self.initial_load_complete = true
@@ -181,11 +186,36 @@ local function get_or_create_buffer(repo_state)
     end)
   end)
 
-  -- Clean up spinner when buffer is wiped
+  -- Listen for stale updates (file watcher detected external git changes)
+  repo_state:on("stale", function()
+    vim.schedule(function()
+      -- Only show stale indicator when not actively refreshing
+      if not repo_state.refreshing then
+        self.spinner:set_stale()
+        self:_update_status_line()
+      end
+    end)
+  end)
+
+  -- Create file watcher if enabled in config
+  local cfg = config.get()
+  if cfg.watcher and cfg.watcher.enabled then
+    self.watcher = watcher_mod.new(repo_state, {
+      cooldown_ms = cfg.watcher.cooldown_ms,
+    })
+    -- Register watcher with repo_state so operations can pause it
+    repo_state:set_watcher(self.watcher)
+  end
+
+  -- Clean up spinner and watcher when buffer is wiped
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer = self.bufnr,
     callback = function()
       self.spinner:destroy()
+      if self.watcher then
+        self.watcher:stop()
+        self.watcher = nil
+      end
       status_buffers[key] = nil
     end,
   })
@@ -233,6 +263,11 @@ function StatusBuffer:open(force_refresh)
 
   -- Initial render (will show spinner with loading background)
   self:render()
+
+  -- Start file watcher if enabled
+  if self.watcher then
+    self.watcher:start()
+  end
 
   -- Trigger refresh
   self.repo_state:refresh_status()

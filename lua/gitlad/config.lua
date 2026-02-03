@@ -17,11 +17,16 @@ local M = {}
 ---@class GitladWorktreeConfig
 ---@field directory_strategy "sibling"|"prompt" How to suggest worktree paths ("sibling" = suggest sibling directory, "prompt" = always prompt for path)
 
+---@class GitladWatcherConfig
+---@field enabled boolean Whether to enable file watching for stale view detection (default: false)
+---@field cooldown_ms number Cooldown period in ms after gitlad operations before events trigger stale (default: 1000)
+
 ---@class GitladConfig
 ---@field signs GitladSigns
 ---@field commit_editor GitladCommitEditorConfig
 ---@field status GitladStatusConfig
 ---@field worktree GitladWorktreeConfig
+---@field watcher GitladWatcherConfig
 local defaults = {
   signs = {
     staged = "●",
@@ -35,6 +40,10 @@ local defaults = {
   status = {},
   worktree = {
     directory_strategy = "sibling", -- "sibling" or "prompt"
+  },
+  watcher = {
+    enabled = false, -- Off by default for performance-sensitive users
+    cooldown_ms = 1000, -- Ignore events for 1s after gitlad operations
   },
 }
 

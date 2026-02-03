@@ -18,9 +18,12 @@ local errors = require("gitlad.utils.errors")
 ---@field repo_root string Path to repository root
 ---@field status GitStatusResult|nil Current status
 ---@field refreshing boolean Whether a refresh is in progress
+---@field stale boolean Whether the view is stale (git state changed externally)
 ---@field status_handler AsyncHandler Handler for status requests
 ---@field cache Cache Cache instance
 ---@field listeners table<string, fun(state: RepoState)[]> Event listeners
+---@field watcher Watcher|nil File system watcher instance (if enabled)
+---@field last_operation_time number Timestamp (ms) of last gitlad operation (for watcher cooldown)
 local RepoState = {}
 RepoState.__index = RepoState
 
@@ -49,8 +52,11 @@ function M.get(path)
   state.git_dir = git_dir .. ".git"
   state.status = nil
   state.refreshing = false
+  state.stale = false
   state.cache = cache.new()
   state.listeners = {}
+  state.watcher = nil
+  state.last_operation_time = 0
 
   -- Pending callback for refresh_status with callback
   state._pending_refresh_callback = nil
@@ -120,12 +126,35 @@ function RepoState:_notify(event)
   end
 end
 
+--- Mark the state as stale (called by file watcher when git state changes externally)
+function RepoState:mark_stale()
+  if self.stale then
+    return -- Already stale
+  end
+  self.stale = true
+  self:_notify("stale")
+end
+
+--- Clear the stale flag (called when refresh starts)
+function RepoState:clear_stale()
+  self.stale = false
+end
+
+--- Set the file watcher for this repo state
+--- Called by StatusBuffer when watcher is enabled
+---@param watcher Watcher
+function RepoState:set_watcher(watcher)
+  self.watcher = watcher
+end
+
 --- Apply a command to update status (Elm Architecture pattern)
 ---@param cmd StatusCommand
 function RepoState:apply_command(cmd)
   if not self.status then
     return
   end
+  -- Record operation time for watcher cooldown
+  self.last_operation_time = vim.loop.now()
   self.status = reducer.apply(self.status, cmd)
   self.cache:invalidate("status")
   self:_notify("status")
@@ -332,6 +361,9 @@ function RepoState:refresh_status(force, callback)
   if callback then
     self._pending_refresh_callback = callback
   end
+
+  -- Clear stale flag since we're refreshing
+  self:clear_stale()
 
   -- Set refreshing flag and notify UI
   self.refreshing = true

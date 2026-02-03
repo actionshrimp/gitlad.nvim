@@ -142,9 +142,10 @@ local highlight_groups = {
   -- Help text
   GitladHelpText = { link = "Comment" },
 
-  -- Status indicator (spinner/idle)
+  -- Status indicator (spinner/idle/stale)
   GitladStatusSpinner = { link = "DiagnosticInfo" },
   GitladStatusIdle = { link = "Comment" },
+  GitladStatusStale = { link = "DiagnosticWarn" }, -- Warning color for stale indicator
   GitladStatusLineBackground = { bg = "#2a2a2a" }, -- Faint grey background for status line
 
   -- Output viewer (streaming command output)
