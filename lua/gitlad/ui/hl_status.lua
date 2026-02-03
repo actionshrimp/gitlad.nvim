@@ -49,9 +49,12 @@ function M.apply_status_line_highlight(bufnr, ns, line_idx, line, hl_module)
   -- Apply faint background to the entire line (lower priority)
   hl_module.set_line(bufnr, ns, line_idx, "GitladStatusLineBackground", { priority = 50 })
 
-  -- Check if this is the spinner (refreshing) or idle state
+  -- Check if this is the spinner (refreshing), stale, or idle state
   local is_spinning = line:match("Refreshing")
-  local hl_group = is_spinning and "GitladStatusSpinner" or "GitladStatusIdle"
+  local is_stale = line:match("Stale")
+  local hl_group = is_spinning and "GitladStatusSpinner"
+    or is_stale and "GitladStatusStale"
+    or "GitladStatusIdle"
   -- Apply text highlight on top (higher priority)
   hl_module.set(bufnr, ns, line_idx, 0, #line, hl_group, { priority = 60 })
 end
@@ -83,7 +86,10 @@ function M.update_status_line_text(bufnr, ns, line_idx, line, hl_module)
 
   -- Apply new text highlight
   local is_spinning = line:match("Refreshing")
-  local hl_group = is_spinning and "GitladStatusSpinner" or "GitladStatusIdle"
+  local is_stale = line:match("Stale")
+  local hl_group = is_spinning and "GitladStatusSpinner"
+    or is_stale and "GitladStatusStale"
+    or "GitladStatusIdle"
   hl_module.set(bufnr, ns, line_idx, 0, #line, hl_group, { priority = 60 })
 end
 

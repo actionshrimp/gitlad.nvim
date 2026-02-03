@@ -18,9 +18,12 @@ local errors = require("gitlad.utils.errors")
 ---@field repo_root string Path to repository root
 ---@field status GitStatusResult|nil Current status
 ---@field refreshing boolean Whether a refresh is in progress
+---@field stale boolean Whether the view is stale (git state changed externally)
 ---@field status_handler AsyncHandler Handler for status requests
 ---@field cache Cache Cache instance
 ---@field listeners table<string, fun(state: RepoState)[]> Event listeners
+---@field watcher Watcher|nil File system watcher instance (if enabled)
+---@field last_operation_time number Timestamp (ms) of last gitlad operation (for watcher cooldown)
 local RepoState = {}
 RepoState.__index = RepoState
 
@@ -31,26 +34,35 @@ local repo_states = {}
 ---@param path? string Path inside repository (defaults to cwd)
 ---@return RepoState|nil
 function M.get(path)
-  local git_dir = git.repo_root(path)
-  if not git_dir then
+  local repo_root = git.repo_root(path)
+  if not repo_root then
     return nil
   end
 
   -- Normalize to absolute path
-  git_dir = vim.fn.fnamemodify(git_dir, ":p")
+  repo_root = vim.fn.fnamemodify(repo_root, ":p")
 
-  if repo_states[git_dir] then
-    return repo_states[git_dir]
+  if repo_states[repo_root] then
+    return repo_states[repo_root]
+  end
+
+  -- Get the actual git directory (handles worktrees correctly)
+  local git_dir = git.git_dir(path)
+  if not git_dir then
+    return nil
   end
 
   -- Create new state
   local state = setmetatable({}, RepoState)
-  state.repo_root = git_dir
-  state.git_dir = git_dir .. ".git"
+  state.repo_root = repo_root
+  state.git_dir = git_dir
   state.status = nil
   state.refreshing = false
+  state.stale = false
   state.cache = cache.new()
   state.listeners = {}
+  state.watcher = nil
+  state.last_operation_time = 0
 
   -- Pending callback for refresh_status with callback
   state._pending_refresh_callback = nil
@@ -69,7 +81,7 @@ function M.get(path)
     end
   end)
 
-  repo_states[git_dir] = state
+  repo_states[repo_root] = state
   return state
 end
 
@@ -120,12 +132,35 @@ function RepoState:_notify(event)
   end
 end
 
+--- Mark the state as stale (called by file watcher when git state changes externally)
+function RepoState:mark_stale()
+  if self.stale then
+    return -- Already stale
+  end
+  self.stale = true
+  self:_notify("stale")
+end
+
+--- Clear the stale flag (called when refresh starts)
+function RepoState:clear_stale()
+  self.stale = false
+end
+
+--- Set the file watcher for this repo state
+--- Called by StatusBuffer when watcher is enabled
+---@param watcher Watcher
+function RepoState:set_watcher(watcher)
+  self.watcher = watcher
+end
+
 --- Apply a command to update status (Elm Architecture pattern)
 ---@param cmd StatusCommand
 function RepoState:apply_command(cmd)
   if not self.status then
     return
   end
+  -- Record operation time for watcher cooldown
+  self.last_operation_time = vim.loop.now()
   self.status = reducer.apply(self.status, cmd)
   self.cache:invalidate("status")
   self:_notify("status")
@@ -332,6 +367,9 @@ function RepoState:refresh_status(force, callback)
   if callback then
     self._pending_refresh_callback = callback
   end
+
+  -- Clear stale flag since we're refreshing
+  self:clear_stale()
 
   -- Set refreshing flag and notify UI
   self.refreshing = true
@@ -651,6 +689,24 @@ end
 --- Clear all repo states (useful for testing)
 function M.clear_all()
   repo_states = {}
+end
+
+--- Mark operation time for watcher cooldown
+--- Call this before running git commands to prevent false stale indicators
+---@param cwd? string Working directory (used to find the repo state)
+function M.mark_operation_time(cwd)
+  -- Normalize and find the repo state for this cwd
+  cwd = cwd or vim.fn.getcwd()
+  local normalized_cwd = vim.fn.fnamemodify(cwd, ":p")
+
+  -- Check if we have a repo state for this cwd
+  for git_dir, state in pairs(repo_states) do
+    -- Check if the cwd is within this repo's root
+    if vim.startswith(normalized_cwd, state.repo_root) or normalized_cwd == state.repo_root then
+      state.last_operation_time = vim.loop.now()
+      return
+    end
+  end
 end
 
 return M

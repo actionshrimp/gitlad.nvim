@@ -12,6 +12,9 @@ local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 -- Placeholder shown when not spinning (subtle dot to indicate the line's purpose)
 local PLACEHOLDER = "·"
 
+-- Stale indicator (warning symbol to prompt manual refresh)
+local STALE_ICON = "⚠"
+
 -- Animation interval in milliseconds
 local FRAME_INTERVAL_MS = 80
 
@@ -20,6 +23,7 @@ local FRAME_INTERVAL_MS = 80
 ---@field private _timer uv_timer_t|nil Active timer
 ---@field private _callback fun()|nil Callback to invoke on each frame
 ---@field private _spinning boolean Whether currently spinning
+---@field private _stale boolean Whether the view is stale (git state changed externally)
 local Spinner = {}
 Spinner.__index = Spinner
 
@@ -31,24 +35,31 @@ function M.new()
   self._timer = nil
   self._callback = nil
   self._spinning = false
+  self._stale = false
   return self
 end
 
 --- Get the current display character
+--- Priority: spinning > stale > idle
 ---@return string
 function Spinner:get_char()
   if self._spinning then
     return SPINNER_FRAMES[self._frame]
+  elseif self._stale then
+    return STALE_ICON
   else
     return PLACEHOLDER
   end
 end
 
 --- Get the current display text with label
+--- Priority: spinning > stale > idle
 ---@return string
 function Spinner:get_display()
   if self._spinning then
     return SPINNER_FRAMES[self._frame] .. " Refreshing..."
+  elseif self._stale then
+    return STALE_ICON .. " Stale (gr to refresh)"
   else
     return PLACEHOLDER .. " Idle"
   end
@@ -58,6 +69,22 @@ end
 ---@return boolean
 function Spinner:is_spinning()
   return self._spinning
+end
+
+--- Check if the view is stale
+---@return boolean
+function Spinner:is_stale()
+  return self._stale
+end
+
+--- Mark the view as stale (git state changed externally)
+function Spinner:set_stale()
+  self._stale = true
+end
+
+--- Clear the stale flag (typically after manual refresh)
+function Spinner:clear_stale()
+  self._stale = false
 end
 
 --- Start the spinner animation

@@ -34,6 +34,43 @@ In large monorepos (1M+ files), `git status` can take seconds. gitlad.nvim avoid
 
 This means the UI may occasionally be out of sync with git (if you run git commands outside the plugin), but `gr` is always available to resync.
 
+### File Watcher
+
+By default, gitlad.nvim watches the `.git/` directory for changes made by external tools (terminal commands, other git clients, etc.). When changes are detected, two features can respond:
+
+- **Stale indicator** (enabled by default): Shows a `⚠ Stale (gr to refresh)` indicator in the status line
+- **Auto-refresh** (disabled by default): Automatically triggers a refresh after a configurable debounce period
+
+Both features can be enabled simultaneously - you'll see the stale indicator briefly before the auto-refresh kicks in.
+
+The watcher intelligently ignores gitlad's own operations via a cooldown mechanism to avoid false positives. In large repos where automatic refreshes might be slow, the stale indicator provides awareness without the performance cost.
+
+```lua
+-- Enable both stale indicator and auto-refresh
+require("gitlad").setup({
+  watcher = {
+    stale_indicator = true,
+    auto_refresh = true,
+    auto_refresh_debounce_ms = 1000, -- wait 1s before refreshing
+  },
+})
+
+-- Only auto-refresh (no stale indicator)
+require("gitlad").setup({
+  watcher = {
+    stale_indicator = false,
+    auto_refresh = true,
+  },
+})
+
+-- Disable watcher entirely (for performance-sensitive environments)
+require("gitlad").setup({
+  watcher = {
+    enabled = false,
+  },
+})
+```
+
 ## Installation
 
 Using lazy.nvim:
@@ -78,6 +115,15 @@ require("gitlad").setup({
   -- Worktree creation behavior
   worktree = {
     directory_strategy = "sibling", -- "sibling" = suggest sibling directory, "prompt" = always prompt
+  },
+
+  -- File watcher configuration (detects external git changes)
+  watcher = {
+    enabled = true, -- Enable file watching (disable for performance-sensitive environments)
+    stale_indicator = true, -- Show stale indicator when external changes detected
+    auto_refresh = false, -- Automatically refresh when external changes detected
+    cooldown_ms = 1000, -- Ignore events for this duration after gitlad operations
+    auto_refresh_debounce_ms = 500, -- Debounce delay before auto-refresh triggers
   },
 
   -- Status buffer configuration

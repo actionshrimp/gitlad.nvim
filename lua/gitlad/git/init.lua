@@ -359,6 +359,15 @@ function M.repo_root(path)
   return cli.find_repo_root(path)
 end
 
+--- Get git directory (handles worktrees correctly)
+--- For a regular repo, returns /path/to/repo/.git/
+--- For a worktree, returns /path/to/main-repo/.git/worktrees/worktree-name/
+---@param path? string Path to check (defaults to cwd)
+---@return string|nil
+function M.git_dir(path)
+  return cli.find_git_dir(path)
+end
+
 --- Get list of remotes
 ---@param opts? GitCommandOptions
 ---@param callback fun(remotes: GitRemote[]|nil, err: string|nil)
