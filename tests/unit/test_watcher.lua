@@ -208,7 +208,7 @@ T["watcher"]["respects custom cooldown duration"] = function()
   eq(w2:is_in_cooldown(), false)
 end
 
-T["watcher"]["defaults to indicator mode"] = function()
+T["watcher"]["defaults to stale_indicator enabled and auto_refresh disabled"] = function()
   local watcher = require("gitlad.watcher")
 
   local mock_repo_state = {
@@ -217,10 +217,11 @@ T["watcher"]["defaults to indicator mode"] = function()
   }
 
   local w = watcher.new(mock_repo_state)
-  eq(w._mode, "indicator")
+  eq(w._stale_indicator, true)
+  eq(w._auto_refresh, false)
 end
 
-T["watcher"]["accepts indicator mode explicitly"] = function()
+T["watcher"]["creates stale_indicator_debounced when stale_indicator enabled"] = function()
   local watcher = require("gitlad.watcher")
 
   local mock_repo_state = {
@@ -228,34 +229,42 @@ T["watcher"]["accepts indicator mode explicitly"] = function()
     mark_stale = function() end,
   }
 
-  local w = watcher.new(mock_repo_state, { mode = "indicator" })
-  eq(w._mode, "indicator")
+  local w = watcher.new(mock_repo_state, { stale_indicator = true })
+  eq(w._stale_indicator, true)
+  eq(w._stale_indicator_debounced ~= nil, true)
 end
 
-T["watcher"]["accepts auto_refresh mode"] = function()
+T["watcher"]["does not create stale_indicator_debounced when disabled"] = function()
   local watcher = require("gitlad.watcher")
 
-  local refresh_called = false
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state, { stale_indicator = false })
+  eq(w._stale_indicator, false)
+  eq(w._stale_indicator_debounced, nil)
+end
+
+T["watcher"]["creates auto_refresh_debounced when auto_refresh enabled with callback"] = function()
+  local watcher = require("gitlad.watcher")
+
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
     mark_stale = function() end,
   }
 
   local w = watcher.new(mock_repo_state, {
-    mode = "auto_refresh",
-    on_refresh = function()
-      refresh_called = true
-    end,
+    auto_refresh = true,
+    on_refresh = function() end,
   })
 
-  eq(w._mode, "auto_refresh")
-  -- Verify auto_refresh_debounced was created
-  expect.no_error(function()
-    return w._auto_refresh_debounced
-  end)
+  eq(w._auto_refresh, true)
+  eq(w._auto_refresh_debounced ~= nil, true)
 end
 
-T["watcher"]["auto_refresh mode requires on_refresh callback to create debouncer"] = function()
+T["watcher"]["auto_refresh requires on_refresh callback to create debouncer"] = function()
   local watcher = require("gitlad.watcher")
 
   local mock_repo_state = {
@@ -264,8 +273,8 @@ T["watcher"]["auto_refresh mode requires on_refresh callback to create debouncer
   }
 
   -- Without on_refresh, debouncer should not be created
-  local w = watcher.new(mock_repo_state, { mode = "auto_refresh" })
-  eq(w._mode, "auto_refresh")
+  local w = watcher.new(mock_repo_state, { auto_refresh = true })
+  eq(w._auto_refresh, true)
   eq(w._auto_refresh_debounced, nil)
 end
 
@@ -278,13 +287,33 @@ T["watcher"]["accepts custom auto_refresh_debounce_ms"] = function()
   }
 
   local w = watcher.new(mock_repo_state, {
-    mode = "auto_refresh",
+    auto_refresh = true,
     auto_refresh_debounce_ms = 1000,
     on_refresh = function() end,
   })
 
-  -- Can't directly test debounce duration, but we can verify the watcher was created
-  eq(w._mode, "auto_refresh")
+  eq(w._auto_refresh, true)
+  eq(w._auto_refresh_debounced ~= nil, true)
+end
+
+T["watcher"]["supports both stale_indicator and auto_refresh enabled"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state, {
+    stale_indicator = true,
+    auto_refresh = true,
+    on_refresh = function() end,
+  })
+
+  eq(w._stale_indicator, true)
+  eq(w._auto_refresh, true)
+  eq(w._stale_indicator_debounced ~= nil, true)
+  eq(w._auto_refresh_debounced ~= nil, true)
 end
 
 return T

@@ -36,19 +36,30 @@ This means the UI may occasionally be out of sync with git (if you run git comma
 
 ### File Watcher
 
-By default, gitlad.nvim watches the `.git/` directory for changes made by external tools (terminal commands, other git clients, etc.). When changes are detected:
+By default, gitlad.nvim watches the `.git/` directory for changes made by external tools (terminal commands, other git clients, etc.). When changes are detected, two features can respond:
 
-- **Indicator mode** (default): Shows a `⚠ Stale (gr to refresh)` indicator in the status line, prompting you to refresh
-- **Auto-refresh mode**: Automatically triggers a refresh after a configurable debounce period
+- **Stale indicator** (enabled by default): Shows a `⚠ Stale (gr to refresh)` indicator in the status line
+- **Auto-refresh** (disabled by default): Automatically triggers a refresh after a configurable debounce period
 
-The watcher intelligently ignores gitlad's own operations via a cooldown mechanism to avoid false positives. In large repos where automatic refreshes might be slow, the indicator mode provides awareness without the performance cost of constant refreshes.
+Both features can be enabled simultaneously - you'll see the stale indicator briefly before the auto-refresh kicks in.
+
+The watcher intelligently ignores gitlad's own operations via a cooldown mechanism to avoid false positives. In large repos where automatic refreshes might be slow, the stale indicator provides awareness without the performance cost.
 
 ```lua
--- Use auto-refresh mode
+-- Enable both stale indicator and auto-refresh
 require("gitlad").setup({
   watcher = {
-    mode = "auto_refresh",
+    stale_indicator = true,
+    auto_refresh = true,
     auto_refresh_debounce_ms = 1000, -- wait 1s before refreshing
+  },
+})
+
+-- Only auto-refresh (no stale indicator)
+require("gitlad").setup({
+  watcher = {
+    stale_indicator = false,
+    auto_refresh = true,
   },
 })
 
@@ -109,7 +120,8 @@ require("gitlad").setup({
   -- File watcher configuration (detects external git changes)
   watcher = {
     enabled = true, -- Enable file watching (disable for performance-sensitive environments)
-    mode = "indicator", -- "indicator" = show stale marker, "auto_refresh" = refresh automatically
+    stale_indicator = true, -- Show stale indicator when external changes detected
+    auto_refresh = false, -- Automatically refresh when external changes detected
     cooldown_ms = 1000, -- Ignore events for this duration after gitlad operations
     auto_refresh_debounce_ms = 500, -- Debounce delay before auto-refresh triggers
   },

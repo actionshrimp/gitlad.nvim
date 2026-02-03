@@ -202,7 +202,8 @@ local function get_or_create_buffer(repo_state)
   if cfg.watcher and cfg.watcher.enabled then
     self.watcher = watcher_mod.new(repo_state, {
       cooldown_ms = cfg.watcher.cooldown_ms,
-      mode = cfg.watcher.mode,
+      stale_indicator = cfg.watcher.stale_indicator,
+      auto_refresh = cfg.watcher.auto_refresh,
       auto_refresh_debounce_ms = cfg.watcher.auto_refresh_debounce_ms,
       on_refresh = function()
         -- Auto-refresh callback: trigger a status refresh

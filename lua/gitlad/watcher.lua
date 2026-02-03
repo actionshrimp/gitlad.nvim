@@ -64,17 +64,18 @@ end
 ---@field repo_state table Reference to RepoState
 ---@field fs_event uv_fs_event_t|nil File system event handle
 ---@field running boolean Whether watcher is active
----@field _debounced DebouncedFunction Debounced callback for indicator mode
+---@field _stale_indicator_debounced DebouncedFunction|nil Debounced callback for stale indicator
 ---@field _cooldown_duration number Cooldown duration in ms (configurable)
----@field _mode "indicator"|"auto_refresh" Watcher mode
----@field _on_refresh function|nil Callback for auto_refresh mode
----@field _auto_refresh_debounced DebouncedFunction|nil Debounced callback for auto_refresh mode
+---@field _stale_indicator boolean Whether to show stale indicator
+---@field _auto_refresh boolean Whether to auto-refresh
+---@field _on_refresh function|nil Callback for auto_refresh
+---@field _auto_refresh_debounced DebouncedFunction|nil Debounced callback for auto_refresh
 local Watcher = {}
 Watcher.__index = Watcher
 
 --- Create a new watcher instance
 ---@param repo_state table RepoState instance
----@param opts? { cooldown_ms?: number, mode?: "indicator"|"auto_refresh", auto_refresh_debounce_ms?: number, on_refresh?: function } Optional configuration
+---@param opts? { cooldown_ms?: number, stale_indicator?: boolean, auto_refresh?: boolean, auto_refresh_debounce_ms?: number, on_refresh?: function } Optional configuration
 ---@return Watcher
 function M.new(repo_state, opts)
   opts = opts or {}
@@ -84,18 +85,21 @@ function M.new(repo_state, opts)
   self.fs_event = nil
   self.running = false
   self._cooldown_duration = opts.cooldown_ms or DEFAULT_COOLDOWN_MS
-  self._mode = opts.mode or "indicator"
+  self._stale_indicator = opts.stale_indicator ~= false -- default true
+  self._auto_refresh = opts.auto_refresh or false -- default false
   self._on_refresh = opts.on_refresh
 
-  -- Create debounced callback for indicator mode (marks state as stale)
-  self._debounced = async.debounce(function()
-    if self.repo_state and self.repo_state.mark_stale then
-      self.repo_state:mark_stale()
-    end
-  end, INDICATOR_DEBOUNCE_MS)
+  -- Create debounced callback for stale indicator (marks state as stale)
+  if self._stale_indicator then
+    self._stale_indicator_debounced = async.debounce(function()
+      if self.repo_state and self.repo_state.mark_stale then
+        self.repo_state:mark_stale()
+      end
+    end, INDICATOR_DEBOUNCE_MS)
+  end
 
-  -- Create debounced callback for auto_refresh mode
-  if self._mode == "auto_refresh" and self._on_refresh then
+  -- Create debounced callback for auto_refresh
+  if self._auto_refresh and self._on_refresh then
     local debounce_ms = opts.auto_refresh_debounce_ms or DEFAULT_AUTO_REFRESH_DEBOUNCE_MS
     self._auto_refresh_debounced = async.debounce(function()
       if self._on_refresh then
@@ -158,11 +162,12 @@ function Watcher:start()
           if self:is_in_cooldown() then
             return
           end
-          -- Call appropriate debounced function based on mode
-          if self._mode == "auto_refresh" and self._auto_refresh_debounced then
+          -- Call enabled features (both can be active simultaneously)
+          if self._stale_indicator and self._stale_indicator_debounced then
+            self._stale_indicator_debounced:call()
+          end
+          if self._auto_refresh and self._auto_refresh_debounced then
             self._auto_refresh_debounced:call()
-          else
-            self._debounced:call()
           end
         end
       end)
@@ -184,8 +189,8 @@ function Watcher:stop()
   self.running = false
 
   -- Cancel any pending debounced calls
-  if self._debounced then
-    self._debounced:cancel()
+  if self._stale_indicator_debounced then
+    self._stale_indicator_debounced:cancel()
   end
   if self._auto_refresh_debounced then
     self._auto_refresh_debounced:cancel()
