@@ -24,6 +24,7 @@ function M.reset_child()
 end
 
 --- Create a temporary git repository for testing
+--- Uses a template repo for faster setup (cp -r instead of git init + config)
 ---@param child table MiniTest child process
 ---@return string repo_path Path to the temporary repository
 function M.create_test_repo(child)
@@ -31,16 +32,20 @@ function M.create_test_repo(child)
 
   child.lua(string.format(
     [[
-    vim.fn.mkdir(%q, "p")
-    vim.fn.system("git -C " .. %q .. " init -b main")
-    vim.fn.system("git -C " .. %q .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. %q .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. %q .. " config commit.gpgsign false")
+    -- Lazily create template repo on first use
+    if not _G._gitlad_test_template then
+      local template = vim.fn.tempname() .. "_template"
+      vim.fn.mkdir(template, "p")
+      vim.fn.system("git -C " .. template .. " init -b main")
+      vim.fn.system("git -C " .. template .. " config user.email 'test@test.com'")
+      vim.fn.system("git -C " .. template .. " config user.name 'Test User'")
+      vim.fn.system("git -C " .. template .. " config commit.gpgsign false")
+      _G._gitlad_test_template = template
+    end
+
+    -- Copy template to new location (much faster than git init + config)
+    vim.fn.system("cp -r " .. _G._gitlad_test_template .. " " .. %q)
   ]],
-    tmp_dir,
-    tmp_dir,
-    tmp_dir,
-    tmp_dir,
     tmp_dir
   ))
 
