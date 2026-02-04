@@ -513,7 +513,16 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
 
   -- Accept the commit message with ZZ to complete the rebase
   child.type_keys("ZZ")
-  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Wait for rebase to complete (condition-based wait instead of fixed timeout)
+  child.lua(string.format(
+    [[
+    vim.wait(5000, function()
+      return not require("gitlad.git").rebase_in_progress({ cwd = %q })
+    end, 50)
+  ]],
+    repo
+  ))
 
   -- Verify rebase completed (no longer in progress)
   local rebase_still_in_progress =
