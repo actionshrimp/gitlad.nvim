@@ -7,6 +7,7 @@ local M = {}
 
 M.errors = require("gitlad.utils.errors")
 M.keymap = require("gitlad.utils.keymap")
+M.path = require("gitlad.utils.path")
 M.prompt = require("gitlad.utils.prompt")
 
 --- Set up standard window-local options for gitlad buffer views

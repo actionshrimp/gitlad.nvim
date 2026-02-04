@@ -756,4 +756,220 @@ T["intent to add"]["gs followed by regular staging works"] = function()
   assert_truthy(status:find("A  new.txt"), "Git should show file as fully staged (A)")
 end
 
+-- =============================================================================
+-- Directory Staging Tests
+-- =============================================================================
+
+T["directory staging"] = MiniTest.new_set()
+
+-- Helper to wait for buffer content to appear
+local function wait_for_content(child, text, timeout)
+  timeout = timeout or 1000
+  child.lua(string.format(
+    [[
+    vim.wait(%d, function()
+      local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+      local content = table.concat(lines, "\n")
+      return content:find(%q, 1, true) ~= nil
+    end, 10)
+  ]],
+    timeout,
+    text
+  ))
+end
+
+T["directory staging"]["s on untracked directory stages all files inside"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked directory with multiple files
+  create_file(child, repo, "newdir/file1.txt", "content1")
+  create_file(child, repo, "newdir/file2.txt", "content2")
+  create_file(child, repo, "newdir/sub/file3.txt", "content3")
+
+  open_gitlad(child, repo)
+
+  -- Navigate to the untracked directory and stage it
+  local lines = get_buffer_lines(child)
+  local dir_line = find_line_with(lines, "newdir/")
+  assert_truthy(dir_line, "Should find newdir/ in untracked section")
+
+  -- Go to that line and press 's' to stage
+  child.cmd(tostring(dir_line))
+  child.type_keys("s")
+
+  -- Wait for "Staged" section to appear (directory staging triggers refresh)
+  wait_for_content(child, "Staged", 2000)
+
+  -- Verify files are staged (not the directory)
+  lines = get_buffer_lines(child)
+  local staged_section = find_line_with(lines, "Staged")
+  assert_truthy(staged_section, "Should have Staged section")
+
+  -- Should see individual files in staged section, not the directory
+  local file1_line = find_line_with(lines, "newdir/file1.txt")
+  local file2_line = find_line_with(lines, "newdir/file2.txt")
+  local file3_line = find_line_with(lines, "newdir/sub/file3.txt")
+
+  assert_truthy(file1_line, "Should see newdir/file1.txt")
+  assert_truthy(file2_line, "Should see newdir/file2.txt")
+  assert_truthy(file3_line, "Should see newdir/sub/file3.txt")
+
+  -- Verify they are in the staged section (after header)
+  assert_truthy(file1_line > staged_section, "file1 should be in staged section")
+  assert_truthy(file2_line > staged_section, "file2 should be in staged section")
+  assert_truthy(file3_line > staged_section, "file3 should be in staged section")
+
+  -- Verify git state
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("A  newdir/file1.txt"), "file1 should be staged")
+  assert_truthy(status:find("A  newdir/file2.txt"), "file2 should be staged")
+  assert_truthy(status:find("A  newdir/sub/file3.txt"), "file3 should be staged")
+end
+
+T["directory staging"]["staged section shows file count after staging directory"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked directory with 3 files
+  create_file(child, repo, "mydir/a.txt", "a")
+  create_file(child, repo, "mydir/b.txt", "b")
+  create_file(child, repo, "mydir/c.txt", "c")
+
+  open_gitlad(child, repo)
+
+  -- Stage the directory
+  local lines = get_buffer_lines(child)
+  local dir_line = find_line_with(lines, "mydir/")
+  assert_truthy(dir_line, "Should find mydir/")
+
+  child.cmd(tostring(dir_line))
+  child.type_keys("s")
+
+  -- Wait for "Staged (3)" to appear (directory staging triggers refresh)
+  wait_for_content(child, "Staged (3)", 2000)
+
+  -- Verify staged section shows count of 3
+  lines = get_buffer_lines(child)
+  local staged_line = find_line_with(lines, "Staged (3)")
+  assert_truthy(staged_line, "Staged section should show count of 3 files")
+end
+
+T["directory staging"]["unstaging all files collapses back to directory"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked directory with multiple files
+  create_file(child, repo, "testdir/file1.txt", "content1")
+  create_file(child, repo, "testdir/file2.txt", "content2")
+
+  open_gitlad(child, repo)
+
+  -- Stage the directory
+  local lines = get_buffer_lines(child)
+  local dir_line = find_line_with(lines, "testdir/")
+  assert_truthy(dir_line, "Should find testdir/")
+
+  child.cmd(tostring(dir_line))
+  child.type_keys("s")
+
+  -- Wait for staged files to appear
+  wait_for_content(child, "Staged (2)", 2000)
+
+  -- Now unstage all by pressing 'u' on the Staged section header
+  lines = get_buffer_lines(child)
+  local staged_header = find_line_with(lines, "Staged")
+  assert_truthy(staged_header, "Should find Staged section")
+
+  child.cmd(tostring(staged_header))
+  child.type_keys("u")
+  wait(child, 200)
+
+  -- Files should collapse back to directory
+  lines = get_buffer_lines(child)
+  local dir_entry = find_line_with(lines, "testdir/")
+  assert_truthy(dir_entry, "Should see testdir/ collapsed in untracked")
+
+  -- Should NOT see individual files
+  local file1 = find_line_with(lines, "testdir/file1.txt")
+  local file2 = find_line_with(lines, "testdir/file2.txt")
+  eq(file1, nil, "Should NOT see individual file1")
+  eq(file2, nil, "Should NOT see individual file2")
+
+  -- Should show Untracked (1) not Untracked (2)
+  local untracked_header = find_line_with(lines, "Untracked (1)")
+  assert_truthy(untracked_header, "Should show Untracked (1) for collapsed directory")
+end
+
+T["directory staging"]["unstaging individual files collapses when all untracked"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked directory
+  create_file(child, repo, "mydir/a.txt", "a")
+  create_file(child, repo, "mydir/b.txt", "b")
+
+  open_gitlad(child, repo)
+
+  -- Stage the directory
+  local lines = get_buffer_lines(child)
+  local dir_line = find_line_with(lines, "mydir/")
+  child.cmd(tostring(dir_line))
+  child.type_keys("s")
+
+  -- Wait for staged files
+  wait_for_content(child, "Staged (2)", 2000)
+
+  -- Unstage first file
+  lines = get_buffer_lines(child)
+  local file_a = find_line_with(lines, "mydir/a.txt")
+  assert_truthy(file_a, "Should find mydir/a.txt")
+  child.cmd(tostring(file_a))
+  child.type_keys("u")
+  wait(child, 200)
+
+  -- Should still see individual files (one staged, one untracked)
+  lines = get_buffer_lines(child)
+  local staged_b = find_line_with(lines, "mydir/b.txt")
+  local untracked_a = find_line_with(lines, "mydir/a.txt")
+  assert_truthy(staged_b, "mydir/b.txt should still be staged")
+  assert_truthy(untracked_a, "mydir/a.txt should be in untracked")
+
+  -- Now unstage the second file
+  lines = get_buffer_lines(child)
+  file_b = find_line_with(lines, "mydir/b.txt")
+  child.cmd(tostring(file_b))
+  child.type_keys("u")
+  wait(child, 200)
+
+  -- Now should collapse to directory
+  lines = get_buffer_lines(child)
+  local dir_entry = find_line_with(lines, "mydir/")
+  assert_truthy(dir_entry, "Should see mydir/ collapsed")
+
+  -- Individual files should not be visible
+  eq(find_line_with(lines, "mydir/a.txt"), nil, "Should NOT see mydir/a.txt")
+  eq(find_line_with(lines, "mydir/b.txt"), nil, "Should NOT see mydir/b.txt")
+end
+
 return T

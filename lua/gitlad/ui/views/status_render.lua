@@ -10,6 +10,7 @@ local config = require("gitlad.config")
 local git = require("gitlad.git")
 local hl = require("gitlad.ui.hl")
 local log_list = require("gitlad.ui.components.log_list")
+local path_utils = require("gitlad.utils.path")
 local sections = require("gitlad.ui.views.status_sections")
 local signs_util = require("gitlad.ui.utils.signs")
 
@@ -125,7 +126,7 @@ local function render(self)
   local function add_file_line(entry, section, sign, status_char, use_display)
     local display = use_display
         and entry.orig_path
-        and string.format("%s -> %s", entry.orig_path, entry.path)
+        and path_utils.format_rename(entry.orig_path, entry.path)
       or entry.path
 
     -- Check if this is a submodule entry (uses different cache key)

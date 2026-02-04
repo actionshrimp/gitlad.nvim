@@ -53,6 +53,68 @@ local function insert_sorted(list, entry)
   table.insert(list, entry)
 end
 
+--- Extract the top-level directory from a path
+--- e.g., "dir/sub/file.txt" -> "dir/"
+---@param path string
+---@return string|nil Directory with trailing slash, or nil if root-level file
+local function get_top_level_dir(path)
+  local dir = path:match("^([^/]+/)")
+  return dir
+end
+
+--- Check if any entries in a list have paths starting with prefix
+---@param list GitStatusEntry[]
+---@param prefix string
+---@return boolean
+local function has_entries_with_prefix(list, prefix)
+  for _, entry in ipairs(list) do
+    if entry.path:sub(1, #prefix) == prefix then
+      return true
+    end
+  end
+  return false
+end
+
+--- Try to collapse untracked files into a directory entry
+--- If all files with a given directory prefix are in untracked (none in staged/unstaged),
+--- replace them with a single directory entry to match git's behavior.
+---@param status GitStatusResult
+---@param dir_prefix string Directory prefix with trailing slash (e.g., "newdir/")
+local function try_collapse_untracked_dir(status, dir_prefix)
+  -- Don't collapse if there are staged or unstaged files in this directory
+  if has_entries_with_prefix(status.staged, dir_prefix) then
+    return
+  end
+  if has_entries_with_prefix(status.unstaged, dir_prefix) then
+    return
+  end
+
+  -- Collect all untracked entries with this prefix
+  local entries_to_collapse = {}
+  local other_entries = {}
+  for _, entry in ipairs(status.untracked) do
+    if entry.path:sub(1, #dir_prefix) == dir_prefix then
+      table.insert(entries_to_collapse, entry)
+    else
+      table.insert(other_entries, entry)
+    end
+  end
+
+  -- Only collapse if we have multiple files (or one file that's not already the dir)
+  if
+    #entries_to_collapse > 1
+    or (#entries_to_collapse == 1 and entries_to_collapse[1].path ~= dir_prefix)
+  then
+    -- Replace with a single directory entry
+    status.untracked = other_entries
+    insert_sorted(status.untracked, {
+      path = dir_prefix,
+      index_status = "?",
+      worktree_status = "?",
+    })
+  end
+end
+
 --- Deep copy a status result for immutability
 ---@param status GitStatusResult
 ---@return GitStatusResult
@@ -168,6 +230,11 @@ function M._apply_unstage_file(status, path)
       index_status = "?",
       worktree_status = "?",
     })
+    -- Try to collapse directory if all files in it are now untracked
+    local dir = get_top_level_dir(staged_entry.path)
+    if dir then
+      try_collapse_untracked_dir(status, dir)
+    end
   elseif existing_unstaged then
     -- Already has unstaged changes: update index_status
     existing_unstaged.index_status = "."
@@ -243,6 +310,9 @@ end
 ---@param status GitStatusResult (already copied)
 ---@return GitStatusResult
 function M._apply_unstage_all(status)
+  -- Track directories that might need collapsing
+  local dirs_to_check = {}
+
   for _, entry in ipairs(status.staged) do
     if entry.index_status == "A" then
       insert_sorted(status.untracked, {
@@ -250,6 +320,11 @@ function M._apply_unstage_all(status)
         index_status = "?",
         worktree_status = "?",
       })
+      -- Track directory for potential collapse
+      local dir = get_top_level_dir(entry.path)
+      if dir then
+        dirs_to_check[dir] = true
+      end
     else
       local existing = find_entry(status.unstaged, entry.path)
       if existing then
@@ -266,6 +341,11 @@ function M._apply_unstage_all(status)
     end
   end
   status.staged = {}
+
+  -- Try to collapse directories where all files are now untracked
+  for dir, _ in pairs(dirs_to_check) do
+    try_collapse_untracked_dir(status, dir)
+  end
 
   return status
 end

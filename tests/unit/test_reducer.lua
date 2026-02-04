@@ -614,4 +614,120 @@ T["extended fields"]["preserves rebase_in_progress during stage_all"] = function
   eq(new_status.sequencer_head_subject, "Rebasing commit")
 end
 
+-- =============================================================================
+-- Directory Collapsing Tests
+-- =============================================================================
+
+T["directory collapsing"] = MiniTest.new_set()
+
+T["directory collapsing"]["unstage collapses files to directory when all untracked"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  -- Staged files from a directory (as they appear after staging a dir)
+  local status = make_status({
+    staged = {
+      { path = "newdir/file1.txt", index_status = "A", worktree_status = "." },
+      { path = "newdir/file2.txt", index_status = "A", worktree_status = "." },
+    },
+  })
+
+  -- Unstage both files
+  local cmd1 = commands.unstage_file("newdir/file1.txt")
+  local new_status = reducer.apply(status, cmd1)
+  local cmd2 = commands.unstage_file("newdir/file2.txt")
+  new_status = reducer.apply(new_status, cmd2)
+
+  -- Should collapse to single directory entry
+  eq(#new_status.untracked, 1)
+  eq(new_status.untracked[1].path, "newdir/")
+  eq(#new_status.staged, 0)
+end
+
+T["directory collapsing"]["unstage_all collapses files to directory"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = {
+      { path = "mydir/a.txt", index_status = "A", worktree_status = "." },
+      { path = "mydir/b.txt", index_status = "A", worktree_status = "." },
+      { path = "mydir/sub/c.txt", index_status = "A", worktree_status = "." },
+    },
+  })
+
+  local cmd = commands.unstage_all()
+  local new_status = reducer.apply(status, cmd)
+
+  -- Should collapse to single directory entry
+  eq(#new_status.untracked, 1)
+  eq(new_status.untracked[1].path, "mydir/")
+  eq(#new_status.staged, 0)
+end
+
+T["directory collapsing"]["does not collapse if some files remain staged"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = {
+      { path = "dir/file1.txt", index_status = "A", worktree_status = "." },
+      { path = "dir/file2.txt", index_status = "A", worktree_status = "." },
+    },
+  })
+
+  -- Unstage only one file
+  local cmd = commands.unstage_file("dir/file1.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  -- Should NOT collapse - one file still staged
+  eq(#new_status.untracked, 1)
+  eq(new_status.untracked[1].path, "dir/file1.txt")
+  eq(#new_status.staged, 1)
+  eq(new_status.staged[1].path, "dir/file2.txt")
+end
+
+T["directory collapsing"]["does not collapse if some files are unstaged (modified)"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = {
+      { path = "dir/new.txt", index_status = "A", worktree_status = "." },
+    },
+    unstaged = {
+      { path = "dir/modified.txt", index_status = ".", worktree_status = "M" },
+    },
+  })
+
+  -- Unstage the added file
+  local cmd = commands.unstage_file("dir/new.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  -- Should NOT collapse - there's a modified file in the directory
+  eq(#new_status.untracked, 1)
+  eq(new_status.untracked[1].path, "dir/new.txt")
+  eq(#new_status.unstaged, 1)
+end
+
+T["directory collapsing"]["does not collapse root-level files"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    staged = {
+      { path = "file1.txt", index_status = "A", worktree_status = "." },
+      { path = "file2.txt", index_status = "A", worktree_status = "." },
+    },
+  })
+
+  local cmd = commands.unstage_all()
+  local new_status = reducer.apply(status, cmd)
+
+  -- Root-level files should remain as individual entries
+  eq(#new_status.untracked, 2)
+  eq(new_status.untracked[1].path, "file1.txt")
+  eq(new_status.untracked[2].path, "file2.txt")
+end
+
 return T

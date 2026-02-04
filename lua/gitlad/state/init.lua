@@ -425,20 +425,36 @@ function RepoState:get_status_sync(force)
 end
 
 --- Stage a file (optimistic update)
+--- For directories (paths ending with /), triggers a refresh instead of optimistic update
+--- since git expands directories to individual files when staging.
 ---@param path string File path to stage
 ---@param section "unstaged"|"untracked" Which section the file is in
 ---@param callback? fun(success: boolean)
 function RepoState:stage(path, section, callback)
+  -- Check if this is a directory (path ends with /)
+  local is_directory = path:sub(-1) == "/"
+
   git.stage(path, { cwd = self.repo_root }, function(success, err)
     if not success then
       errors.notify("Stage", err)
+      if callback then
+        callback(success)
+      end
+    elseif is_directory then
+      -- For directories, git expands to individual files when staging
+      -- so we need to refresh to get the actual file list
+      self:refresh_status(true, function()
+        if callback then
+          callback(success)
+        end
+      end)
     else
-      -- Optimistic update: apply command to state
+      -- Optimistic update for regular files
       local cmd = commands.stage_file(path, section)
       self:apply_command(cmd)
-    end
-    if callback then
-      callback(success)
+      if callback then
+        callback(success)
+      end
     end
   end)
 end
