@@ -25,28 +25,29 @@ Smart wait helpers added to `tests/helpers.lua`:
 - `wait_for_var(child, var)` - waits for global variable
 - `wait_short(child, ms)` - short fixed wait for UI updates
 
+### Condition-Based Waits - Phase 2 (Implemented)
+
+Applied condition-based waits to remaining slow test files:
+
+| Test File | Before | After | Reduction |
+|-----------|--------|-------|-----------|
+| test_stash | 22.5s | 13.6s | 40% |
+| test_status_hunk | 21.1s | 16.9s | 20% |
+| test_cherrypick | 18.6s | ~12s | 35%+ |
+| test_status_staging | 18.5s | 14.5s | 22% |
+
+### Parallel Jobs Auto-Detection (Implemented)
+
+Updated `scripts/run-tests-parallel.sh` to:
+- Auto-detect CPU count using `nproc` (Linux) or `sysctl -n hw.ncpu` (macOS)
+- Default to min(8, CPU count) instead of fixed 4 workers
+- Higher parallelism works well after wait optimizations reduced I/O contention
+
 ---
 
 ## Future Optimization Ideas
 
-### 1. Apply Condition-Based Waits to Remaining Slow Tests
-
-The following tests still have potential for optimization using the same pattern:
-
-| Test | Current Time | Estimated Potential |
-|------|--------------|---------------------|
-| test_stash | 17.5s | High |
-| test_status_hunk | 16.0s | High |
-| test_cherrypick | 14.5s | Medium |
-| test_status_staging | 13.9s | Medium |
-| test_commit_basic | 13.4s | Medium |
-
-**How to identify fixed waits:**
-```bash
-grep -n 'vim\.wait([0-9]*' tests/e2e/test_stash.lua
-```
-
-### 2. Split Large Test Files
+### 1. Split Large Test Files
 
 Files with 20+ tests could be split to improve parallelism:
 
@@ -58,7 +59,7 @@ Files with 20+ tests could be split to improve parallelism:
 
 The parallel runner is bottlenecked by the slowest single file. Splitting large files allows better distribution across workers.
 
-### 3. Run Slowest Files First
+### 2. Run Slowest Files First
 
 Modify `scripts/run-tests-parallel.sh` to prioritize slow tests:
 
@@ -78,7 +79,7 @@ E2E_FILES=(
 
 This ensures the longest tests start immediately rather than being queued behind faster ones.
 
-### 4. Optimize Git Repository Setup
+### 3. Optimize Git Repository Setup
 
 Many tests create fresh git repositories with the same boilerplate:
 ```lua
@@ -93,7 +94,7 @@ vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
 - Use `git init --template` with a pre-configured template directory
 - Cache the initialized repo state and use `cp -r` for each test
 
-### 5. Reduce Child Process Restarts
+### 4. Reduce Child Process Restarts
 
 Currently, each test restarts the Neovim child process. For tests that don't need complete isolation, consider:
 - Resetting state without full restart
@@ -102,11 +103,11 @@ Currently, each test restarts the Neovim child process. For tests that don't nee
 
 **Caveat:** This may introduce test interdependence. Only use for truly independent tests.
 
-### 6. Parallel Test Groups
+### 5. Parallel Test Groups
 
 For tests within a single file that are independent, mini.test supports parallel execution. This could be enabled for specific test groups that don't share state.
 
-### 7. Profile Actual Test Time vs Wait Time
+### 6. Profile Actual Test Time vs Wait Time
 
 Add instrumentation to measure:
 - Time spent in fixed waits
