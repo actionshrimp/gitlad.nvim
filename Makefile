@@ -20,7 +20,7 @@ test-unit: deps
 	nvim --headless -u tests/minimal_init.lua -c "lua require('mini.test').setup(); local ok, err = pcall(MiniTest.run, {collect = {find_files = function() return vim.fn.glob('tests/unit/*.lua', false, true) end}}); if not ok then print('Error: ' .. err); vim.cmd('cq!') end; local has_fail = false; for _, c in ipairs(MiniTest.current.all_cases or {}) do if c.exec and c.exec.state == 'Fail' then has_fail = true; break end end; if has_fail then vim.cmd('cq!') end" -c "qa!"
 
 # Run only e2e tests (parallel by default, requires GNU parallel)
-# Use JOBS=N to control parallelism (default: min(8, CPU count))
+# Use JOBS=N to control parallelism (default: min(16, CPU count))
 test-e2e: deps
 	@if command -v parallel > /dev/null; then \
 		./scripts/run-tests-parallel.sh --e2e-only; \
