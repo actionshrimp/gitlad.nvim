@@ -37,10 +37,11 @@ T["rebase popup"]["opens from status buffer with r key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press r to open rebase popup
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -90,9 +91,10 @@ T["rebase popup"]["has all expected switches"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   -- Check for switches in popup
   child.lua([[
@@ -137,9 +139,10 @@ T["rebase popup"]["autostash is enabled by default"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   -- Check that autostash is enabled (has * marker)
   child.lua([[
@@ -171,9 +174,10 @@ T["rebase popup"]["switch toggling with -A"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   -- Check initial state - autostash should be enabled
   child.lua([[
@@ -192,7 +196,19 @@ T["rebase popup"]["switch toggling with -A"] = function()
 
   -- Toggle autostash switch off
   child.type_keys("-A")
-  child.lua([[vim.wait(50, function() return false end)]])
+
+  -- Wait for popup to update (check that the * marker is gone)
+  child.lua([[
+    vim.wait(1000, function()
+      popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
+      for _, line in ipairs(popup_lines) do
+        if line:match("^%s+%-A.*[Aa]utostash") and not line:match("%*%-A") then
+          return true
+        end
+      end
+      return false
+    end, 20)
+  ]])
 
   -- Check that switch is now disabled (no * marker)
   child.lua([[
@@ -223,7 +239,7 @@ T["rebase popup"]["prompts to set upstream when not configured"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Mock the prompt module's prompt_for_ref function to track if it was called
   -- This is more reliable than mocking vim.ui.input since the prompt module
@@ -243,11 +259,17 @@ T["rebase popup"]["prompts to set upstream when not configured"] = function()
 
   -- Open rebase popup
   child.type_keys("r")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Try to rebase onto upstream (should prompt to set it)
   child.type_keys("u")
-  child.lua([[vim.wait(300, function() return false end)]])
+
+  -- Wait for prompt to be called
+  child.lua([[
+    vim.wait(1000, function()
+      return _G.prompt_was_called
+    end, 20)
+  ]])
 
   -- Verify prompt was invoked (magit-style flow: prompt to set upstream)
   local prompt_called = child.lua_get([[_G.prompt_was_called]])
@@ -273,16 +295,18 @@ T["rebase popup"]["closes with q"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open rebase popup
   child.type_keys("r")
+  helpers.wait_for_popup(child)
+
   local win_count_popup = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_popup, 2)
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -306,10 +330,11 @@ T["rebase popup"]["r keybinding appears in help"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
+  helpers.wait_for_popup(child)
 
   -- Check for rebase popup in help
   child.lua([[
@@ -358,10 +383,11 @@ T["rebase popup"]["shows in-progress actions when rebase is active"] = function(
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open rebase popup - should show in-progress actions
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   child.lua([[
     popup_buf = vim.api.nvim_get_current_buf()
@@ -390,7 +416,16 @@ T["rebase popup"]["shows in-progress actions when rebase is active"] = function(
 
   -- Abort the rebase to clean up
   child.type_keys("a")
-  child.lua([[vim.wait(300, function() return false end)]])
+
+  -- Wait for rebase to be aborted
+  child.lua(string.format(
+    [[
+    vim.wait(2000, function()
+      return not require("gitlad.git").rebase_in_progress({ cwd = %q })
+    end, 50)
+  ]],
+    repo
+  ))
 
   helpers.cleanup_repo(child, repo)
 end
@@ -421,7 +456,7 @@ T["rebase popup"]["status shows rebase in progress"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Check that status shows rebase in progress
   child.lua([[
@@ -475,7 +510,7 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
   -- Open gitlad status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Verify rebase is in progress
   local rebase_in_progress =
@@ -484,7 +519,7 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
 
   -- Open rebase popup with 'r'
   child.type_keys("r")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press 'r' to continue
   child.type_keys("r")
@@ -492,7 +527,7 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
   -- Wait for the commit editor to open (COMMIT_EDITMSG file)
   -- The editor should open because git needs to confirm the conflict resolution message
   child.lua([[
-    vim.wait(2000, function()
+    vim.wait(3000, function()
       local bufname = vim.api.nvim_buf_get_name(0)
       return bufname:match("COMMIT_EDITMSG") ~= nil
     end, 50)
