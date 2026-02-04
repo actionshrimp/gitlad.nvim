@@ -178,7 +178,14 @@ function M.wait_for_buffer(child, pattern, timeout)
   ))
   if not success then
     local actual = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
-    error(string.format("wait_for_buffer timed out after %dms waiting for %q, got %q", timeout, pattern, actual))
+    error(
+      string.format(
+        "wait_for_buffer timed out after %dms waiting for %q, got %q",
+        timeout,
+        pattern,
+        actual
+      )
+    )
   end
 end
 
