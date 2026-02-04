@@ -404,15 +404,24 @@ T["commit editor"]["creates commit with C-c C-c"] = function()
   -- Commit with C-c C-c
   child.type_keys("<C-c><C-c>")
 
-  -- Wait for async commit operation to complete
+  -- Wait for buffer to return to status
   helpers.wait_for_buffer(child, "gitlad://status")
 
   -- Verify we returned to status buffer
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
+  -- Poll for commit to appear in log (may take a moment on slow CI)
+  local log
+  for _ = 1, 50 do -- up to 5 seconds
+    log = helpers.git(child, repo, "log --oneline")
+    if log:match("Test commit message") then
+      break
+    end
+    vim.loop.sleep(100)
+  end
+
   -- Verify commit was made
-  local log = helpers.git(child, repo, "log --oneline")
   eq(log:match("Test commit message") ~= nil, true)
 
   helpers.cleanup_repo(child, repo)
