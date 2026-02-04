@@ -16,9 +16,12 @@
 - [x] git rebase continue fails if there are conflicts and you need to confirm the updated commit message (with Conflicts: section) - not implemented
 - [x] worktree 'sibling' strat - can we make it default to `../branch-name` rather than `_branch-name`? what does magit do?
 - [x] when confirming an edit after a rebase conflict, we should go back to the status window and not the empty buffer
-- [ ] still a slight issue with our new 'intent to add' feature and the staging of a new directory ;(
+- [x] are our worktree popup keys the same as magit evil collection?
+- [x] still a slight issue with our new 'intent to add' feature and the staging of a new directory ;(
+- [ ] setting upstream to a local branch doesnt work properly
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] improve look and feel of '$' / command history (from screenshot)
 - [ ] hook output window should only appear if hooks are actually configured. Before implementing, consider a holistic approach: detect configured hooks and show progress/output for all git operations that may trigger them (commit, push, etc.). This may warrant a dedicated phase in PLAN.md.
-- [ ] setting upstream to a local branch doesnt work properly
-- [ ] are our worktree popup keys the same as magit evil collection?
+- [ ] some kind of display of queued git operations so you know git is still working underneath for slow operations?
+- [ ] when running `SPC p t` from status buffer i get an error as neovim doesnt think it's a real project directory
+- [ ] why is 'origin' listed as a ref under the origin remote

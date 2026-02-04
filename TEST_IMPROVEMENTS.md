@@ -122,6 +122,12 @@ Add instrumentation to measure:
 
 This would help identify the biggest remaining bottlenecks.
 
+### 7. Check commit signing is disabled for majority of tests
+
+I noticed gpg-agent is running quite a lot when I run the e2e tests locally.
+Perhaps my local git config is being picked up and we're signing commits
+unnecessarily which might slow things down?
+
 ---
 
 ## Measurement Commands
