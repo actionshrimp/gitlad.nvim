@@ -2,6 +2,12 @@
 
 This document tracks ideas for improving E2E test performance.
 
+## IMPORTANT POINT ABOUT BENCHMARKING
+
+- Running an e2e suite in isolation is much faster than running it as part of the full `make test-e2e` command.
+- If starting to work on improving a particular file, please take the baseline measurement of the file when run on it's own AND as part of the full run, so we can compare the improvement in both cases once the improvements are implemented.
+- I think some of the reductions below are a bit optimistic as they measure 'before' from the full run, and 'after' in isolation.
+
 ## Completed Optimizations
 
 ### Condition-Based Waits (Implemented)
