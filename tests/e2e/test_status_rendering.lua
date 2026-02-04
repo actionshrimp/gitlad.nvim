@@ -37,6 +37,7 @@ local function create_test_repo(child)
     vim.fn.system("git -C " .. repo .. " init")
     vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
     vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
+    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
   ]],
     repo
   ))
@@ -112,6 +113,7 @@ local function create_test_repo_with_upstream(child)
     vim.fn.system("git -C " .. repo .. " init")
     vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
     vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
+    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
 
     -- Create initial commit
     local f = io.open(repo .. "/init.txt", "w")

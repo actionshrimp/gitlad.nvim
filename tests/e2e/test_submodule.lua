@@ -15,6 +15,7 @@ local function create_test_repo(child_nvim)
     vim.fn.system("git -C " .. repo .. " init")
     vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
     vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
+    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
   ]],
     repo
   ))
@@ -57,6 +58,7 @@ local function create_repo_with_submodule(child_nvim)
     vim.fn.system("git -C " .. repo .. " init")
     vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
     vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
+    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
   ]],
     submodule_repo
   ))

@@ -35,7 +35,9 @@ function M.create_test_repo(child)
     vim.fn.system("git -C " .. %q .. " init")
     vim.fn.system("git -C " .. %q .. " config user.email 'test@test.com'")
     vim.fn.system("git -C " .. %q .. " config user.name 'Test User'")
+    vim.fn.system("git -C " .. %q .. " config commit.gpgsign false")
   ]],
+    tmp_dir,
     tmp_dir,
     tmp_dir,
     tmp_dir,
