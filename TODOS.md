@@ -18,6 +18,7 @@
 - [x] when confirming an edit after a rebase conflict, we should go back to the status window and not the empty buffer
 - [x] are our worktree popup keys the same as magit evil collection?
 - [x] still a slight issue with our new 'intent to add' feature and the staging of a new directory ;(
+- [x] can we render ansi terminal colour codes nicely in the hook popup output?
 - [ ] setting upstream to a local branch doesnt work properly
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] improve look and feel of '$' / command history (from screenshot)
