@@ -188,11 +188,19 @@ function M._open_simple_editor(target, on_close)
       vim.cmd("write")
     end
 
-    -- Close the buffer
+    -- Close the buffer and return to status view
     vim.schedule(function()
       if vim.api.nvim_buf_is_valid(bufnr) then
         vim.api.nvim_buf_delete(bufnr, { force = true })
       end
+
+      -- Try to return to the status buffer
+      local status_view = require("gitlad.ui.views.status")
+      local status_buf = status_view.get_buffer()
+      if status_buf then
+        status_buf:open()
+      end
+
       on_close(success)
     end)
   end
