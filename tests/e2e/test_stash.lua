@@ -1,6 +1,7 @@
 -- End-to-end tests for gitlad.nvim stash popup
 local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
+local helpers = require("tests.helpers")
 
 -- Helper to create a test git repository
 local function create_test_repo(child)
@@ -77,7 +78,7 @@ T["stash popup"]["opens from status buffer with z key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press z to open stash popup
   child.type_keys("z")
@@ -128,9 +129,10 @@ T["stash popup"]["has all expected switches"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("z")
+  helpers.wait_for_popup(child)
 
   -- Check for switches in popup
   child.lua([[
@@ -174,16 +176,17 @@ T["stash popup"]["closes with q"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open stash popup
   child.type_keys("z")
+  helpers.wait_for_popup(child)
   local win_count_popup = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_popup, 2)
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -207,7 +210,7 @@ T["stash popup"]["z keybinding appears in help"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
@@ -264,7 +267,7 @@ T["stash operations"]["stash push creates a stash"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(1000, function() return _G.stash_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.stash_result")
   local result = child.lua_get([[_G.stash_result]])
 
   eq(result.success, true)
@@ -311,7 +314,7 @@ T["stash operations"]["stash pop applies and removes stash"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(1000, function() return _G.pop_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.pop_result")
   local result = child.lua_get([[_G.pop_result]])
 
   eq(result.success, true)
@@ -353,7 +356,7 @@ T["stash operations"]["stash apply keeps stash in list"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(1000, function() return _G.apply_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.apply_result")
   local result = child.lua_get([[_G.apply_result]])
 
   eq(result.success, true)
@@ -403,7 +406,7 @@ T["stash operations"]["stash drop removes stash without applying"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(1000, function() return _G.drop_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.drop_result")
   local result = child.lua_get([[_G.drop_result]])
 
   eq(result.success, true)
@@ -448,7 +451,7 @@ T["stash operations"]["stash list returns parsed entries"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(1000, function() return _G.list_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.list_result")
   local result = child.lua_get([[_G.list_result]])
 
   eq(result.err == nil, true)
@@ -485,7 +488,7 @@ T["stash section"]["shows Stashes section when stashes exist"] = function()
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get buffer lines
   child.lua([[
@@ -524,7 +527,7 @@ T["stash section"]["hides Stashes section when no stashes"] = function()
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get buffer lines
   child.lua([[
@@ -564,7 +567,7 @@ T["stash section"]["navigation includes stash entries with gj/gk"] = function()
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get buffer content and find stash line
   child.lua([[
@@ -614,7 +617,7 @@ T["stash section"]["TAB collapses and expands stash section"] = function()
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Find and navigate to Stashes section header
   child.lua([[
@@ -650,7 +653,7 @@ T["stash section"]["TAB collapses and expands stash section"] = function()
 
   -- Press TAB to collapse
   child.type_keys("<Tab>")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_short(child)
 
   -- Check stash entry is now hidden
   child.lua([[
@@ -668,7 +671,7 @@ T["stash section"]["TAB collapses and expands stash section"] = function()
 
   -- Press TAB again to expand
   child.type_keys("<Tab>")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_short(child)
 
   -- Check stash entry is visible again
   child.lua([[
@@ -701,7 +704,7 @@ T["stash section"]["p on stash entry opens stash popup"] = function()
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Find and navigate to stash entry
   child.lua([[
@@ -717,7 +720,7 @@ T["stash section"]["p on stash entry opens stash popup"] = function()
 
   -- Press p on stash entry (should open stash popup, not push popup)
   child.type_keys("p")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Should have a popup window
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -764,11 +767,11 @@ T["stash section"]["p not on stash opens push popup"] = function()
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press p (not on stash entry, should open push popup)
   child.type_keys("p")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Should have a popup window
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -806,7 +809,7 @@ T["stash section"]["RET on stash entry calls diff_stash"] = function()
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Find and navigate to stash entry
   child.lua([[
@@ -839,7 +842,7 @@ T["stash section"]["RET on stash entry calls diff_stash"] = function()
 
   -- Press RET on the stash entry
   child.type_keys("<CR>")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- When diffview is not installed, _diff_stash should show a notification about it
   -- or open a terminal with the fallback command
@@ -885,7 +888,7 @@ T["stash section"]["d d (dwim) on stash entry shows stash diff"] = function()
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Find and navigate to stash entry
   child.lua([[
@@ -916,11 +919,11 @@ T["stash section"]["d d (dwim) on stash entry shows stash diff"] = function()
 
   -- Open diff popup with 'd', then press 'd' for dwim
   child.type_keys("d")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press 'd' again for dwim action
   child.type_keys("d")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- When diffview is not installed, _diff_stash should show a notification about it
   -- or open a terminal with the fallback command

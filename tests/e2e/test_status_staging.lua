@@ -1,6 +1,7 @@
 -- End-to-end tests for gitlad.nvim file and section staging
 local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
+local helpers = require("tests.helpers")
 
 -- Helper for truthy assertions (mini.test doesn't have expect.truthy)
 local function assert_truthy(val, msg)
@@ -81,17 +82,11 @@ local function find_line_with(lines, pattern)
   return nil, nil
 end
 
--- Helper to wait for async operations
-local function wait(child, ms)
-  ms = ms or 100
-  child.lua(string.format("vim.wait(%d, function() return false end)", ms))
-end
-
 -- Helper to open gitlad in a repo
 local function open_gitlad(child, repo)
   child.cmd("cd " .. repo)
   child.cmd("Gitlad")
-  wait(child, 200) -- Wait for async status fetch
+  helpers.wait_for_status(child)
 end
 
 -- =============================================================================
@@ -122,7 +117,7 @@ T["staging files"]["s stages untracked file"] = function()
   -- Go to that line and press 's' to stage
   child.cmd(tostring(file_line))
   child.type_keys("s")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify file moved to staged section
   lines = get_buffer_lines(child)
@@ -158,7 +153,7 @@ T["staging files"]["s stages unstaged modified file"] = function()
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("s")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify git state
   local status = git(child, repo, "status --porcelain")
@@ -185,7 +180,7 @@ T["staging files"]["u unstages staged file"] = function()
   local file_line = find_line_with(lines, "staged.txt")
   child.cmd(tostring(file_line))
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify file moved to untracked section
   lines = get_buffer_lines(child)
@@ -227,7 +222,7 @@ T["staging files"]["maintains sort order after staging"] = function()
   local file_line = find_line_with(lines, "mmm.txt")
   child.cmd(tostring(file_line))
   child.type_keys("s")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify sort order in staged section
   lines = get_buffer_lines(child)
@@ -257,7 +252,7 @@ T["staging files"]["S stages all files"] = function()
 
   -- Press S to stage all
   child.type_keys("S")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify all files are staged
   local status = git(child, repo, "status --porcelain")
@@ -284,7 +279,7 @@ T["staging files"]["U unstages all files"] = function()
 
   -- Press U to unstage all
   child.type_keys("U")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify all files are unstaged
   local status = git(child, repo, "status --porcelain")
@@ -359,7 +354,7 @@ T["section staging"]["s on Untracked header stages all untracked files"] = funct
   -- Go to the section header and press 's' to stage the entire section
   child.cmd(tostring(untracked_header))
   child.type_keys("s")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify all files are now staged
   local status = git(child, repo, "status --porcelain")
@@ -395,7 +390,7 @@ T["section staging"]["s on Unstaged header stages all unstaged files"] = functio
   -- Go to the section header and press 's' to stage the entire section
   child.cmd(tostring(unstaged_header))
   child.type_keys("s")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify all files are now staged
   local status = git(child, repo, "status --porcelain")
@@ -430,7 +425,7 @@ T["section staging"]["u on Staged header unstages all staged files"] = function(
   -- Go to the section header and press 'u' to unstage the entire section
   child.cmd(tostring(staged_header))
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify all files are now untracked
   local status = git(child, repo, "status --porcelain")
@@ -463,7 +458,7 @@ T["section staging"]["s on Staged header does nothing"] = function()
   -- Go to the section header and press 's' (should do nothing)
   child.cmd(tostring(staged_header))
   child.type_keys("s")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify file is still staged (unchanged)
   local status = git(child, repo, "status --porcelain")
@@ -492,7 +487,7 @@ T["section staging"]["u on Unstaged header does nothing"] = function()
   -- Go to the section header and press 'u' (should do nothing)
   child.cmd(tostring(unstaged_header))
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify file is still unstaged (unchanged)
   local status = git(child, repo, "status --porcelain")
@@ -530,7 +525,7 @@ T["unstage cursor positioning"]["u moves cursor to next staged file"] = function
 
   -- Unstage bbb.txt
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Cursor should now be on ccc.txt (the next staged file)
   local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
@@ -566,7 +561,7 @@ T["unstage cursor positioning"]["u moves cursor to previous staged file when las
 
   -- Unstage bbb.txt
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Cursor should now be on aaa.txt (the previous staged file)
   local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
@@ -603,11 +598,11 @@ T["unstage cursor positioning"]["repeated u unstages multiple files in successio
 
   -- Unstage all three files by pressing u three times
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- All files should now be unstaged
   local status = git(child, repo, "status --porcelain")
@@ -645,7 +640,7 @@ T["intent to add"]["gs marks untracked file with intent-to-add"] = function()
   -- Go to that line and press 'gs' to mark intent-to-add
   child.cmd(tostring(file_line))
   child.type_keys("gs")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify file moved to unstaged section (git add -N marks as AM)
   lines = get_buffer_lines(child)
@@ -696,7 +691,7 @@ T["intent to add"]["gs on non-untracked file shows info message"] = function()
   -- Go to that line and press 'gs'
   child.cmd(tostring(file_line))
   child.type_keys("gs")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- File should still be in unstaged (gs is no-op for non-untracked)
   local status = git(child, repo, "status --porcelain")
@@ -729,7 +724,7 @@ T["intent to add"]["gs followed by regular staging works"] = function()
 
   -- Press gs to mark intent-to-add
   child.type_keys("gs")
-  wait(child, 500)
+  helpers.wait_short(child, 200)
 
   -- Verify git state changed to intent-to-add
   status = git(child, repo, "status --porcelain")
@@ -737,9 +732,9 @@ T["intent to add"]["gs followed by regular staging works"] = function()
 
   -- Close gitlad and reopen to get fresh state
   child.type_keys("q")
-  wait(child, 100)
+  helpers.wait_short(child)
   child.cmd("Gitlad")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   -- Now the file should be in unstaged section - find it and stage
   lines = get_buffer_lines(child)
@@ -749,7 +744,7 @@ T["intent to add"]["gs followed by regular staging works"] = function()
 
   -- Stage the whole file
   child.type_keys("s")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   -- Verify file is now fully staged
   status = git(child, repo, "status --porcelain")
@@ -898,7 +893,7 @@ T["directory staging"]["unstaging all files collapses back to directory"] = func
 
   child.cmd(tostring(staged_header))
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Files should collapse back to directory
   lines = get_buffer_lines(child)
@@ -946,7 +941,7 @@ T["directory staging"]["unstaging individual files collapses when all untracked"
   assert_truthy(file_a, "Should find mydir/a.txt")
   child.cmd(tostring(file_a))
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Should still see individual files (one staged, one untracked)
   lines = get_buffer_lines(child)
@@ -960,7 +955,7 @@ T["directory staging"]["unstaging individual files collapses when all untracked"
   file_b = find_line_with(lines, "mydir/b.txt")
   child.cmd(tostring(file_b))
   child.type_keys("u")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Now should collapse to directory
   lines = get_buffer_lines(child)

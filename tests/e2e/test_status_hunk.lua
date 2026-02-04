@@ -1,6 +1,7 @@
 -- End-to-end tests for gitlad.nvim diff expansion, hunk staging, and visual selection
 local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
+local helpers = require("tests.helpers")
 
 -- Helper for truthy assertions (mini.test doesn't have expect.truthy)
 local function assert_truthy(val, msg)
@@ -81,17 +82,11 @@ local function find_line_with(lines, pattern)
   return nil, nil
 end
 
--- Helper to wait for async operations
-local function wait(child, ms)
-  ms = ms or 100
-  child.lua(string.format("vim.wait(%d, function() return false end)", ms))
-end
-
 -- Helper to open gitlad in a repo
 local function open_gitlad(child, repo)
   child.cmd("cd " .. repo)
   child.cmd("Gitlad")
-  wait(child, 200) -- Wait for async status fetch
+  helpers.wait_for_status(child)
 end
 
 -- =============================================================================
@@ -119,7 +114,7 @@ T["diff expansion"]["TAB expands diff for modified file"] = function()
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Check that diff lines are shown
   lines = get_buffer_lines(child)
@@ -151,7 +146,7 @@ T["diff expansion"]["TAB collapses expanded diff"] = function()
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- First TAB: fully expanded
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify diff shown
   lines = get_buffer_lines(child)
@@ -160,7 +155,7 @@ T["diff expansion"]["TAB collapses expanded diff"] = function()
 
   -- Second TAB: collapse
   child.type_keys("<Tab>")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Verify collapsed
   lines = get_buffer_lines(child)
@@ -187,7 +182,7 @@ T["diff expansion"]["shows content for untracked file"] = function()
   local file_line = find_line_with(lines, "new.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Check that file content is shown
   lines = get_buffer_lines(child)
@@ -226,7 +221,7 @@ T["hunk staging"]["s on diff line stages single hunk"] = function()
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Find the first hunk's diff line and stage it
   lines = get_buffer_lines(child)
@@ -235,7 +230,7 @@ T["hunk staging"]["s on diff line stages single hunk"] = function()
 
   child.cmd(tostring(first_hunk_line))
   child.type_keys("s")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   -- Verify: file should now appear in both staged and unstaged
   -- (first hunk staged, second hunk still unstaged)
@@ -266,7 +261,7 @@ T["hunk staging"]["u on diff line unstages single hunk"] = function()
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Find a diff line and unstage
   lines = get_buffer_lines(child)
@@ -275,7 +270,7 @@ T["hunk staging"]["u on diff line unstages single hunk"] = function()
 
   child.cmd(tostring(diff_line))
   child.type_keys("u")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   -- Verify file is now unstaged
   local status = git(child, repo, "status --porcelain")
@@ -307,7 +302,7 @@ T["visual selection"]["stages selected lines from hunk"] = function()
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Find the first changed line
   lines = get_buffer_lines(child)
@@ -317,7 +312,7 @@ T["visual selection"]["stages selected lines from hunk"] = function()
   -- Visually select just the first line and stage it
   child.cmd(tostring(first_plus))
   child.type_keys("V", "s")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   -- Verify partial staging occurred
   local status = git(child, repo, "status --porcelain")
@@ -345,7 +340,7 @@ T["visual selection"]["unstages selected lines from staged hunk"] = function()
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Find the first changed line
   lines = get_buffer_lines(child)
@@ -355,7 +350,7 @@ T["visual selection"]["unstages selected lines from staged hunk"] = function()
   -- Visually select just the first line and unstage it
   child.cmd(tostring(first_plus))
   child.type_keys("V", "u")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   -- Verify partial unstaging occurred
   local status = git(child, repo, "status --porcelain")
@@ -385,7 +380,7 @@ T["visual selection"]["stages multiple selected lines"] = function()
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Find the +B line and select B and C (but not D)
   lines = get_buffer_lines(child)
@@ -399,7 +394,7 @@ T["visual selection"]["stages multiple selected lines"] = function()
   child.type_keys("V")
   child.cmd(tostring(plus_c))
   child.type_keys("s")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   -- Verify partial staging - should have MM status
   local status = git(child, repo, "status --porcelain")
@@ -441,16 +436,16 @@ T["hunk navigation"]["<CR> on diff line jumps to file at correct line"] = functi
   -- Cursor should already be on the unstaged file (first item)
   -- Expand the diff (single TAB for 2-state toggle)
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   -- Move down to a diff line (should be on a + line)
   -- Navigate down several lines to get into the diff content
   child.type_keys("jjjj")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Press <CR> to jump to file
   child.type_keys("<CR>")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify we're now in file.txt
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -493,11 +488,11 @@ T["hunk navigation"]["<CR> on hunk header jumps to hunk start line"] = function(
   -- Cursor should already be on file (first item)
   -- Expand the file
   child.type_keys("<Tab>")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   -- Move down once to get to the @@ header line
   child.type_keys("j")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Get current line content to verify we're on @@ line
   local lines = get_buffer_lines(child)
@@ -507,7 +502,7 @@ T["hunk navigation"]["<CR> on hunk header jumps to hunk start line"] = function(
 
   -- Press <CR> to jump to file
   child.type_keys("<CR>")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify we're in file.txt
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -549,7 +544,7 @@ T["expansion memory"]["re-expanding file restores remembered hunk state"] = func
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- Expand (fully expanded by default)
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify both hunks are visible
   lines = get_buffer_lines(child)
@@ -561,7 +556,7 @@ T["expansion memory"]["re-expanding file restores remembered hunk state"] = func
   -- Collapse the file
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Verify collapsed
   lines = get_buffer_lines(child)
@@ -570,7 +565,7 @@ T["expansion memory"]["re-expanding file restores remembered hunk state"] = func
 
   -- Re-expand the file
   child.type_keys("<Tab>")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify both hunks are still visible (remembered state restored)
   lines = get_buffer_lines(child)
@@ -599,7 +594,7 @@ T["expansion memory"]["defaults to fully expanded when no remembered state"] = f
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- Expand
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Verify fully expanded (diff content visible, not just headers)
   lines = get_buffer_lines(child)
@@ -667,7 +662,7 @@ T["hunk discard"]["x on diff line discards single hunk"] = function()
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Find the first hunk's diff line and discard it
   lines = get_buffer_lines(child)
@@ -676,7 +671,7 @@ T["hunk discard"]["x on diff line discards single hunk"] = function()
 
   child.cmd(tostring(first_hunk_line))
   child.type_keys("x")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   restore_ui_select(child)
 
@@ -708,7 +703,7 @@ T["hunk discard"]["x on file discards whole file when not on hunk"] = function()
   child.cmd(tostring(file_line))
 
   child.type_keys("x")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   restore_ui_select(child)
 
@@ -739,7 +734,7 @@ T["hunk discard"]["visual selection discards single line from hunk"] = function(
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Find the first new line
   lines = get_buffer_lines(child)
@@ -749,7 +744,7 @@ T["hunk discard"]["visual selection discards single line from hunk"] = function(
   -- Visual select just new1 and discard it
   child.cmd(tostring(new1_line))
   child.type_keys("V", "x")
-  wait(child, 300)
+  helpers.wait_short(child, 150)
 
   restore_ui_select(child)
 
@@ -779,7 +774,7 @@ T["hunk discard"]["cannot discard staged changes"] = function()
 
   -- Expand and try to discard
   child.type_keys("<Tab>")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
   lines = get_buffer_lines(child)
   local diff_line = find_line_with(lines, "+modified")
   if diff_line then
@@ -787,7 +782,7 @@ T["hunk discard"]["cannot discard staged changes"] = function()
   end
 
   child.type_keys("x")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- File should still be staged (discard blocked)
   local status = git(child, repo, "status --porcelain")
@@ -825,7 +820,7 @@ T["visual selection untracked"]["stages selected lines from untracked file"] = f
 
   -- Expand to see the diff
   child.type_keys("<Tab>")
-  wait(child, 200)
+  helpers.wait_short(child, 100)
 
   -- Find lines to select (we'll select line1 and line2 but not line3-5)
   lines = get_buffer_lines(child)
@@ -839,7 +834,7 @@ T["visual selection untracked"]["stages selected lines from untracked file"] = f
   child.type_keys("V")
   child.cmd(tostring(plus_line2))
   child.type_keys("s")
-  wait(child, 400) -- Extra wait for intent-to-add + apply patch
+  helpers.wait_short(child, 200) -- Extra wait for intent-to-add + apply patch
 
   -- Verify partial staging occurred:
   -- - git add -N was run first

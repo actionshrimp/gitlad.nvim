@@ -1,6 +1,7 @@
 -- End-to-end tests for gitlad.nvim cherry-pick functionality
 local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
+local helpers = require("tests.helpers")
 
 -- Helper to create a test git repository
 local function create_test_repo(child)
@@ -103,7 +104,7 @@ T["cherry-pick operations"]["cherry_pick picks a commit"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.cherrypick_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.cherrypick_result")
   local result = child.lua_get([[_G.cherrypick_result]])
 
   eq(result.success, true)
@@ -154,7 +155,7 @@ T["cherry-pick operations"]["cherry_pick with -x adds reference"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.cherrypick_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.cherrypick_result")
   local result = child.lua_get([[_G.cherrypick_result]])
 
   eq(result.success, true)
@@ -203,7 +204,7 @@ T["cherry-pick operations"]["cherry_pick_continue continues after conflict resol
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.cherrypick_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.cherrypick_result")
   local result = child.lua_get([[_G.cherrypick_result]])
 
   -- Should fail due to conflict
@@ -219,7 +220,7 @@ T["cherry-pick operations"]["cherry_pick_continue continues after conflict resol
   ]],
     repo
   ))
-  child.lua([[vim.wait(500, function() return _G.seq_state ~= nil end)]])
+  helpers.wait_for_var(child, "_G.seq_state")
   local seq_state = child.lua_get([[_G.seq_state]])
   eq(seq_state.cherry_pick_in_progress, true)
 
@@ -238,7 +239,7 @@ T["cherry-pick operations"]["cherry_pick_continue continues after conflict resol
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.continue_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.continue_result")
   local continue_result = child.lua_get([[_G.continue_result]])
 
   eq(continue_result.success, true)
@@ -253,7 +254,7 @@ T["cherry-pick operations"]["cherry_pick_continue continues after conflict resol
   ]],
     repo
   ))
-  child.lua([[vim.wait(500, function() return _G.seq_state_after ~= nil end)]])
+  helpers.wait_for_var(child, "_G.seq_state_after")
   local seq_state_after = child.lua_get([[_G.seq_state_after]])
   eq(seq_state_after.cherry_pick_in_progress, false)
 
@@ -299,7 +300,7 @@ T["cherry-pick operations"]["cherry_pick_abort aborts in-progress cherry-pick"] 
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.cherrypick_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.cherrypick_result")
 
   -- Abort cherry-pick
   child.lua(string.format(
@@ -312,7 +313,7 @@ T["cherry-pick operations"]["cherry_pick_abort aborts in-progress cherry-pick"] 
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.abort_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.abort_result")
   local abort_result = child.lua_get([[_G.abort_result]])
 
   eq(abort_result.success, true)
@@ -331,7 +332,7 @@ T["cherry-pick operations"]["cherry_pick_abort aborts in-progress cherry-pick"] 
   ]],
     repo
   ))
-  child.lua([[vim.wait(500, function() return _G.seq_state ~= nil end)]])
+  helpers.wait_for_var(child, "_G.seq_state")
   local seq_state = child.lua_get([[_G.seq_state]])
   eq(seq_state.cherry_pick_in_progress, false)
 
@@ -376,7 +377,7 @@ T["revert operations"]["revert reverts a commit"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.revert_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.revert_result")
   local result = child.lua_get([[_G.revert_result]])
 
   eq(result.success, true)
@@ -430,7 +431,7 @@ T["revert operations"]["revert_abort aborts in-progress revert"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.revert_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.revert_result")
   local result = child.lua_get([[_G.revert_result]])
 
   -- Should fail due to conflict
@@ -446,7 +447,7 @@ T["revert operations"]["revert_abort aborts in-progress revert"] = function()
   ]],
     repo
   ))
-  child.lua([[vim.wait(500, function() return _G.seq_state ~= nil end)]])
+  helpers.wait_for_var(child, "_G.seq_state")
   local seq_state = child.lua_get([[_G.seq_state]])
   eq(seq_state.revert_in_progress, true)
 
@@ -461,7 +462,7 @@ T["revert operations"]["revert_abort aborts in-progress revert"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(2000, function() return _G.abort_result ~= nil end)]])
+  helpers.wait_for_var(child, "_G.abort_result")
   local abort_result = child.lua_get([[_G.abort_result]])
 
   eq(abort_result.success, true)
@@ -495,7 +496,7 @@ T["revert operations"]["get_sequencer_state returns correct state"] = function()
     repo
   ))
 
-  child.lua([[vim.wait(500, function() return _G.seq_state ~= nil end)]])
+  helpers.wait_for_var(child, "_G.seq_state")
   local seq_state = child.lua_get([[_G.seq_state]])
 
   eq(seq_state.cherry_pick_in_progress, false)
@@ -525,13 +526,13 @@ T["cherrypick popup"]["opens from status buffer with A key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press A to open cherry-pick popup
   child.type_keys("A")
 
   -- Wait for async popup to open
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -574,10 +575,10 @@ T["cherrypick popup"]["has all expected switches"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("A")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Check for switches in popup
   child.lua([[
@@ -621,17 +622,17 @@ T["cherrypick popup"]["closes with q"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open cherry-pick popup
   child.type_keys("A")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
   local win_count_popup = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_popup, 2)
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -655,10 +656,11 @@ T["cherrypick popup"]["A keybinding appears in help"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
+  helpers.wait_for_popup(child)
 
   -- Check for cherry-pick in help
   child.lua([[
@@ -697,13 +699,13 @@ T["revert popup"]["opens from status buffer with O key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press V to open revert popup
   child.type_keys("_")
 
   -- Wait for async popup to open
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -747,10 +749,10 @@ T["revert popup"]["has all expected switches"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("_")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Check for switches in popup
   child.lua([[
@@ -794,17 +796,17 @@ T["revert popup"]["closes with q"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open revert popup
   child.type_keys("_")
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_popup(child)
   local win_count_popup = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_popup, 2)
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -828,10 +830,11 @@ T["revert popup"]["O keybinding appears in help"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
+  helpers.wait_for_popup(child)
 
   -- Check for revert in help
   child.lua([[
