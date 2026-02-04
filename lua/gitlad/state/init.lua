@@ -463,16 +463,30 @@ end
 ---@param path string File path to stage with intent
 ---@param callback? fun(success: boolean)
 function RepoState:stage_intent(path, callback)
+  -- Check if this is a directory (path ends with /)
+  local is_directory = path:sub(-1) == "/"
+
   git.stage_intent(path, { cwd = self.repo_root }, function(success, err)
     if not success then
       errors.notify("Stage (intent-to-add)", err)
+      if callback then
+        callback(success)
+      end
+    elseif is_directory then
+      -- For directories, git expands to individual files when running add -N
+      -- so we need to refresh to get the actual file list
+      self:refresh_status(true, function()
+        if callback then
+          callback(success)
+        end
+      end)
     else
-      -- Optimistic update: apply command to state
+      -- Optimistic update for regular files
       local cmd = commands.stage_intent(path)
       self:apply_command(cmd)
-    end
-    if callback then
-      callback(success)
+      if callback then
+        callback(success)
+      end
     end
   end)
 end
@@ -487,6 +501,25 @@ function RepoState:unstage(path, callback)
     else
       -- Optimistic update: apply command to state
       local cmd = commands.unstage_file(path)
+      self:apply_command(cmd)
+    end
+    if callback then
+      callback(success)
+    end
+  end)
+end
+
+--- Undo intent-to-add on a file (git reset), moving it back to untracked
+---@param path string File path to undo intent-to-add
+---@param callback? fun(success: boolean)
+function RepoState:unstage_intent(path, callback)
+  -- Uses same git command as unstage (git reset HEAD -- path)
+  git.unstage(path, { cwd = self.repo_root }, function(success, err)
+    if not success then
+      errors.notify("Undo intent-to-add", err)
+    else
+      -- Optimistic update: apply command to state
+      local cmd = commands.unstage_intent(path)
       self:apply_command(cmd)
     end
     if callback then

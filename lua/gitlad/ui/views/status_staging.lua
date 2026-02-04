@@ -513,6 +513,17 @@ local function unstage_current(self)
     end
     -- Unstage the whole file
     self.repo_state:unstage(path)
+  elseif section == "unstaged" then
+    -- Check if this is an intent-to-add file (.A) - if so, allow undoing it
+    local status = self.repo_state.status
+    for _, entry in ipairs(status.unstaged) do
+      if entry.path == path and entry.worktree_status == "A" and entry.index_status == "." then
+        -- This is an intent-to-add file - undo it (move back to untracked)
+        self.repo_state:unstage_intent(path)
+        return
+      end
+    end
+    -- Not an intent-to-add file - can't unstage from unstaged section
   end
 end
 

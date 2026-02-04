@@ -166,6 +166,88 @@ T["apply"]["stage_intent inserts in alphabetical order"] = function()
   eq(new_status.unstaged[3].path, "c.txt")
 end
 
+T["apply"]["unstage_intent moves .A file back to untracked"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    unstaged = { { path = "new.txt", index_status = ".", worktree_status = "A" } },
+  })
+
+  local cmd = commands.unstage_intent("new.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.unstaged, 0)
+  eq(#new_status.untracked, 1)
+  eq(new_status.untracked[1].path, "new.txt")
+  eq(new_status.untracked[1].index_status, "?")
+  eq(new_status.untracked[1].worktree_status, "?")
+end
+
+T["apply"]["unstage_intent is no-op for non-.A files"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  -- Regular modified file in unstaged (not intent-to-add)
+  local status = make_status({
+    unstaged = { { path = "mod.txt", index_status = ".", worktree_status = "M" } },
+  })
+
+  local cmd = commands.unstage_intent("mod.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  -- Should remain unchanged
+  eq(#new_status.unstaged, 1)
+  eq(#new_status.untracked, 0)
+  eq(new_status.unstaged[1].path, "mod.txt")
+end
+
+T["apply"]["unstage_intent collapses directory when all files return to untracked"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  -- Multiple intent-to-add files from same directory
+  local status = make_status({
+    unstaged = {
+      { path = "newdir/file1.txt", index_status = ".", worktree_status = "A" },
+      { path = "newdir/file2.txt", index_status = ".", worktree_status = "A" },
+    },
+  })
+
+  -- Undo intent on first file
+  local cmd1 = commands.unstage_intent("newdir/file1.txt")
+  local new_status = reducer.apply(status, cmd1)
+
+  -- First file moved to untracked, second still in unstaged (no collapse yet)
+  eq(#new_status.unstaged, 1)
+  eq(#new_status.untracked, 1)
+  eq(new_status.untracked[1].path, "newdir/file1.txt")
+
+  -- Undo intent on second file
+  local cmd2 = commands.unstage_intent("newdir/file2.txt")
+  new_status = reducer.apply(new_status, cmd2)
+
+  -- Both files now untracked, should collapse to directory
+  eq(#new_status.unstaged, 0)
+  eq(#new_status.untracked, 1)
+  eq(new_status.untracked[1].path, "newdir/")
+end
+
+T["apply"]["unstage_intent nonexistent file is no-op"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    unstaged = { { path = "other.txt", index_status = ".", worktree_status = "A" } },
+  })
+
+  local cmd = commands.unstage_intent("nonexistent.txt")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.unstaged, 1)
+  eq(#new_status.untracked, 0)
+end
+
 T["apply"]["unstage_file added file becomes untracked"] = function()
   local reducer = require("gitlad.state.reducer")
   local commands = require("gitlad.state.commands")
