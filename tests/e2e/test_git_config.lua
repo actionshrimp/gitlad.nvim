@@ -309,7 +309,8 @@ T["branch config"]["setting upstream sets both remote and merge"] = function()
   eq(result.success, true)
 
   -- Verify both values are set correctly in git config
-  local remote = helpers.git(child, repo, "config --get branch.feature-branch.remote"):gsub("%s+", "")
+  local remote =
+    helpers.git(child, repo, "config --get branch.feature-branch.remote"):gsub("%s+", "")
   local merge = helpers.git(child, repo, "config --get branch.feature-branch.merge"):gsub("%s+", "")
 
   eq(remote, "origin")
@@ -356,7 +357,8 @@ T["branch config"]["setting local upstream sets remote to dot"] = function()
   eq(result.success, true)
 
   -- Verify remote is set to "." in git config
-  local remote = helpers.git(child, repo, "config --get branch.feature-branch.remote"):gsub("%s+", "")
+  local remote =
+    helpers.git(child, repo, "config --get branch.feature-branch.remote"):gsub("%s+", "")
   eq(remote, ".")
 
   -- Verify the .git/config file contains the literal dot
