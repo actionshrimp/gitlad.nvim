@@ -33,7 +33,10 @@ end
 T["format_rename"]["handles rename with deep common suffix"] = function()
   local path = require("gitlad.utils.path")
 
-  eq(path.format_rename("old/path/to/file.txt", "new/path/to/file.txt"), "{old => new}/path/to/file.txt")
+  eq(
+    path.format_rename("old/path/to/file.txt", "new/path/to/file.txt"),
+    "{old => new}/path/to/file.txt"
+  )
 end
 
 T["format_rename"]["handles rename with no common parts"] = function()
@@ -101,7 +104,10 @@ T["format_rename"]["handles partial directory match"] = function()
   local path = require("gitlad.utils.path")
 
   -- Only first directory matches
-  eq(path.format_rename("shared/a/b/file.txt", "shared/x/y/file.txt"), "shared/{a/b => x/y}/file.txt")
+  eq(
+    path.format_rename("shared/a/b/file.txt", "shared/x/y/file.txt"),
+    "shared/{a/b => x/y}/file.txt"
+  )
 end
 
 return T

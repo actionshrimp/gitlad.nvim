@@ -101,7 +101,10 @@ local function try_collapse_untracked_dir(status, dir_prefix)
   end
 
   -- Only collapse if we have multiple files (or one file that's not already the dir)
-  if #entries_to_collapse > 1 or (#entries_to_collapse == 1 and entries_to_collapse[1].path ~= dir_prefix) then
+  if
+    #entries_to_collapse > 1
+    or (#entries_to_collapse == 1 and entries_to_collapse[1].path ~= dir_prefix)
+  then
     -- Replace with a single directory entry
     status.untracked = other_entries
     insert_sorted(status.untracked, {
