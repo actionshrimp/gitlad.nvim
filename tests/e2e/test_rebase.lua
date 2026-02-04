@@ -484,4 +484,83 @@ T["rebase popup"]["status shows rebase in progress"] = function()
   cleanup_repo(child, repo)
 end
 
+T["rebase popup"]["continue after resolving conflicts opens commit editor"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "test.txt", "hello")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create a second commit on a named branch
+  git(child, repo, "checkout -b target")
+  create_file(child, repo, "test.txt", "hello world")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Second"')
+
+  -- Create a conflicting change and start rebase that will conflict
+  git(child, repo, "checkout -b feature HEAD~1")
+  create_file(child, repo, "test.txt", "conflicting change")
+  git(child, repo, "add test.txt")
+  git(child, repo, 'commit -m "Feature"')
+
+  -- Start rebase that will conflict
+  git(child, repo, "rebase target 2>&1 || true")
+
+  -- Resolve the conflict by writing the resolved content
+  create_file(child, repo, "test.txt", "resolved content")
+  git(child, repo, "add test.txt")
+
+  -- Open gitlad status view
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  child.lua([[vim.wait(500, function() return false end)]])
+
+  -- Verify rebase is in progress
+  local rebase_in_progress =
+    child.lua_get(string.format([[require("gitlad.git").rebase_in_progress({ cwd = %q })]], repo))
+  eq(rebase_in_progress, true)
+
+  -- Open rebase popup with 'r'
+  child.type_keys("r")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Press 'r' to continue
+  child.type_keys("r")
+
+  -- Wait for the commit editor to open (COMMIT_EDITMSG file)
+  -- The editor should open because git needs to confirm the conflict resolution message
+  child.lua([[
+    vim.wait(2000, function()
+      local bufname = vim.api.nvim_buf_get_name(0)
+      return bufname:match("COMMIT_EDITMSG") ~= nil
+    end, 50)
+  ]])
+
+  local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+  eq(bufname:match("COMMIT_EDITMSG") ~= nil, true)
+
+  -- The commit message should contain conflict information
+  child.lua([[
+    _test_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[_test_lines]])
+  local content = table.concat(lines, "\n")
+
+  -- Should contain "Conflicts:" section added by git
+  eq(content:find("Conflicts:") ~= nil or content:find("Feature") ~= nil, true)
+
+  -- Accept the commit message with ZZ to complete the rebase
+  child.type_keys("ZZ")
+  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Verify rebase completed (no longer in progress)
+  local rebase_still_in_progress =
+    child.lua_get(string.format([[require("gitlad.git").rebase_in_progress({ cwd = %q })]], repo))
+  eq(rebase_still_in_progress, false)
+
+  cleanup_repo(child, repo)
+end
+
 return T

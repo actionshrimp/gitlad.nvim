@@ -414,7 +414,14 @@ end
 function M._rebase_continue(repo_state)
   vim.notify("[gitlad] Continuing rebase...", vim.log.levels.INFO)
 
-  git.rebase_continue({ cwd = repo_state.repo_root }, function(success, err)
+  -- Pass git editor environment for commit message editing during conflict resolution
+  -- When conflicts are resolved, git may want to open an editor to confirm/edit the commit message
+  local opts = {
+    cwd = repo_state.repo_root,
+    env = client.get_envs_git_editor(),
+  }
+
+  git.rebase_continue(opts, function(success, err)
     vim.schedule(function()
       if success then
         -- Check if rebase is complete or still in progress
