@@ -560,6 +560,10 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
     child.lua_get(string.format([[require("gitlad.git").rebase_in_progress({ cwd = %q })]], repo))
   eq(rebase_still_in_progress, false)
 
+  -- Verify we're back in the status buffer (not a blank scratch buffer)
+  local final_bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+  eq(final_bufname:match("gitlad://status") ~= nil, true)
+
   cleanup_repo(child, repo)
 end
 
