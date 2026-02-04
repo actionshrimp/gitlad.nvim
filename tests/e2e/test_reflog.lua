@@ -44,11 +44,11 @@ T["log popup reflog group"]["shows reflog actions in log popup"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Press l to open log popup
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Buffer should contain Reflog section
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -99,13 +99,13 @@ T["reflog view"]["opens via l H keybinding"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Press l then H to open HEAD reflog
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
   child.type_keys("H")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_buffer(child, "reflog")
 
   -- Should be in reflog buffer
   local bufname = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -140,11 +140,11 @@ T["reflog view"]["shows commit entries"] = function()
 
   -- Open status and reflog
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
   child.type_keys("H")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_buffer(child, "reflog")
 
   -- Buffer should show commit entries with HEAD@{n} selectors
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -179,11 +179,11 @@ T["reflog view"]["shows checkout entries after branch operations"] = function()
 
   -- Open status and reflog
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
   child.type_keys("H")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_buffer(child, "reflog")
 
   -- Buffer should show checkout entries
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -210,11 +210,11 @@ T["reflog view"]["closes with q"] = function()
 
   -- Open status and reflog
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
   child.type_keys("H")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_buffer(child, "reflog")
 
   -- Verify we're in reflog buffer
   local bufname = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -222,7 +222,7 @@ T["reflog view"]["closes with q"] = function()
 
   -- Press q to close
   child.type_keys("q")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_buffer(child, "status")
 
   -- Should be back in status buffer
   bufname = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -242,16 +242,16 @@ T["reflog view"]["yanks hash with y"] = function()
 
   -- Open status and reflog
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
   child.type_keys("H")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_buffer(child, "reflog")
 
   -- Move to first entry and yank
   child.type_keys("gj") -- Move to first entry
   child.type_keys("y")
-  child.lua("vim.wait(100, function() end)")
+  helpers.wait_short(child)
 
   -- Check unnamed register contains a hash (7+ hex chars)
   -- Use unnamed register '"' instead of '+' since system clipboard may not work on CI
@@ -280,11 +280,11 @@ T["reflog view"]["navigates with gj/gk"] = function()
 
   -- Open status and reflog
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
   child.type_keys("l")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
   child.type_keys("H")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_buffer(child, "reflog")
 
   -- Get initial cursor line
   local initial_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")

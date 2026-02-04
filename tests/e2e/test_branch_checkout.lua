@@ -37,7 +37,7 @@ T["branch operations"]["checkout existing branch"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Checkout the branch using git module
   child.lua(string.format(
@@ -123,7 +123,7 @@ T["remote branch checkout"]["creates local branch from remote when local doesn't
   ))
 
   -- Wait for async operation
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.wait_short(child, 1500)
 
   -- Verify we're now on the local feature-branch
   local current_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
@@ -186,7 +186,7 @@ T["remote branch checkout"]["checks out existing local branch when it exists"] =
   ))
 
   -- Wait for async operation
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.wait_short(child, 1500)
 
   -- Verify we're now on the local feature-branch
   local current_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
@@ -243,7 +243,7 @@ T["remote branch checkout"]["handles nested branch names correctly"] = function(
   ))
 
   -- Wait for async operation
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.wait_short(child, 1500)
 
   -- Verify we're now on the local feature/add-login branch
   local current_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
@@ -289,7 +289,7 @@ T["remote branch checkout"]["falls back to direct checkout for local refs"] = fu
   ))
 
   -- Wait for async operation
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.wait_short(child, 1500)
 
   -- Verify we're now on other-branch
   local current_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")

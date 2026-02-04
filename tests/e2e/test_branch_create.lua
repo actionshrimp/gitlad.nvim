@@ -37,7 +37,7 @@ T["branch popup"]["opens from status buffer with b key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press b to open branch popup
   child.type_keys("b")
@@ -89,7 +89,7 @@ T["branch popup"]["has all expected actions"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("b")
 
@@ -146,7 +146,7 @@ T["branch popup"]["has force switch"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("b")
 
@@ -181,7 +181,7 @@ T["branch popup"]["switch toggling with -f"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("b")
 
@@ -202,7 +202,7 @@ T["branch popup"]["switch toggling with -f"] = function()
 
   -- Toggle force switch
   child.type_keys("-f")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_short(child)
 
   -- Check that switch is now enabled (has * marker)
   child.lua([[
@@ -233,7 +233,7 @@ T["branch popup"]["closes with q"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open branch popup
   child.type_keys("b")
@@ -242,7 +242,7 @@ T["branch popup"]["closes with q"] = function()
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -266,7 +266,7 @@ T["branch popup"]["b keybinding appears in help"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
@@ -305,7 +305,7 @@ T["branch operations"]["create and checkout branch"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Verify we're on main/master
   local initial_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
@@ -406,7 +406,7 @@ T["branch operations"]["spin-off switches to new branch"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Create the spin-off using the git module directly
   -- (testing the popup interaction would require mocking vim.ui.input)
@@ -501,7 +501,7 @@ T["branch operations"]["spin-off works with push remote only (no upstream)"] = f
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_short(child, 1000)
 
   -- Get the status to verify push_remote is set
   child.lua([[

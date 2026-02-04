@@ -37,7 +37,7 @@ T["push popup"]["opens from status buffer with p key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press p to open push popup (evil-collection-magit style)
   child.type_keys("p")
@@ -84,7 +84,7 @@ T["push popup"]["has all expected switches"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("p")
 
@@ -135,7 +135,7 @@ T["push popup"]["switch toggling with -f"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("p")
 
@@ -156,7 +156,7 @@ T["push popup"]["switch toggling with -f"] = function()
 
   -- Toggle force-with-lease switch
   child.type_keys("-f")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_short(child)
 
   -- Check that switch is now enabled (has * marker)
   child.lua([[
@@ -187,11 +187,11 @@ T["push popup"]["shows warning when no remote configured"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open push popup
   child.type_keys("p")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify popup shows "Push main to" heading (includes branch name)
   child.lua([[
@@ -230,11 +230,11 @@ T["push popup"]["has remote option for manual override"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(800, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open push popup and verify remote option exists (can be set with =r)
   child.type_keys("p")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   child.lua([[
     popup_buf = vim.api.nvim_get_current_buf()
@@ -275,11 +275,11 @@ T["push popup"]["shows magit-style push actions"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(800, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open push popup
   child.type_keys("p")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   child.lua([[
     popup_buf = vim.api.nvim_get_current_buf()
@@ -326,7 +326,7 @@ T["push popup"]["closes with q"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open push popup
   child.type_keys("p")
@@ -335,7 +335,7 @@ T["push popup"]["closes with q"] = function()
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -359,7 +359,7 @@ T["push popup"]["p keybinding appears in help"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
@@ -398,11 +398,11 @@ T["push section"]["popup shows Push section with o, T, t actions"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open push popup
   child.type_keys("p")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Check for new Push section with o, T, t actions
   child.lua([[
@@ -452,15 +452,15 @@ T["push section"]["T action shows no tags message when no tags exist"] = functio
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open push popup
   child.type_keys("p")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press T to push a tag - should show "No tags found" message
   child.type_keys("T")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Check notification for no tags
   local messages = child.lua_get([[vim.fn.execute("messages")]])
@@ -480,15 +480,15 @@ T["push section"]["t action shows no remotes message when no remotes configured"
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open push popup
   child.type_keys("p")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press t to push all tags - should show "No remotes configured" message
   child.type_keys("t")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Check notification for no remotes
   local messages = child.lua_get([[vim.fn.execute("messages")]])
@@ -513,15 +513,15 @@ T["push section"]["T action shows tag list when tags exist"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open push popup
   child.type_keys("p")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press T to push a tag - should open tag selector
   child.type_keys("T")
-  child.lua([[vim.wait(300, function() return false end)]])
+  helpers.wait_short(child, 300)
 
   -- The vim.ui.select should be showing tags
   -- We can't easily verify vim.ui.select content, but we can verify no error occurred
@@ -532,7 +532,7 @@ T["push section"]["T action shows tag list when tags exist"] = function()
 
   -- Cancel the selection
   child.type_keys("<Esc>")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   helpers.cleanup_repo(child, repo)
 end

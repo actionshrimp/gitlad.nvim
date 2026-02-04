@@ -37,10 +37,11 @@ T["commit popup"]["opens from status buffer with c key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press c to open commit popup
   child.type_keys("c")
+  helpers.wait_for_popup(child)
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -88,9 +89,10 @@ T["commit popup"]["has all expected switches"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("c")
+  helpers.wait_for_popup(child)
 
   -- Check for switches in popup
   child.lua([[
@@ -141,14 +143,15 @@ T["commit editor"]["opens when pressing c in commit popup"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open commit popup
   child.type_keys("c")
+  helpers.wait_for_popup(child)
   -- Press c again to open commit editor
   child.type_keys("c")
 
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
 
   -- Verify we're in a commit editor buffer
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -170,12 +173,14 @@ T["commit editor"]["has help comments"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("c")
+  helpers.wait_for_popup(child)
   child.type_keys("c")
 
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_short(child, 200) -- Wait for content to be populated
 
   local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
 
@@ -200,17 +205,18 @@ T["commit editor"]["aborts with C-c C-k"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("c")
+  helpers.wait_for_popup(child)
   child.type_keys("c")
 
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
 
   -- Abort with C-c C-k
   child.type_keys("<C-c><C-k>")
 
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_buffer(child, "gitlad://status")
 
   -- Verify we returned to status buffer
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -232,7 +238,7 @@ T["commit editor"]["can close status with q after abort"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Record initial window count
   local initial_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -240,7 +246,7 @@ T["commit editor"]["can close status with q after abort"] = function()
 
   -- Open commit popup
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Should have popup window now
   local popup_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -248,7 +254,7 @@ T["commit editor"]["can close status with q after abort"] = function()
 
   -- Press c to open commit editor (popup closes, editor opens in split above status)
   child.type_keys("c")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
 
   -- Should have 2 windows now (editor split + status)
   local editor_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -263,7 +269,7 @@ T["commit editor"]["can close status with q after abort"] = function()
 
   -- Abort
   child.type_keys("<C-c><C-k>")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_buffer(child, "gitlad://status")
 
   -- Verify we're in status buffer
   bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -278,7 +284,7 @@ T["commit editor"]["can close status with q after abort"] = function()
 
   -- Press q to close status - should not error
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_short(child)
 
   -- Check for error messages
   local messages = child.lua_get([[vim.fn.execute("messages")]])
@@ -302,13 +308,13 @@ T["commit editor"]["rapid q after abort does not error"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Rapid sequence: open popup, open editor, abort, close status
   child.type_keys("c")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("c")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
 
   -- Clear messages before abort/close sequence
   child.lua([[vim.cmd("messages clear")]])
@@ -317,7 +323,7 @@ T["commit editor"]["rapid q after abort does not error"] = function()
   child.type_keys("<C-c><C-k>")
   -- Immediate q without waiting for scheduled callbacks
   child.type_keys("q")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Check for error messages
   local messages = child.lua_get([[vim.fn.execute("messages")]])
@@ -341,13 +347,13 @@ T["commit editor"]["q works after abort without error"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open popup then editor
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
 
   -- Clear all messages
   child.lua([[vim.cmd("messages clear")]])
@@ -355,11 +361,11 @@ T["commit editor"]["q works after abort without error"] = function()
   -- Abort the commit
   child.type_keys("<C-c><C-k>")
   -- Wait for the deferred close to complete
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_buffer(child, "gitlad://status")
 
   -- Now press q to close status
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_short(child)
 
   -- Check that no error was shown
   local messages = child.lua_get([[vim.fn.execute("messages")]])
@@ -383,12 +389,13 @@ T["commit editor"]["creates commit with C-c C-c"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("c")
+  helpers.wait_for_popup(child)
   child.type_keys("c")
 
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
 
   -- Type commit message
   child.type_keys("iTest commit message")
@@ -398,7 +405,7 @@ T["commit editor"]["creates commit with C-c C-c"] = function()
   child.type_keys("<C-c><C-c>")
 
   -- Wait for async commit operation to complete
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.wait_for_buffer(child, "gitlad://status")
 
   -- Verify we returned to status buffer
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -428,13 +435,14 @@ T["commit editor"]["shows staged files summary"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open commit popup and editor
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("c")
-  child.lua([[vim.wait(300, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_short(child, 200) -- Wait for content to be populated
 
   -- Get buffer content
   local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
@@ -472,16 +480,16 @@ T["commit editor"]["opens in split above status"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Record status window
   local status_win = child.lua_get([[vim.api.nvim_get_current_win()]])
 
   -- Open commit popup and editor
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("c")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
 
   -- Should have 2 windows now
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -516,16 +524,16 @@ T["commit validation"]["prevents commit with nothing staged"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Clear messages
   child.lua([[vim.cmd("messages clear")]])
 
   -- Try to commit
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("c")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Should not have opened commit editor (should still be in popup or status)
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -553,19 +561,19 @@ T["commit validation"]["allows commit with -a flag when nothing staged"] = funct
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open commit popup
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Toggle -a switch
   child.type_keys("-a")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_short(child)
 
   -- Try to commit
   child.type_keys("c")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
 
   -- Should have opened commit editor
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])

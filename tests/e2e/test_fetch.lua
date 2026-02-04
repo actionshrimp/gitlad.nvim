@@ -37,7 +37,7 @@ T["fetch popup"]["opens from status buffer with f key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press f to open fetch popup
   child.type_keys("f")
@@ -93,7 +93,7 @@ T["fetch popup"]["has all expected switches"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("f")
 
@@ -134,7 +134,7 @@ T["fetch popup"]["switch toggling with -P"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("f")
 
@@ -155,7 +155,7 @@ T["fetch popup"]["switch toggling with -P"] = function()
 
   -- Toggle prune switch
   child.type_keys("-P")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_short(child)
 
   -- Check that switch is now enabled (has * marker)
   child.lua([[
@@ -186,18 +186,18 @@ T["fetch popup"]["shows warning when no upstream configured"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Clear messages
   child.lua([[vim.cmd("messages clear")]])
 
   -- Open fetch popup
   child.type_keys("f")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Try to fetch from upstream (should fail - no upstream)
   child.type_keys("u")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Should have shown warning message
   local messages = child.lua_get([[vim.fn.execute("messages")]])
@@ -217,7 +217,7 @@ T["fetch popup"]["closes with q"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open fetch popup
   child.type_keys("f")
@@ -226,7 +226,7 @@ T["fetch popup"]["closes with q"] = function()
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -250,7 +250,7 @@ T["fetch popup"]["f keybinding appears in help"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")

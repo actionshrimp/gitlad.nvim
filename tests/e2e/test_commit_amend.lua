@@ -39,13 +39,13 @@ T["extend action"]["amends without opening editor"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open commit popup and press e for extend
   child.type_keys("c")
   child.type_keys("e")
 
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Verify only one commit exists (amend, not new commit)
   local log = helpers.git(child, repo, "log --oneline")
@@ -76,13 +76,13 @@ T["amend action"]["opens editor with previous commit message"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open commit popup and press a for amend
   child.type_keys("c")
   child.type_keys("a")
 
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Verify editor contains previous message
   local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
@@ -113,13 +113,13 @@ T["reword action"]["opens editor with previous commit message"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open commit popup and press w for reword
   child.type_keys("c")
   child.type_keys("w")
 
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Verify editor contains previous message
   local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
@@ -151,13 +151,13 @@ T["reword action"]["ignores staged changes"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open commit popup and press w for reword
   child.type_keys("c")
   child.type_keys("w")
 
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Edit the commit message
   child.type_keys("ggdG") -- Delete all
@@ -168,7 +168,7 @@ T["reword action"]["ignores staged changes"] = function()
   child.type_keys("<C-c><C-c>")
 
   -- Wait for async commit operation to complete
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.wait_for_buffer(child, "gitlad://status")
 
   -- Verify only one commit exists (reword, not new commit)
   local log = helpers.git(child, repo, "log --oneline")

@@ -44,11 +44,11 @@ T["diff popup from status"]["opens with d key"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Press d to open diff popup
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Should have a popup window
   local win_count = child.lua_get("vim.fn.winnr('$')")
@@ -77,10 +77,10 @@ T["diff popup from status"]["has expected actions"] = function()
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -104,15 +104,15 @@ T["diff popup from status"]["closes with q"] = function()
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local win_count_before = child.lua_get("vim.fn.winnr('$')")
 
   child.type_keys("q")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup_closed(child)
 
   local win_count_after = child.lua_get("vim.fn.winnr('$')")
 
@@ -131,15 +131,15 @@ T["diff popup from status"]["closes with Esc"] = function()
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local win_count_before = child.lua_get("vim.fn.winnr('$')")
 
   child.type_keys("<Esc>")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup_closed(child)
 
   local win_count_after = child.lua_get("vim.fn.winnr('$')")
 
@@ -161,12 +161,12 @@ T["diff popup from status"]["shows 3-way action when on unstaged file"] = functi
   helpers.create_file(child, repo, "init.txt", "modified content")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Cursor should already be on the first file (unstaged init.txt)
   -- Open diff popup
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -190,12 +190,12 @@ T["diff popup from status"]["shows 3-way action when on staged file"] = function
   helpers.git(child, repo, "add init.txt")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Cursor should already be on the first file (staged init.txt)
   -- Open diff popup
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -226,11 +226,11 @@ T["diff popup from log"]["opens with d key"] = function()
   helpers.git(child, repo, "commit -m 'Second commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view (l then l)
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
 
   -- Verify in log buffer
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -238,11 +238,10 @@ T["diff popup from log"]["opens with d key"] = function()
 
   -- Navigate to a commit line
   child.type_keys("gj")
-  child.lua("vim.wait(100, function() end)")
 
   -- Press d to open diff popup
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Should have a popup window
   local win_count = child.lua_get("vim.fn.winnr('$')")
@@ -272,19 +271,18 @@ T["diff popup from log"]["shows commit action when on commit"] = function()
   helpers.git(child, repo, "commit -m 'First commit'")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open log view
   child.type_keys("ll")
-  child.lua("vim.wait(1000, function() end)")
+  helpers.wait_for_buffer(child, "gitlad://log")
 
   -- Navigate to commit
   child.type_keys("gj")
-  child.lua("vim.wait(100, function() end)")
 
   -- Open diff popup
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
@@ -313,16 +311,16 @@ T["diff fallback"]["shows warning when diffview not installed"] = function()
   helpers.create_file(child, repo, "init.txt", "modified")
 
   child.cmd("Gitlad")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_for_status(child)
 
   -- Open diff popup and trigger unstaged diff
   child.type_keys("d")
-  child.lua("vim.wait(200, function() end)")
+  helpers.wait_for_popup(child)
 
   -- Mock diffview as not available by triggering the action
   -- The fallback should show a terminal with git diff
   child.type_keys("u")
-  child.lua("vim.wait(500, function() end)")
+  helpers.wait_short(child, 500)
 
   -- Should either show notification or open terminal
   -- (depending on whether diffview is actually available in test env)

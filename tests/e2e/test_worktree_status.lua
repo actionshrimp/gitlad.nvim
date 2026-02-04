@@ -42,7 +42,7 @@ T["worktree status section"]["hidden when only main worktree exists"] = function
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get status lines
   local lines = get_status_lines(child)
@@ -79,7 +79,7 @@ T["worktree status section"]["shown when 2+ worktrees exist"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get status lines
   local lines = get_status_lines(child)
@@ -118,7 +118,7 @@ T["worktree status section"]["shows current worktree with marker"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get status lines
   local lines = get_status_lines(child)
@@ -167,7 +167,7 @@ T["worktree status section"]["can be collapsed and expanded"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Find and go to Worktrees section header
   child.lua([[
@@ -197,7 +197,7 @@ T["worktree status section"]["can be collapsed and expanded"] = function()
 
   -- Press TAB to collapse
   child.type_keys("<Tab>")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Count lines after collapse
   local lines_after = get_status_lines(child)
@@ -219,7 +219,7 @@ T["worktree status section"]["can be collapsed and expanded"] = function()
 
   -- Press TAB again to expand
   child.type_keys("<Tab>")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Count lines after expand
   local lines_expanded = get_status_lines(child)

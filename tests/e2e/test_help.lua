@@ -31,7 +31,7 @@ T["help popup"]["opens from status buffer with ? key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press ? to open help popup
   child.type_keys("?")
@@ -51,7 +51,7 @@ T["help popup"]["displays Navigation section"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("?")
 
@@ -94,7 +94,7 @@ T["help popup"]["displays Applying changes section"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("?")
 
@@ -146,7 +146,7 @@ T["help popup"]["displays Transient commands section"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("?")
 
@@ -187,7 +187,7 @@ T["help popup"]["displays Essential commands section"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("?")
 
@@ -238,7 +238,7 @@ T["help popup"]["closes with q key"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("?")
 
@@ -248,7 +248,7 @@ T["help popup"]["closes with q key"] = function()
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify back to 1 window
   win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -267,7 +267,7 @@ T["help popup"]["closes with Esc key"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("?")
 
@@ -277,7 +277,7 @@ T["help popup"]["closes with Esc key"] = function()
 
   -- Close with Esc
   child.type_keys("<Esc>")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify back to 1 window
   win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -295,15 +295,15 @@ T["help popup"]["pressing c opens commit popup"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help popup
   child.type_keys("?")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press c to open commit popup
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify commit popup is now shown (check for commit-specific content)
   child.lua([[
@@ -339,15 +339,15 @@ T["help popup"]["pressing p opens push popup"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help popup
   child.type_keys("?")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press p to open push popup
   child.type_keys("p")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify push popup is now shown (check for push-specific content)
   child.lua([[
@@ -383,15 +383,15 @@ T["help popup"]["pressing $ opens git command history"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help popup
   child.type_keys("?")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press $ to open history
   child.type_keys("$")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify history buffer is shown
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -407,7 +407,7 @@ T["help popup"]["has title 'Help'"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("?")
 

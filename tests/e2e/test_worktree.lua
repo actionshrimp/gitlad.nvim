@@ -37,13 +37,13 @@ T["worktree popup"]["opens from status buffer with % key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press % to open worktree popup
   child.type_keys("%")
 
   -- Wait for popup to appear
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -97,7 +97,7 @@ T["worktree popup"]["has correct switches"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press % to open worktree popup
   child.type_keys("%")
@@ -145,7 +145,7 @@ T["worktree popup"]["closes on q key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press % to open worktree popup
   child.type_keys("%")
@@ -182,7 +182,7 @@ T["worktree popup"]["context-aware when cursor on worktree entry"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_short(child, 1000)
 
   -- Navigate to Worktrees section
   child.lua([[
@@ -223,7 +223,7 @@ T["worktree popup"]["shows all action groups"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press % to open worktree popup
   child.type_keys("%")
@@ -276,7 +276,7 @@ T["worktree popup"]["branch and worktree action available"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press % to open worktree popup
   child.type_keys("%")
@@ -315,7 +315,7 @@ T["worktree popup"]["prune action available"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press % to open worktree popup
   child.type_keys("%")

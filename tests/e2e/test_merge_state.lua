@@ -433,7 +433,7 @@ T["status header"]["shows Merging line during merge conflict"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load and render
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get status buffer content
   child.lua([[

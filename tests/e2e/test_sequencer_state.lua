@@ -202,7 +202,7 @@ T["sequencer state"]["status buffer shows cherry-pick in progress"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load (async fetch)
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get buffer lines
   child.lua([[
@@ -256,7 +256,7 @@ T["sequencer state"]["status buffer shows revert in progress"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load (async fetch)
-  child.lua([[vim.wait(1500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get buffer lines
   child.lua([[

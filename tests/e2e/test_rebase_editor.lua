@@ -99,11 +99,11 @@ T["commit_popup_instant"]["commit popup has instant fixup action"] = function()
   -- Change to repo and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open commit popup with 'c'
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Check that the popup contains the instant fixup action
   child.lua([[
@@ -138,11 +138,11 @@ T["rebase_popup"]["has interactive action"] = function()
   -- Change to repo and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open rebase popup with 'r'
   child.type_keys("r")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Check that the popup contains the interactive action
   child.lua([[
@@ -197,7 +197,7 @@ T["commit_at_point"]["instant fixup uses commit at point in status view"] = func
   -- Change to repo and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Navigate to the Recent commits section and find a commit line
   -- Search for "First commit" which should be in the recent commits
@@ -210,7 +210,7 @@ T["commit_at_point"]["instant fixup uses commit at point in status view"] = func
       end
     end
   ]])
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify we're on a commit line by checking line content
   local current_line = child.lua_get([[vim.api.nvim_get_current_line()]])
@@ -218,11 +218,11 @@ T["commit_at_point"]["instant fixup uses commit at point in status view"] = func
 
   -- Open commit popup
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press F for instant fixup - should NOT open the commit selector since we have commit at point
   child.type_keys("F")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Check that we didn't open a commit selector (no floating window with commit list)
   -- The instant fixup should have started directly, so we should see a notification
@@ -246,13 +246,13 @@ T["commit_at_point"]["instant fixup uses commit at point in log view"] = functio
   -- Change to repo and open status first to get repo_state
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open log view via the popup
   child.type_keys("l")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
   child.type_keys("l") -- Press 'l' again to show log
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Navigate to a commit line (should start on first commit)
   child.lua([[
@@ -264,15 +264,15 @@ T["commit_at_point"]["instant fixup uses commit at point in log view"] = functio
       end
     end
   ]])
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Open commit popup
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press F for instant fixup
   child.type_keys("F")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Should see fixup execution message, not a selector
   local messages = child.lua_get([[vim.fn.execute("messages")]])
@@ -292,7 +292,7 @@ T["commit_at_point"]["instant squash uses commit at point in status view"] = fun
   -- Change to repo and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Navigate to a commit line
   child.lua([[
@@ -304,15 +304,15 @@ T["commit_at_point"]["instant squash uses commit at point in status view"] = fun
       end
     end
   ]])
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Open commit popup
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press S for instant squash
   child.type_keys("S")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- Should see squash execution message, not a selector
   local messages = child.lua_get([[vim.fn.execute("messages")]])
@@ -332,11 +332,11 @@ T["commit_at_point"]["instant fixup falls back to prompt when no commit at point
   -- Change to repo and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Stay at top of buffer (header area, not on a commit)
   child.type_keys("gg")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Mock pickers to track if prompt was triggered
   -- Disable snacks and mini.pick to test vim.ui.input fallback
@@ -366,11 +366,11 @@ T["commit_at_point"]["instant fixup falls back to prompt when no commit at point
 
   -- Open commit popup
   child.type_keys("c")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press F for instant fixup - should open prompt since not on a commit
   child.type_keys("F")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_short(child, 200)
 
   -- vim.ui.input should have been called (fallback)
   local prompt_called = child.lua_get([[_G.prompt_called]])

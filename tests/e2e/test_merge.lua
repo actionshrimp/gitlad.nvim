@@ -37,11 +37,11 @@ T["merge popup"]["opens from status buffer with m key"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press m to open merge popup
   child.type_keys("m")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -84,10 +84,10 @@ T["merge popup"]["has all expected switches"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("m")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Check for switches in popup
   child.lua([[
@@ -141,10 +141,10 @@ T["merge popup"]["has choice options for strategy"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("m")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Check for option in popup
   child.lua([[
@@ -188,10 +188,10 @@ T["merge popup"]["ff-only and no-ff are mutually exclusive"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("m")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Get popup buffer
   child.lua([[
@@ -225,7 +225,7 @@ T["merge popup"]["ff-only and no-ff are mutually exclusive"] = function()
 
   -- Enable ff-only
   child.type_keys("-f")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_short(child)
 
   local ff2, noff2 = get_switch_states()
   eq(ff2, true)
@@ -233,7 +233,7 @@ T["merge popup"]["ff-only and no-ff are mutually exclusive"] = function()
 
   -- Enable no-ff - should disable ff-only
   child.type_keys("-n")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_short(child)
 
   local ff3, noff3 = get_switch_states()
   eq(ff3, false) -- ff-only should be disabled
@@ -241,7 +241,7 @@ T["merge popup"]["ff-only and no-ff are mutually exclusive"] = function()
 
   -- Enable ff-only again - should disable no-ff
   child.type_keys("-f")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_short(child)
 
   local ff4, noff4 = get_switch_states()
   eq(ff4, true) -- ff-only should be enabled
@@ -262,18 +262,18 @@ T["merge popup"]["closes with q"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open merge popup
   child.type_keys("m")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   local win_count_popup = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_popup, 2)
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -297,7 +297,7 @@ T["merge popup"]["m keybinding appears in help"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
