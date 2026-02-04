@@ -751,6 +751,157 @@ T["intent to add"]["gs followed by regular staging works"] = function()
   assert_truthy(status:find("A  new.txt"), "Git should show file as fully staged (A)")
 end
 
+T["intent to add"]["gs on untracked directory shows individual files in unstaged"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked directory with multiple files
+  create_file(child, repo, "newdir/file1.txt", "content1")
+  create_file(child, repo, "newdir/file2.txt", "content2")
+
+  open_gitlad(child, repo)
+
+  -- Navigate to the untracked directory
+  local lines = get_buffer_lines(child)
+  local dir_line = find_line_with(lines, "newdir/")
+  assert_truthy(dir_line, "Should find newdir/ in untracked section")
+
+  -- Go to that line and press 'gs' for intent-to-add
+  child.cmd(tostring(dir_line))
+  child.type_keys("gs")
+
+  -- Wait for refresh (directory intent-to-add triggers refresh)
+  helpers.wait_short(child, 300)
+
+  -- Verify individual files appear in unstaged section (not the directory)
+  lines = get_buffer_lines(child)
+  local unstaged_section = find_line_with(lines, "Unstaged")
+  assert_truthy(unstaged_section, "Should have Unstaged section")
+
+  -- Should see individual files in unstaged section
+  local file1_line = find_line_with(lines, "newdir/file1.txt")
+  local file2_line = find_line_with(lines, "newdir/file2.txt")
+
+  assert_truthy(file1_line, "Should see newdir/file1.txt")
+  assert_truthy(file2_line, "Should see newdir/file2.txt")
+
+  -- Verify they are in the unstaged section (after header)
+  assert_truthy(file1_line > unstaged_section, "file1 should be in unstaged section")
+  assert_truthy(file2_line > unstaged_section, "file2 should be in unstaged section")
+
+  -- Verify git state: files should be intent-to-add (.A in porcelain v2, " A" in porcelain v1)
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find(" A newdir/file1.txt"), "file1 should be intent-to-add")
+  assert_truthy(status:find(" A newdir/file2.txt"), "file2 should be intent-to-add")
+end
+
+T["intent to add"]["u on intent-to-add file moves it back to untracked"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked file and mark as intent-to-add via git
+  create_file(child, repo, "new.txt", "content")
+  git(child, repo, "add -N new.txt")
+
+  -- Verify intent-to-add state
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find(" A new.txt"), "File should start as intent-to-add")
+
+  open_gitlad(child, repo)
+
+  -- File should be in unstaged section
+  local lines = get_buffer_lines(child)
+  local file_line = find_line_with(lines, "new.txt")
+  assert_truthy(file_line, "Should find new.txt")
+
+  -- Navigate to file and press 'u' to undo intent-to-add
+  child.cmd(tostring(file_line))
+  child.type_keys("u")
+  helpers.wait_short(child, 150)
+
+  -- Verify file moved back to untracked
+  lines = get_buffer_lines(child)
+  local untracked_section = find_line_with(lines, "Untracked")
+  assert_truthy(untracked_section, "Should have Untracked section")
+
+  file_line = find_line_with(lines, "new.txt")
+  assert_truthy(file_line, "Should still see new.txt")
+  assert_truthy(file_line > untracked_section, "new.txt should be in untracked section")
+
+  -- Verify git state
+  status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("%?%? new.txt"), "File should be back to untracked")
+end
+
+T["intent to add"]["u on last intent-to-add file in directory collapses to directory entry"] = function()
+  local child = _G.child
+  local repo = create_test_repo(child)
+
+  -- Create initial commit
+  create_file(child, repo, "init.txt", "initial")
+  git(child, repo, "add .")
+  git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked directory with files and mark as intent-to-add via git
+  create_file(child, repo, "newdir/file1.txt", "content1")
+  create_file(child, repo, "newdir/file2.txt", "content2")
+  git(child, repo, "add -N newdir/")
+
+  -- Verify intent-to-add state
+  local status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find(" A newdir/file1.txt"), "file1 should be intent-to-add")
+  assert_truthy(status:find(" A newdir/file2.txt"), "file2 should be intent-to-add")
+
+  open_gitlad(child, repo)
+
+  -- Both files should be in unstaged section
+  local lines = get_buffer_lines(child)
+  local file1_line = find_line_with(lines, "newdir/file1.txt")
+  local file2_line = find_line_with(lines, "newdir/file2.txt")
+  assert_truthy(file1_line, "Should find newdir/file1.txt")
+  assert_truthy(file2_line, "Should find newdir/file2.txt")
+
+  -- Undo intent-to-add on first file
+  child.cmd(tostring(file1_line))
+  child.type_keys("u")
+  helpers.wait_short(child, 150)
+
+  -- First file should move to untracked, second still in unstaged
+  lines = get_buffer_lines(child)
+  -- Note: After unstaging one file, the other should still be visible
+  file2_line = find_line_with(lines, "newdir/file2.txt")
+  assert_truthy(file2_line, "file2 should still be in buffer after first undo")
+
+  -- Undo intent-to-add on second file
+  child.cmd(tostring(file2_line))
+  child.type_keys("u")
+  helpers.wait_short(child, 150)
+
+  -- Both files should now be untracked, collapsed to directory entry
+  lines = get_buffer_lines(child)
+  local untracked_section = find_line_with(lines, "Untracked")
+  assert_truthy(untracked_section, "Should have Untracked section")
+
+  -- Should see collapsed directory entry, not individual files
+  local dir_line = find_line_with(lines, "newdir/")
+  assert_truthy(dir_line, "Should see collapsed newdir/ entry")
+  assert_truthy(dir_line > untracked_section, "newdir/ should be in untracked section")
+
+  -- Verify git state
+  status = git(child, repo, "status --porcelain")
+  assert_truthy(status:find("%?%? newdir/"), "Directory should show as untracked")
+end
+
 -- =============================================================================
 -- Directory Staging Tests
 -- =============================================================================

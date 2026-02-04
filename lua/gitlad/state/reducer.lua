@@ -272,6 +272,39 @@ function M._apply_stage_intent(status, path)
   return status
 end
 
+--- Apply unstage_intent command (git reset on .A file)
+--- Moves an intent-to-add file back from unstaged to untracked
+---@param status GitStatusResult (already copied)
+---@param path string
+---@return GitStatusResult
+function M._apply_unstage_intent(status, path)
+  -- Find and remove the .A entry from unstaged
+  local new_unstaged = {}
+  local removed = nil
+  for _, entry in ipairs(status.unstaged) do
+    if entry.path == path and entry.worktree_status == "A" and entry.index_status == "." then
+      removed = entry
+    else
+      table.insert(new_unstaged, entry)
+    end
+  end
+
+  if removed then
+    status.unstaged = new_unstaged
+    insert_sorted(status.untracked, {
+      path = removed.path,
+      index_status = "?",
+      worktree_status = "?",
+    })
+    -- Try to collapse directory if all files in it are now untracked
+    local dir = get_top_level_dir(removed.path)
+    if dir then
+      try_collapse_untracked_dir(status, dir)
+    end
+  end
+  return status
+end
+
 --- Apply stage_all command
 ---@param status GitStatusResult (already copied)
 ---@return GitStatusResult
@@ -382,6 +415,8 @@ function M.apply(status, cmd)
     return M._apply_unstage_file(new_status, cmd.path)
   elseif cmd.type == "stage_intent" then
     return M._apply_stage_intent(new_status, cmd.path)
+  elseif cmd.type == "unstage_intent" then
+    return M._apply_unstage_intent(new_status, cmd.path)
   elseif cmd.type == "stage_all" then
     return M._apply_stage_all(new_status)
   elseif cmd.type == "unstage_all" then

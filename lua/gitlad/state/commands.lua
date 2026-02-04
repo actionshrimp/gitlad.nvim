@@ -11,6 +11,7 @@ local M = {}
 ---| "stage_file"      -- Move file to staged
 ---| "unstage_file"    -- Move file to unstaged
 ---| "stage_intent"    -- Intent-to-add (git add -N), moves untracked to unstaged
+---| "unstage_intent"  -- Undo intent-to-add (git reset), moves .A file back to untracked
 ---| "refresh"         -- Full replacement from git status
 ---| "stage_all"       -- Stage all unstaged + untracked
 ---| "unstage_all"     -- Unstage all staged
@@ -41,6 +42,17 @@ end
 function M.stage_intent(path)
   return {
     type = "stage_intent",
+    path = path,
+  }
+end
+
+--- Create an unstage_intent command (git reset)
+--- Moves an intent-to-add file (.A) back to untracked
+---@param path string File path to undo intent-to-add
+---@return StatusCommand
+function M.unstage_intent(path)
+  return {
+    type = "unstage_intent",
     path = path,
   }
 end
