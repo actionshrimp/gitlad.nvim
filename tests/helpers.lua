@@ -32,7 +32,7 @@ function M.create_test_repo(child)
   child.lua(string.format(
     [[
     vim.fn.mkdir(%q, "p")
-    vim.fn.system("git -C " .. %q .. " init")
+    vim.fn.system("git -C " .. %q .. " init -b main")
     vim.fn.system("git -C " .. %q .. " config user.email 'test@test.com'")
     vim.fn.system("git -C " .. %q .. " config user.name 'Test User'")
     vim.fn.system("git -C " .. %q .. " config commit.gpgsign false")

@@ -1,23 +1,7 @@
 -- End-to-end tests for gitlad.nvim push popup
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -66,7 +50,7 @@ T["push popup"] = MiniTest.new_set()
 
 T["push popup"]["opens from status buffer with p key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -116,7 +100,7 @@ end
 
 T["push popup"]["has all expected switches"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -167,7 +151,7 @@ end
 
 T["push popup"]["switch toggling with -f"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -219,7 +203,7 @@ end
 
 T["push popup"]["shows warning when no remote configured"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no remote at all)
   create_file(child, repo, "test.txt", "hello")
@@ -256,7 +240,7 @@ end
 
 T["push popup"]["has remote option for manual override"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -299,7 +283,7 @@ end
 
 T["push popup"]["shows magit-style push actions"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -358,7 +342,7 @@ end
 
 T["push popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -391,7 +375,7 @@ end
 
 T["push popup"]["p keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -430,7 +414,7 @@ T["push section"] = MiniTest.new_set()
 
 T["push section"]["popup shows Push section with o, T, t actions"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -484,7 +468,7 @@ end
 
 T["push section"]["T action shows no tags message when no tags exist"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no tags)
   create_file(child, repo, "test.txt", "hello")
@@ -512,7 +496,7 @@ end
 
 T["push section"]["t action shows no remotes message when no remotes configured"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no remote)
   create_file(child, repo, "test.txt", "hello")
@@ -540,7 +524,7 @@ end
 
 T["push section"]["T action shows tag list when tags exist"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit with tags
   create_file(child, repo, "test.txt", "hello")

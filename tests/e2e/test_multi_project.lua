@@ -1,25 +1,9 @@
 -- E2E tests for multi-project support
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
 
 local child = MiniTest.new_child_neovim()
-
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to clean up test repo
 local function cleanup_test_repo(child_nvim, repo)
@@ -74,8 +58,8 @@ T["multi-project"] = MiniTest.new_set()
 
 T["multi-project"]["can open status for two different repos without E95 error"] = function()
   -- Create two test repos
-  local repo_a = create_test_repo(child)
-  local repo_b = create_test_repo(child)
+  local repo_a = helpers.create_test_repo(child)
+  local repo_b = helpers.create_test_repo(child)
 
   -- Create initial commits so status works
   create_file(child, repo_a, "a.txt", "repo a content")
@@ -123,7 +107,7 @@ T["multi-project"]["can open status for two different repos without E95 error"] 
 end
 
 T["multi-project"]["reopening same repo focuses existing window"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "content")
@@ -163,8 +147,8 @@ end
 
 T["multi-project"]["each repo gets independent status buffer"] = function()
   -- Create two test repos with different content
-  local repo_a = create_test_repo(child)
-  local repo_b = create_test_repo(child)
+  local repo_a = helpers.create_test_repo(child)
+  local repo_b = helpers.create_test_repo(child)
 
   -- Create different files in each repo
   create_file(child, repo_a, "file_a.txt", "content a")
@@ -212,8 +196,8 @@ end
 
 T["multi-project"]["q key closes correct window when multiple status buffers open"] = function()
   -- Create two test repos
-  local repo_a = create_test_repo(child)
-  local repo_b = create_test_repo(child)
+  local repo_a = helpers.create_test_repo(child)
+  local repo_b = helpers.create_test_repo(child)
 
   -- Create initial commits
   create_file(child, repo_a, "a.txt", "content a")

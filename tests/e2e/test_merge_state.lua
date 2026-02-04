@@ -1,23 +1,7 @@
 -- End-to-end tests for gitlad.nvim merge state detection
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init -b main")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -66,7 +50,7 @@ T["merge state detection"] = MiniTest.new_set()
 
 T["merge state detection"]["get_merge_state returns false when not merging"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -99,7 +83,7 @@ end
 
 T["merge state detection"]["get_merge_state returns true during merge conflict"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -148,7 +132,7 @@ end
 
 T["merge state detection"]["merge_in_progress sync function works"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -190,7 +174,7 @@ T["merge operations"] = MiniTest.new_set()
 
 T["merge operations"]["merge performs fast-forward merge"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "hello")
@@ -239,7 +223,7 @@ end
 
 T["merge operations"]["merge with --no-ff creates merge commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "hello")
@@ -282,7 +266,7 @@ end
 
 T["merge operations"]["merge detects conflicts"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -326,7 +310,7 @@ end
 
 T["merge operations"]["merge_abort aborts in-progress merge"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -387,7 +371,7 @@ end
 
 T["merge operations"]["merge_continue commits resolved merge"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -448,7 +432,7 @@ T["status header"] = MiniTest.new_set()
 
 T["status header"]["shows Merging line during merge conflict"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -502,7 +486,7 @@ T["error paths"] = MiniTest.new_set()
 
 T["error paths"]["merge_abort fails gracefully when not merging"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit - no merge in progress
   create_file(child, repo, "test.txt", "hello")
@@ -534,7 +518,7 @@ end
 
 T["error paths"]["merge_continue fails with unresolved conflicts"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -579,7 +563,7 @@ end
 
 T["error paths"]["merge fails with invalid branch name"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   create_file(child, repo, "test.txt", "hello")
   git(child, repo, "add test.txt")
@@ -610,7 +594,7 @@ end
 
 T["error paths"]["ff-only merge fails when not fast-forwardable"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create divergent branches
   create_file(child, repo, "test.txt", "hello")
@@ -655,7 +639,7 @@ T["merge arguments"] = MiniTest.new_set()
 
 T["merge arguments"]["squash merge stages changes without creating merge commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   create_file(child, repo, "test.txt", "hello")
   git(child, repo, "add test.txt")
@@ -704,7 +688,7 @@ end
 
 T["merge arguments"]["no-commit merge stages changes without committing"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   create_file(child, repo, "test.txt", "hello")
   git(child, repo, "add test.txt")

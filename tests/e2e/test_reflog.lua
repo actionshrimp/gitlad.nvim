@@ -1,25 +1,9 @@
 -- E2E tests for reflog functionality
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
 
 local child = MiniTest.new_child_neovim()
-
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to clean up test repo
 local function cleanup_test_repo(child_nvim, repo)
@@ -68,7 +52,7 @@ local T = MiniTest.new_set({
 T["log popup reflog group"] = MiniTest.new_set()
 
 T["log popup reflog group"]["shows reflog actions in log popup"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -119,7 +103,7 @@ end
 T["reflog view"] = MiniTest.new_set()
 
 T["reflog view"]["opens via l H keybinding"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create some commits to have reflog entries
@@ -160,7 +144,7 @@ T["reflog view"]["opens via l H keybinding"] = function()
 end
 
 T["reflog view"]["shows commit entries"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commits
@@ -199,7 +183,7 @@ T["reflog view"]["shows commit entries"] = function()
 end
 
 T["reflog view"]["shows checkout entries after branch operations"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -234,7 +218,7 @@ T["reflog view"]["shows checkout entries after branch operations"] = function()
 end
 
 T["reflog view"]["closes with q"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit
@@ -266,7 +250,7 @@ T["reflog view"]["closes with q"] = function()
 end
 
 T["reflog view"]["yanks hash with y"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit
@@ -296,7 +280,7 @@ T["reflog view"]["yanks hash with y"] = function()
 end
 
 T["reflog view"]["navigates with gj/gk"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create multiple commits

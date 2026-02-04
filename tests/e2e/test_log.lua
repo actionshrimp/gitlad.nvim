@@ -5,23 +5,6 @@ local helpers = require("tests.helpers")
 
 local child = MiniTest.new_child_neovim()
 
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
-
 -- Helper to clean up test repo
 local function cleanup_test_repo(child_nvim, repo)
   child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
@@ -69,7 +52,7 @@ local T = MiniTest.new_set({
 T["log popup"] = MiniTest.new_set()
 
 T["log popup"]["opens from status buffer with l key"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit so status works
@@ -104,7 +87,7 @@ T["log popup"]["opens from status buffer with l key"] = function()
 end
 
 T["log popup"]["has switches and options"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")
@@ -133,7 +116,7 @@ T["log popup"]["has switches and options"] = function()
 end
 
 T["log popup"]["closes with q"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")
@@ -166,7 +149,7 @@ end
 T["log view"] = MiniTest.new_set()
 
 T["log view"]["opens when action is triggered"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create some commits to show
@@ -197,7 +180,7 @@ T["log view"]["opens when action is triggered"] = function()
 end
 
 T["log view"]["displays commits"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commits
@@ -228,7 +211,7 @@ T["log view"]["displays commits"] = function()
 end
 
 T["log view"]["commit lines have no leading indent"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create a commit
@@ -262,7 +245,7 @@ T["log view"]["commit lines have no leading indent"] = function()
 end
 
 T["log view"]["can yank commit hash with y"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create a commit
@@ -295,7 +278,7 @@ T["log view"]["can yank commit hash with y"] = function()
 end
 
 T["log view"]["closes with q"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -326,7 +309,7 @@ T["log view"]["closes with q"] = function()
 end
 
 T["log view"]["gj/gk keymaps are set up"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commits
@@ -369,7 +352,7 @@ T["log view"]["gj/gk keymaps are set up"] = function()
 end
 
 T["log view"]["buffer is not modifiable"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create a commit
@@ -393,7 +376,7 @@ T["log view"]["buffer is not modifiable"] = function()
 end
 
 T["log view"]["has sign column with expand indicators"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commits
@@ -437,7 +420,7 @@ T["log view"]["has sign column with expand indicators"] = function()
 end
 
 T["log view"]["sign indicator changes when commit is expanded"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create a commit with a body
@@ -500,7 +483,7 @@ T["log view"]["sign indicator changes when commit is expanded"] = function()
 end
 
 T["log view"]["has popup keymaps (b, r, A, _, X)"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create a commit
@@ -545,7 +528,7 @@ T["log view"]["has popup keymaps (b, r, A, _, X)"] = function()
 end
 
 T["log view"]["branch popup opens from log view"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create a commit
@@ -575,7 +558,7 @@ T["log view"]["branch popup opens from log view"] = function()
 end
 
 T["log view"]["reset popup opens with commit context"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commits

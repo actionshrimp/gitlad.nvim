@@ -5,23 +5,6 @@ local helpers = require("tests.helpers")
 
 local child = MiniTest.new_child_neovim()
 
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init -b main")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
-
 -- Helper to create a file in the repo
 local function create_file(child_nvim, repo, filename, content)
   child_nvim.lua(string.format(
@@ -66,7 +49,7 @@ local T = MiniTest.new_set({
 T["staging conflicted files"] = MiniTest.new_set()
 
 T["staging conflicted files"]["s on conflicted file stages it (marks as resolved)"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -154,7 +137,7 @@ T["staging conflicted files"]["s on conflicted file stages it (marks as resolved
 end
 
 T["staging conflicted files"]["s on Conflicted section header stages all conflicted files"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main with two files
   create_file(child, repo, "file1.txt", "content1")
@@ -224,7 +207,7 @@ end
 T["conflict marker safeguard"] = MiniTest.new_set()
 
 T["conflict marker safeguard"]["s on file with conflict markers shows confirmation prompt"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -302,7 +285,7 @@ T["conflict marker safeguard"]["s on file with conflict markers shows confirmati
 end
 
 T["conflict marker safeguard"]["s on resolved file without markers stages immediately"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -371,7 +354,7 @@ end
 T["diffview integration"] = MiniTest.new_set()
 
 T["diffview integration"]["e keybinding is mapped in status buffer"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -401,7 +384,7 @@ T["diffview integration"]["e keybinding is mapped in status buffer"] = function(
 end
 
 T["diffview integration"]["e keybinding appears in help"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -440,7 +423,7 @@ end
 T["diffview fallback"] = MiniTest.new_set()
 
 T["diffview fallback"]["shows message when diffview not installed"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -520,7 +503,7 @@ T["diffview fallback"]["shows message when diffview not installed"] = function()
 end
 
 T["diffview fallback"]["opens file directly when diffview not installed"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -586,7 +569,7 @@ end
 T["auto-staging"] = MiniTest.new_set()
 
 T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -661,7 +644,7 @@ T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] =
 end
 
 T["auto-staging"]["does not stage files that still have conflict markers"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
   create_file(child, repo, "test.txt", "line1\nline2")

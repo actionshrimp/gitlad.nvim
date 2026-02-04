@@ -1,23 +1,7 @@
 -- End-to-end tests for gitlad.nvim revert functionality
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init -b main")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -74,7 +58,7 @@ T["revert popup"] = MiniTest.new_set()
 
 T["revert popup"]["opens from status buffer with _ key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -111,7 +95,7 @@ end
 
 T["revert popup"]["has expected switches and actions"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   create_file(child, repo, "test.txt", "hello")
   git(child, repo, "add test.txt")
@@ -163,7 +147,7 @@ T["revert operations"] = MiniTest.new_set()
 
 T["revert operations"]["reverts a commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -221,7 +205,7 @@ end
 
 T["revert operations"]["revert no-commit stages changes"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -276,7 +260,7 @@ T["revert from log"] = MiniTest.new_set()
 
 T["revert from log"]["_ key opens revert popup from log view"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create commits
   create_file(child, repo, "test.txt", "hello")
@@ -328,7 +312,7 @@ T["revert in-progress"] = MiniTest.new_set()
 
 T["revert in-progress"]["detects revert in progress via git sequencer state"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "line1\nline2\nline3")

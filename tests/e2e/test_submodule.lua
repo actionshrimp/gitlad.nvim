@@ -5,23 +5,6 @@ local helpers = require("tests.helpers")
 
 local child = MiniTest.new_child_neovim()
 
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
-
 -- Helper to create a file in the repo
 local function create_file(child_nvim, repo, filename, content)
   child_nvim.lua(string.format(
@@ -69,7 +52,7 @@ local function create_repo_with_submodule(child_nvim)
   git(child_nvim, submodule_repo, 'commit -m "Initial submodule commit"')
 
   -- Create the parent repo
-  local parent_repo = create_test_repo(child_nvim)
+  local parent_repo = helpers.create_test_repo(child_nvim)
   create_file(child_nvim, parent_repo, "main.txt", "main content")
   git(child_nvim, parent_repo, "add main.txt")
   git(child_nvim, parent_repo, 'commit -m "Initial commit"')
@@ -142,7 +125,7 @@ T["submodule section"]["shows Submodules section when enabled"] = function()
 end
 
 T["submodule section"]["hides Submodules section when no submodules"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit only (no submodules)
   create_file(child, repo, "test.txt", "hello")
@@ -178,7 +161,7 @@ end
 T["submodule popup"] = MiniTest.new_set()
 
 T["submodule popup"]["opens from status buffer with ' key"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -231,7 +214,7 @@ T["submodule popup"]["opens from status buffer with ' key"] = function()
 end
 
 T["submodule popup"]["has all expected switches"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -277,7 +260,7 @@ T["submodule popup"]["has all expected switches"] = function()
 end
 
 T["submodule popup"]["closes with q"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -310,7 +293,7 @@ T["submodule popup"]["closes with q"] = function()
 end
 
 T["submodule popup"]["' keybinding appears in help"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")

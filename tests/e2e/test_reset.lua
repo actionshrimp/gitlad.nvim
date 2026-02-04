@@ -1,23 +1,7 @@
 -- End-to-end tests for gitlad.nvim reset popup
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -46,7 +30,7 @@ end
 
 -- Helper to create a repo with multiple commits for reset testing
 local function create_multi_commit_repo(child)
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Commit 1
   create_file(child, repo, "file1.txt", "v1")
@@ -88,7 +72,7 @@ T["reset popup"] = MiniTest.new_set()
 
 T["reset popup"]["opens from status buffer with X key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -157,7 +141,7 @@ end
 
 T["reset popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -190,7 +174,7 @@ end
 
 T["reset popup"]["X keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -387,7 +371,7 @@ end
 
 T["reset operations"]["index reset unstages all files"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")

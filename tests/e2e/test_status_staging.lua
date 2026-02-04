@@ -28,23 +28,6 @@ local T = MiniTest.new_set({
   },
 })
 
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
-
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
   child.lua(string.format(
@@ -98,7 +81,7 @@ T["staging files"] = MiniTest.new_set()
 
 T["staging files"]["s stages untracked file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -137,7 +120,7 @@ end
 
 T["staging files"]["s stages unstaged modified file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
   create_file(child, repo, "file.txt", "original")
@@ -163,7 +146,7 @@ end
 
 T["staging files"]["u unstages staged file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -201,7 +184,7 @@ end
 
 T["staging files"]["maintains sort order after staging"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -237,7 +220,7 @@ end
 
 T["staging files"]["S stages all files"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -264,7 +247,7 @@ end
 
 T["staging files"]["U unstages all files"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -290,7 +273,7 @@ end
 
 T["staging files"]["shows mixed staged and unstaged for same file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
   create_file(child, repo, "mixed.txt", "line1\nline2\nline3\n")
@@ -333,7 +316,7 @@ T["section staging"] = MiniTest.new_set()
 
 T["section staging"]["s on Untracked header stages all untracked files"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -367,7 +350,7 @@ end
 
 T["section staging"]["s on Unstaged header stages all unstaged files"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit files
   create_file(child, repo, "file1.txt", "original1")
@@ -403,7 +386,7 @@ end
 
 T["section staging"]["u on Staged header unstages all staged files"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -438,7 +421,7 @@ end
 
 T["section staging"]["s on Staged header does nothing"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -468,7 +451,7 @@ end
 
 T["section staging"]["u on Unstaged header does nothing"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
   create_file(child, repo, "file.txt", "original")
@@ -503,7 +486,7 @@ T["unstage cursor positioning"] = MiniTest.new_set()
 
 T["unstage cursor positioning"]["u moves cursor to next staged file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -540,7 +523,7 @@ end
 
 T["unstage cursor positioning"]["u moves cursor to previous staged file when last"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -576,7 +559,7 @@ end
 
 T["unstage cursor positioning"]["repeated u unstages multiple files in succession"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -621,7 +604,7 @@ T["intent to add"] = MiniTest.new_set()
 
 T["intent to add"]["gs marks untracked file with intent-to-add"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -672,7 +655,7 @@ end
 
 T["intent to add"]["gs on non-untracked file shows info message"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
   create_file(child, repo, "file.txt", "original")
@@ -701,7 +684,7 @@ end
 
 T["intent to add"]["gs followed by regular staging works"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -754,7 +737,7 @@ end
 
 T["intent to add"]["gs on untracked directory shows individual files in unstaged"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -803,7 +786,7 @@ end
 
 T["intent to add"]["u on intent-to-add file moves it back to untracked"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -846,7 +829,7 @@ end
 
 T["intent to add"]["u on last intent-to-add file in directory collapses to directory entry"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -927,7 +910,7 @@ end
 
 T["directory staging"]["s on untracked directory stages all files inside"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -981,7 +964,7 @@ end
 
 T["directory staging"]["staged section shows file count after staging directory"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -1014,7 +997,7 @@ end
 
 T["directory staging"]["unstaging all files collapses back to directory"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -1065,7 +1048,7 @@ end
 
 T["directory staging"]["unstaging individual files collapses when all untracked"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")

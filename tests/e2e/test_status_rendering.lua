@@ -1,5 +1,6 @@
 -- End-to-end tests for gitlad.nvim status view rendering
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
 -- Helper for truthy assertions (mini.test doesn't have expect.truthy)
@@ -26,23 +27,6 @@ local T = MiniTest.new_set({
     end,
   },
 })
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -143,7 +127,7 @@ T["status view"] = MiniTest.new_set()
 
 T["status view"]["shows branch info"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial content")
@@ -165,7 +149,7 @@ end
 
 T["status view"]["shows untracked files"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -190,7 +174,7 @@ end
 
 T["status view"]["shows staged files with A status"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -215,7 +199,7 @@ end
 
 T["status view"]["shows unstaged modified files with M status"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
   create_file(child, repo, "file.txt", "original content")
@@ -238,7 +222,7 @@ end
 
 T["status view"]["shows staged deleted files with D status"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
   create_file(child, repo, "to_delete.txt", "content")
@@ -261,7 +245,7 @@ end
 
 T["status view"]["shows files in alphabetical order"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -298,7 +282,7 @@ T["status header"] = MiniTest.new_set()
 
 T["status header"]["shows Head line with commit message"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit with a specific message
   create_file(child, repo, "init.txt", "initial content")
@@ -338,7 +322,7 @@ end
 
 T["status header"]["hides Merge line when no upstream"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit without any remote
   create_file(child, repo, "init.txt", "initial")
@@ -360,7 +344,7 @@ T["buffer protection"] = MiniTest.new_set()
 
 T["buffer protection"]["status buffer is not modifiable"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   create_file(child, repo, "file.txt", "content")
 
@@ -373,7 +357,7 @@ end
 
 T["buffer protection"]["cannot edit status buffer with normal commands"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   create_file(child, repo, "file.txt", "content")
 
@@ -403,7 +387,7 @@ T["recent commits"] = MiniTest.new_set()
 
 T["recent commits"]["shows Recent commits section even with unpushed commits"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "file1.txt", "content 1")
@@ -447,7 +431,7 @@ end
 
 T["recent commits"]["shows Recent commits section when no upstream"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create multiple commits (no remote/upstream)
   create_file(child, repo, "file1.txt", "content 1")
@@ -482,7 +466,7 @@ T["status indicator"] = MiniTest.new_set()
 
 T["status indicator"]["shows placeholder dot when idle"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "file.txt", "content")
@@ -508,7 +492,7 @@ end
 
 T["status indicator"]["appears at very top of buffer"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "file.txt", "content")
@@ -547,7 +531,7 @@ T["gitlad command"] = MiniTest.new_set()
 
 T["gitlad command"]["triggers refresh when re-running with status already open"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "file.txt", "original content")

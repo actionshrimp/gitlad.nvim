@@ -1,25 +1,9 @@
 -- E2E tests for file watcher and stale indicator
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
 
 local child = MiniTest.new_child_neovim()
-
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to clean up test repo
 local function cleanup_test_repo(child_nvim, repo)
@@ -147,7 +131,7 @@ end
 T["stale indicator"] = MiniTest.new_set()
 
 T["stale indicator"]["spinner shows idle by default"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -173,7 +157,7 @@ T["stale indicator"]["spinner shows idle by default"] = function()
 end
 
 T["stale indicator"]["shows stale message when set_stale is called"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -213,7 +197,7 @@ T["stale indicator"]["shows stale message when set_stale is called"] = function(
 end
 
 T["stale indicator"]["clears when spinner clear_stale is called"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -273,7 +257,7 @@ end
 T["repo state stale"] = MiniTest.new_set()
 
 T["repo state stale"]["mark_stale sets stale flag"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -303,7 +287,7 @@ T["repo state stale"]["mark_stale sets stale flag"] = function()
 end
 
 T["repo state stale"]["clear_stale clears stale flag"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -331,7 +315,7 @@ T["repo state stale"]["clear_stale clears stale flag"] = function()
 end
 
 T["repo state stale"]["emits stale event when marked stale"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -373,7 +357,7 @@ end
 T["watcher integration"] = MiniTest.new_set()
 
 T["watcher integration"]["creates watcher when enabled"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -403,7 +387,7 @@ T["watcher integration"]["creates watcher when enabled"] = function()
 end
 
 T["watcher integration"]["does not create watcher when disabled"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -433,7 +417,7 @@ T["watcher integration"]["does not create watcher when disabled"] = function()
 end
 
 T["watcher integration"]["watcher is running after open"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -463,7 +447,7 @@ T["watcher integration"]["watcher is running after open"] = function()
 end
 
 T["watcher integration"]["creates watcher in indicator mode by default"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -496,7 +480,7 @@ T["watcher integration"]["creates watcher in indicator mode by default"] = funct
 end
 
 T["watcher integration"]["creates watcher with auto_refresh when configured"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -532,7 +516,7 @@ T["watcher integration"]["creates watcher with auto_refresh when configured"] = 
 end
 
 T["watcher integration"]["creates watcher with both features enabled"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -573,7 +557,7 @@ end
 T["git command cooldown"] = MiniTest.new_set()
 
 T["git command cooldown"]["git commands set last_operation_time"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -612,7 +596,7 @@ T["git command cooldown"]["git commands set last_operation_time"] = function()
 end
 
 T["git command cooldown"]["watcher is in cooldown after git command"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -655,7 +639,7 @@ end
 T["worktree watcher"] = MiniTest.new_set()
 
 T["worktree watcher"]["uses correct git_dir for worktree"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit (required for worktrees)
@@ -696,7 +680,7 @@ T["worktree watcher"]["uses correct git_dir for worktree"] = function()
 end
 
 T["worktree watcher"]["watcher watches correct directory for worktree"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit (required for worktrees)

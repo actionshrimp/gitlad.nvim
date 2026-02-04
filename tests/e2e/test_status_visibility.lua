@@ -1,5 +1,6 @@
 -- End-to-end tests for gitlad.nvim status buffer visibility cycling
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
 -- Helper for truthy assertions
@@ -24,23 +25,6 @@ local T = MiniTest.new_set({
     end,
   },
 })
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -115,7 +99,7 @@ T["visibility keybindings"] = MiniTest.new_set()
 
 T["visibility keybindings"]["<S-Tab> keymap is set up"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
@@ -124,7 +108,7 @@ end
 
 T["visibility keybindings"]["1 keymap is set up"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
@@ -133,7 +117,7 @@ end
 
 T["visibility keybindings"]["2 keymap is set up"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
@@ -142,7 +126,7 @@ end
 
 T["visibility keybindings"]["3 keymap is set up"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
@@ -151,7 +135,7 @@ end
 
 T["visibility keybindings"]["4 keymap is set up"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
@@ -166,7 +150,7 @@ T["visibility levels"] = MiniTest.new_set()
 
 T["visibility levels"]["default visibility level is 2"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -191,7 +175,7 @@ end
 
 T["visibility levels"]["<S-Tab> toggles all sections"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   create_file(child, repo, "init.txt", "initial")
   git(child, repo, "add .")
@@ -257,7 +241,7 @@ end
 
 T["visibility levels"]["1 sets level 1 (headers only)"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create commits to have collapsible sections
   create_file(child, repo, "init.txt", "initial")
@@ -285,7 +269,7 @@ end
 
 T["visibility levels"]["2 sets level 2 (items visible)"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
@@ -321,7 +305,7 @@ end
 
 T["visibility levels"]["3 shows diff headers only"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -373,7 +357,7 @@ end
 
 T["visibility levels"]["4 expands everything including hunk content"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create commits
   create_file(child, repo, "init.txt", "initial")

@@ -3,23 +3,6 @@ local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
 local helpers = require("tests.helpers")
 
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init -b main")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
-
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
   child.lua(string.format(
@@ -67,7 +50,7 @@ T["cherry-pick operations"] = MiniTest.new_set()
 
 T["cherry-pick operations"]["cherry_pick picks a commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "hello")
@@ -124,7 +107,7 @@ end
 
 T["cherry-pick operations"]["cherry_pick with -x adds reference"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "hello")
@@ -170,7 +153,7 @@ end
 
 T["cherry-pick operations"]["cherry_pick_continue continues after conflict resolution"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "hello\nworld")
@@ -264,7 +247,7 @@ end
 
 T["cherry-pick operations"]["cherry_pick_abort aborts in-progress cherry-pick"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "hello\nworld")
@@ -345,7 +328,7 @@ T["revert operations"] = MiniTest.new_set()
 
 T["revert operations"]["revert reverts a commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -397,7 +380,7 @@ end
 
 T["revert operations"]["revert_abort aborts in-progress revert"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -477,7 +460,7 @@ end
 
 T["revert operations"]["get_sequencer_state returns correct state"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -515,7 +498,7 @@ T["cherrypick popup"] = MiniTest.new_set()
 
 T["cherrypick popup"]["opens from status buffer with A key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -567,7 +550,7 @@ end
 
 T["cherrypick popup"]["has all expected switches"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -614,7 +597,7 @@ end
 
 T["cherrypick popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -648,7 +631,7 @@ end
 
 T["cherrypick popup"]["A keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -688,7 +671,7 @@ T["revert popup"] = MiniTest.new_set()
 
 T["revert popup"]["opens from status buffer with O key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -741,7 +724,7 @@ end
 
 T["revert popup"]["has all expected switches"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -788,7 +771,7 @@ end
 
 T["revert popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -822,7 +805,7 @@ end
 
 T["revert popup"]["O keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")

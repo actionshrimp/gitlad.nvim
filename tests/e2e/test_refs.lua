@@ -5,23 +5,6 @@ local helpers = require("tests.helpers")
 
 local child = MiniTest.new_child_neovim()
 
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
-
 -- Helper to clean up test repo
 local function cleanup_test_repo(child_nvim, repo)
   child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
@@ -69,7 +52,7 @@ local T = MiniTest.new_set({
 T["refs popup"] = MiniTest.new_set()
 
 T["refs popup"]["opens from status buffer with yr key"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -104,7 +87,7 @@ T["refs popup"]["opens from status buffer with yr key"] = function()
 end
 
 T["refs popup"]["has correct actions"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")
@@ -129,7 +112,7 @@ T["refs popup"]["has correct actions"] = function()
 end
 
 T["refs popup"]["closes with q"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")
@@ -162,7 +145,7 @@ end
 T["refs view"] = MiniTest.new_set()
 
 T["refs view"]["opens when action is triggered"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -187,7 +170,7 @@ T["refs view"]["opens when action is triggered"] = function()
 end
 
 T["refs view"]["displays local branches"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -218,7 +201,7 @@ T["refs view"]["displays local branches"] = function()
 end
 
 T["refs view"]["displays tags"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -248,7 +231,7 @@ T["refs view"]["displays tags"] = function()
 end
 
 T["refs view"]["shows current branch with * marker"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -282,7 +265,7 @@ T["refs view"]["shows current branch with * marker"] = function()
 end
 
 T["refs view"]["gj/gk keymaps are set up"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -315,7 +298,7 @@ T["refs view"]["gj/gk keymaps are set up"] = function()
 end
 
 T["refs view"]["closes with q"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -345,7 +328,7 @@ T["refs view"]["closes with q"] = function()
 end
 
 T["refs view"]["buffer is not modifiable"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -368,7 +351,7 @@ T["refs view"]["buffer is not modifiable"] = function()
 end
 
 T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -408,7 +391,7 @@ T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
 end
 
 T["refs view"]["has delete keymap x"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -437,7 +420,7 @@ T["refs view"]["has delete keymap x"] = function()
 end
 
 T["refs view"]["has visual mode delete keymap x"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -466,7 +449,7 @@ T["refs view"]["has visual mode delete keymap x"] = function()
 end
 
 T["refs view"]["has Tab keymap for expansion"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -495,7 +478,7 @@ T["refs view"]["has Tab keymap for expansion"] = function()
 end
 
 T["refs view"]["has yank keymap y"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -524,7 +507,7 @@ T["refs view"]["has yank keymap y"] = function()
 end
 
 T["refs view"]["shows header with base ref"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "file.txt", "content")
@@ -549,7 +532,7 @@ T["refs view"]["shows header with base ref"] = function()
 end
 
 T["refs view"]["cherry commits are displayed without indentation"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit on main
@@ -619,7 +602,7 @@ T["refs view"]["cherry commits are displayed without indentation"] = function()
 end
 
 T["refs view"]["diff popup on cherry commit shows commit context"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit on main
@@ -686,7 +669,7 @@ T["refs view"]["diff popup on cherry commit shows commit context"] = function()
 end
 
 T["refs view"]["diff popup on ref shows context-aware range action"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit on main

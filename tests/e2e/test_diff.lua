@@ -1,25 +1,9 @@
 -- E2E tests for diff popup functionality
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
 
 local child = MiniTest.new_child_neovim()
-
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to clean up test repo
 local function cleanup_test_repo(child_nvim, repo)
@@ -68,7 +52,7 @@ local T = MiniTest.new_set({
 T["diff popup from status"] = MiniTest.new_set()
 
 T["diff popup from status"]["opens with d key"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
@@ -103,7 +87,7 @@ T["diff popup from status"]["opens with d key"] = function()
 end
 
 T["diff popup from status"]["has expected actions"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")
@@ -130,7 +114,7 @@ T["diff popup from status"]["has expected actions"] = function()
 end
 
 T["diff popup from status"]["closes with q"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")
@@ -157,7 +141,7 @@ T["diff popup from status"]["closes with q"] = function()
 end
 
 T["diff popup from status"]["closes with Esc"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")
@@ -184,7 +168,7 @@ T["diff popup from status"]["closes with Esc"] = function()
 end
 
 T["diff popup from status"]["shows 3-way action when on unstaged file"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")
@@ -212,7 +196,7 @@ T["diff popup from status"]["shows 3-way action when on unstaged file"] = functi
 end
 
 T["diff popup from status"]["shows 3-way action when on staged file"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")
@@ -247,7 +231,7 @@ end
 T["diff popup from log"] = MiniTest.new_set()
 
 T["diff popup from log"]["opens with d key"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commits
@@ -297,7 +281,7 @@ T["diff popup from log"]["opens with d key"] = function()
 end
 
 T["diff popup from log"]["shows commit action when on commit"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commits
@@ -336,7 +320,7 @@ end
 T["diff fallback"] = MiniTest.new_set()
 
 T["diff fallback"]["shows warning when diffview not installed"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   create_file(child, repo, "init.txt", "init")

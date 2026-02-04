@@ -1,23 +1,7 @@
 -- End-to-end tests for gitlad.nvim rebase editor and instant fixup
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local expect = MiniTest.expect
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -130,7 +114,7 @@ T["commit_popup_instant"] = MiniTest.new_set()
 
 T["commit_popup_instant"]["commit popup has instant fixup action"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file and commit it
   create_file(child, repo, "file.txt", "initial content")
@@ -174,7 +158,7 @@ T["rebase_popup"] = MiniTest.new_set()
 
 T["rebase_popup"]["has interactive action"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Change to repo and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -209,7 +193,7 @@ T["commit_at_point"] = MiniTest.new_set()
 
 -- Helper to setup repo with multiple commits and staged changes for instant operations
 local function setup_repo_for_instant_op(child)
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create multiple commits so we have unpushed commits to target
   create_file(child, repo, "file1.txt", "content1")

@@ -3,23 +3,6 @@ local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
 local helpers = require("tests.helpers")
 
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
-
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
   child.lua(string.format(
@@ -67,7 +50,7 @@ T["stash popup"] = MiniTest.new_set()
 
 T["stash popup"]["opens from status buffer with z key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -121,7 +104,7 @@ end
 
 T["stash popup"]["has all expected switches"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -168,7 +151,7 @@ end
 
 T["stash popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -202,7 +185,7 @@ end
 
 T["stash popup"]["z keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -241,7 +224,7 @@ T["stash operations"] = MiniTest.new_set()
 
 T["stash operations"]["stash push creates a stash"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -287,7 +270,7 @@ end
 
 T["stash operations"]["stash pop applies and removes stash"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -333,7 +316,7 @@ end
 
 T["stash operations"]["stash apply keeps stash in list"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -375,7 +358,7 @@ end
 
 T["stash operations"]["stash drop removes stash without applying"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -425,7 +408,7 @@ end
 
 T["stash operations"]["stash list returns parsed entries"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -475,7 +458,7 @@ T["stash section"] = MiniTest.new_set()
 
 T["stash section"]["shows Stashes section when stashes exist"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -518,7 +501,7 @@ end
 
 T["stash section"]["hides Stashes section when no stashes"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit only (no stashes)
   create_file(child, repo, "test.txt", "hello")
@@ -552,7 +535,7 @@ end
 
 T["stash section"]["navigation includes stash entries with gj/gk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -606,7 +589,7 @@ end
 
 T["stash section"]["TAB collapses and expands stash section"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and stash
   create_file(child, repo, "test.txt", "hello")
@@ -693,7 +676,7 @@ end
 
 T["stash section"]["p on stash entry opens stash popup"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and stash
   create_file(child, repo, "test.txt", "hello")
@@ -758,7 +741,7 @@ end
 
 T["stash section"]["p not on stash opens push popup"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no stashes)
   create_file(child, repo, "test.txt", "hello")
@@ -798,7 +781,7 @@ end
 
 T["stash section"]["RET on stash entry calls diff_stash"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and stash
   create_file(child, repo, "test.txt", "hello")
@@ -877,7 +860,7 @@ end
 
 T["stash section"]["d d (dwim) on stash entry shows stash diff"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and stash
   create_file(child, repo, "test.txt", "hello")

@@ -1,23 +1,7 @@
 -- End-to-end tests for sequencer state detection (cherry-pick/revert in progress)
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init -b main")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -67,7 +51,7 @@ T["sequencer state"] = MiniTest.new_set()
 T["sequencer state"]["detects cherry-pick in progress"] = function()
   local child = _G.child
 
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Make an initial commit
   create_file(child, repo, "file.txt", "initial content")
@@ -125,7 +109,7 @@ end
 T["sequencer state"]["detects revert in progress"] = function()
   local child = _G.child
 
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Make an initial commit
   create_file(child, repo, "file.txt", "initial content")
@@ -179,7 +163,7 @@ end
 T["sequencer state"]["detects no operation in progress"] = function()
   local child = _G.child
 
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Make a simple commit
   create_file(child, repo, "file.txt", "content")
@@ -211,7 +195,7 @@ end
 T["sequencer state"]["status buffer shows cherry-pick in progress"] = function()
   local child = _G.child
 
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Make an initial commit
   create_file(child, repo, "file.txt", "initial content")
@@ -269,7 +253,7 @@ end
 T["sequencer state"]["status buffer shows revert in progress"] = function()
   local child = _G.child
 
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Make an initial commit
   create_file(child, repo, "file.txt", "initial content")

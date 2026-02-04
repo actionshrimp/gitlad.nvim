@@ -28,23 +28,6 @@ local T = MiniTest.new_set({
   },
 })
 
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
-
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
   child.lua(string.format(
@@ -98,7 +81,7 @@ T["diff expansion"] = MiniTest.new_set()
 
 T["diff expansion"]["TAB expands diff for modified file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file with multiple lines
   create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
@@ -130,7 +113,7 @@ end
 
 T["diff expansion"]["TAB collapses expanded diff"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
   create_file(child, repo, "file.txt", "original\n")
@@ -166,7 +149,7 @@ end
 
 T["diff expansion"]["shows content for untracked file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")
@@ -202,7 +185,7 @@ T["hunk staging"] = MiniTest.new_set()
 
 T["hunk staging"]["s on diff line stages single hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with multiple sections that will create multiple hunks
   local original = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
@@ -244,7 +227,7 @@ end
 
 T["hunk staging"]["u on diff line unstages single hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file
   create_file(child, repo, "file.txt", "original line\n")
@@ -286,7 +269,7 @@ T["visual selection"] = MiniTest.new_set()
 
 T["visual selection"]["stages selected lines from hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file
   create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
@@ -323,7 +306,7 @@ end
 
 T["visual selection"]["unstages selected lines from staged hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file
   create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
@@ -364,7 +347,7 @@ end
 
 T["visual selection"]["stages multiple selected lines"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with more lines
   create_file(child, repo, "file.txt", "a\nb\nc\nd\ne\n")
@@ -418,7 +401,7 @@ T["hunk navigation"] = MiniTest.new_set()
 
 T["hunk navigation"]["<CR> on diff line jumps to file at correct line"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with multiple lines and commit it
   local content =
@@ -462,7 +445,7 @@ end
 
 T["hunk navigation"]["<CR> on hunk header jumps to hunk start line"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with many lines
   local content = ""
@@ -525,7 +508,7 @@ T["expansion memory"] = MiniTest.new_set()
 
 T["expansion memory"]["re-expanding file restores remembered hunk state"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with multiple sections to get multiple hunks
   local original = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
@@ -578,7 +561,7 @@ end
 
 T["expansion memory"]["defaults to fully expanded when no remembered state"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
   create_file(child, repo, "file.txt", "original\n")
@@ -640,7 +623,7 @@ end
 
 T["hunk discard"]["x on diff line discards single hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with multiple sections that will create multiple hunks
   local original = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
@@ -685,7 +668,7 @@ end
 
 T["hunk discard"]["x on file discards whole file when not on hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and modify a file
   create_file(child, repo, "file.txt", "original\n")
@@ -715,7 +698,7 @@ end
 
 T["hunk discard"]["visual selection discards single line from hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file
   create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
@@ -757,7 +740,7 @@ end
 
 T["hunk discard"]["cannot discard staged changes"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create, modify, and stage
   create_file(child, repo, "file.txt", "original\n")
@@ -801,7 +784,7 @@ T["visual selection untracked"] = MiniTest.new_set()
 
 T["visual selection untracked"]["stages selected lines from untracked file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "init.txt", "initial")

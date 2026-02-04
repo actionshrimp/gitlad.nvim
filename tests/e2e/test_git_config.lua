@@ -1,23 +1,7 @@
 -- End-to-end tests for git config operations
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -79,7 +63,7 @@ T["git config"] = MiniTest.new_set()
 
 T["git config"]["config_get returns value when set"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Set a config value using git command
   git(child, repo, "config test.mykey myvalue")
@@ -100,7 +84,7 @@ end
 
 T["git config"]["config_get returns nil when not set"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   child.lua(string.format(
     [[
@@ -117,7 +101,7 @@ end
 
 T["git config"]["config_set writes value to git config"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Set using our config_set
   child.lua(string.format(
@@ -147,7 +131,7 @@ end
 
 T["git config"]["config_unset removes value from git config"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- First set a value
   git(child, repo, "config test.toremove somevalue")
@@ -179,7 +163,7 @@ end
 
 T["git config"]["config_unset succeeds even if key doesn't exist"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Unset a key that doesn't exist
   child.lua(string.format(
@@ -205,7 +189,7 @@ T["git config bool"] = MiniTest.new_set()
 
 T["git config bool"]["config_get_bool returns true for 'true'"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   git(child, repo, "config test.mybool true")
 
@@ -224,7 +208,7 @@ end
 
 T["git config bool"]["config_get_bool returns false for 'false'"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   git(child, repo, "config test.mybool false")
 
@@ -243,7 +227,7 @@ end
 
 T["git config bool"]["config_get_bool returns false for unset"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   child.lua(string.format(
     [[
@@ -260,7 +244,7 @@ end
 
 T["git config bool"]["config_toggle toggles false to true"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   git(child, repo, "config test.toggle false")
 
@@ -287,7 +271,7 @@ end
 
 T["git config bool"]["config_toggle toggles true to false"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   git(child, repo, "config test.toggle true")
 
@@ -319,7 +303,7 @@ T["branch config"] = MiniTest.new_set()
 
 T["branch config"]["setting upstream sets both remote and merge"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and branch
   create_file(child, repo, "test.txt", "hello")
@@ -367,7 +351,7 @@ end
 
 T["branch config"]["setting local upstream sets remote to dot"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and branches
   create_file(child, repo, "test.txt", "hello")
@@ -409,7 +393,7 @@ end
 
 T["branch config"]["unsetting upstream clears both remote and merge"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and branch with upstream configured
   create_file(child, repo, "test.txt", "hello")
@@ -457,7 +441,7 @@ end
 
 T["branch config"]["pushRemote is set correctly"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and branch
   create_file(child, repo, "test.txt", "hello")
@@ -497,7 +481,7 @@ end
 
 T["branch config"]["remote.pushDefault is set correctly"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create repo with remotes
   create_file(child, repo, "test.txt", "hello")

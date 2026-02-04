@@ -1,5 +1,6 @@
 -- End-to-end tests for gitlad.nvim scoped visibility levels (1/2/3/4 keys)
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
 -- Helper for truthy assertions
@@ -24,23 +25,6 @@ local T = MiniTest.new_set({
     end,
   },
 })
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to create a file in the repo
 local function create_file(child, repo, filename, content)
@@ -100,7 +84,7 @@ T["scoped visibility on file"] = MiniTest.new_set()
 
 T["scoped visibility on file"]["4 on file line expands only that file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create two files with changes
   create_file(child, repo, "file1.txt", "original1\n")
@@ -160,7 +144,7 @@ end
 
 T["scoped visibility on file"]["1 on file collapses parent section and moves cursor"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create two files with changes
   create_file(child, repo, "file1.txt", "original1\n")
@@ -229,7 +213,7 @@ end
 
 T["scoped visibility on file"]["3 on file shows headers only for that file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with changes
   create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
@@ -274,7 +258,7 @@ T["scoped visibility on section"] = MiniTest.new_set()
 
 T["scoped visibility on section"]["4 on section header expands all files in section"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create files with changes
   create_file(child, repo, "file1.txt", "original1\n")
@@ -321,7 +305,7 @@ end
 
 T["scoped visibility on section"]["1 on section header collapses all files in section"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create files with changes
   create_file(child, repo, "file1.txt", "original1\n")
@@ -377,7 +361,7 @@ T["global visibility"] = MiniTest.new_set()
 
 T["global visibility"]["1/2/3/4 on header applies globally"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with changes
   create_file(child, repo, "file.txt", "original\n")

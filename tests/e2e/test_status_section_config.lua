@@ -1,5 +1,6 @@
 -- End-to-end tests for configurable status buffer sections
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
 local T = MiniTest.new_set({
@@ -17,22 +18,6 @@ local T = MiniTest.new_set({
     end,
   },
 })
-
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 local function create_file(child, repo, filename, content)
   child.lua(string.format(
@@ -81,7 +66,7 @@ T["section_config"] = MiniTest.new_set()
 
 T["section_config"]["default sections show in correct order"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
   create_file(child, repo, "initial.txt", "initial content")
@@ -117,7 +102,7 @@ end
 
 T["section_config"]["custom section order is respected"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
   create_file(child, repo, "initial.txt", "initial content")
@@ -157,7 +142,7 @@ end
 
 T["section_config"]["omitted sections are hidden"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
   create_file(child, repo, "initial.txt", "initial content")
@@ -191,7 +176,7 @@ end
 
 T["section_config"]["recent section count option limits commits"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create multiple commits
   for i = 1, 5 do
@@ -230,7 +215,7 @@ end
 
 T["section_config"]["staged section appears when configured"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit and staged file
   create_file(child, repo, "initial.txt", "initial content")
@@ -264,7 +249,7 @@ end
 
 T["section_config"]["stashes section respects config order"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
   create_file(child, repo, "initial.txt", "initial content")

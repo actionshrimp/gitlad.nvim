@@ -5,23 +5,6 @@ local helpers = require("tests.helpers")
 
 local child = MiniTest.new_child_neovim()
 
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init -b main")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
-  ]],
-    repo
-  ))
-  return repo
-end
-
 -- Helper to create a file in the repo
 local function create_file(child_nvim, repo, filename, content)
   child_nvim.lua(string.format(
@@ -61,7 +44,7 @@ local T = MiniTest.new_set({
 T["merge popup"] = MiniTest.new_set()
 
 T["merge popup"]["opens from status buffer with m key"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -108,7 +91,7 @@ T["merge popup"]["opens from status buffer with m key"] = function()
 end
 
 T["merge popup"]["has all expected switches"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -149,7 +132,7 @@ T["merge popup"]["has all expected switches"] = function()
 end
 
 T["merge popup"]["closes with q"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -182,7 +165,7 @@ T["merge popup"]["closes with q"] = function()
 end
 
 T["merge popup"]["m keybinding appears in help"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
   create_file(child, repo, "test.txt", "hello")
@@ -218,7 +201,7 @@ T["merge popup"]["m keybinding appears in help"] = function()
 end
 
 T["merge popup"]["shows in-progress popup during merge conflict"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -301,7 +284,7 @@ end
 T["branch selection"] = MiniTest.new_set()
 
 T["branch selection"]["prompts with vim.ui.select when no context branch"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "hello")
@@ -359,7 +342,7 @@ T["branch selection"]["prompts with vim.ui.select when no context branch"] = fun
 end
 
 T["branch selection"]["excludes current branch from selection list"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
   create_file(child, repo, "test.txt", "hello")
@@ -408,7 +391,7 @@ T["branch selection"]["excludes current branch from selection list"] = function(
 end
 
 T["branch selection"]["shows notification when no branches available"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main - only one branch exists
   create_file(child, repo, "test.txt", "hello")
@@ -452,7 +435,7 @@ end
 T["abort confirmation"] = MiniTest.new_set()
 
 T["abort confirmation"]["does not abort when user selects No"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -509,7 +492,7 @@ T["abort confirmation"]["does not abort when user selects No"] = function()
 end
 
 T["abort confirmation"]["aborts when user selects Yes"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
   create_file(child, repo, "test.txt", "line1\nline2")
@@ -564,7 +547,7 @@ end
 T["switch toggling"] = MiniTest.new_set()
 
 T["switch toggling"]["multiple switches can be combined"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   create_file(child, repo, "test.txt", "hello")
   git(child, repo, "add test.txt")
