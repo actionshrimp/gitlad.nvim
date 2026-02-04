@@ -14,8 +14,12 @@ local M = {}
 ---@class GitladStatusConfig
 ---@field sections? GitladSection[] Section order and options. Omit sections to hide them. Options: "untracked", "unstaged", "staged", "conflicted", "stashes", "submodules", "worktrees", "unpushed", "unpulled", "recent". Use table form for options: { "recent", count = 5 }
 
+--- Worktree directory strategy examples (from /code/project/main, branch feature/foo):
+---   "sibling"      → /code/project/main_feature-foo  (prefixed with current worktree name)
+---   "sibling-bare" → /code/project/feature-foo       (just the branch name)
+---   "prompt"       → always prompts for path with no default
 ---@class GitladWorktreeConfig
----@field directory_strategy "sibling"|"prompt" How to suggest worktree paths ("sibling" = suggest sibling directory, "prompt" = always prompt for path)
+---@field directory_strategy "sibling"|"sibling-bare"|"prompt" How to suggest default worktree paths
 
 ---@class GitladWatcherConfig
 ---@field enabled boolean Whether to enable file watching for git state changes (default: true)
@@ -42,7 +46,7 @@ local defaults = {
   },
   status = {},
   worktree = {
-    directory_strategy = "sibling", -- "sibling" or "prompt"
+    directory_strategy = "sibling", -- "sibling", "sibling-bare", or "prompt"
   },
   watcher = {
     enabled = true, -- Can disable for performance-sensitive users

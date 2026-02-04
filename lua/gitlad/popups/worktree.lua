@@ -48,17 +48,44 @@ local function get_worktree_from_display(display, worktrees)
   return nil
 end
 
+--- Normalize repo root by stripping trailing slash
+--- This is needed because vim.fn.fnamemodify with :p adds a trailing slash,
+--- which breaks :h and :t modifiers (e.g., "/path/to/repo/":t returns "")
+---@param repo_root string Repository root path
+---@return string
+local function normalize_repo_root(repo_root)
+  return repo_root:gsub("/$", "")
+end
+
 --- Generate worktree path using sibling strategy
 --- Given repo at /path/to/repo, creates worktree at /path/to/repo_<branch>
 ---@param repo_root string Repository root path
 ---@param ref string Branch name or commit hash
 ---@return string
 local function generate_sibling_path(repo_root, ref)
-  local parent = vim.fn.fnamemodify(repo_root, ":h")
-  local repo_name = vim.fn.fnamemodify(repo_root, ":t")
-  -- Sanitize ref for filesystem (replace / with _)
-  local safe_ref = ref:gsub("/", "_")
+  local normalized = normalize_repo_root(repo_root)
+  local parent = vim.fn.fnamemodify(normalized, ":h")
+  local repo_name = vim.fn.fnamemodify(normalized, ":t")
+  -- Sanitize ref for filesystem (replace / with -)
+  local safe_ref = ref:gsub("/", "-")
   return parent .. "/" .. repo_name .. "_" .. safe_ref
+end
+
+--- Generate worktree path using sibling-bare strategy
+--- Given repo at /path/to/repo, creates worktree at /path/to/<branch>
+--- This is useful when you structure worktrees as:
+---   repo-name/main/
+---   repo-name/branch1/
+---   repo-name/branch2/
+---@param repo_root string Repository root path
+---@param ref string Branch name or commit hash
+---@return string
+local function generate_sibling_bare_path(repo_root, ref)
+  local normalized = normalize_repo_root(repo_root)
+  local parent = vim.fn.fnamemodify(normalized, ":h")
+  -- Sanitize ref for filesystem (replace / with -)
+  local safe_ref = ref:gsub("/", "-")
+  return parent .. "/" .. safe_ref
 end
 
 --- Prompt user to select a worktree from a list (excluding main and current)
@@ -203,6 +230,8 @@ function M._add_worktree(repo_state, popup_data)
     local default_path = ""
     if cfg.worktree.directory_strategy == "sibling" then
       default_path = generate_sibling_path(repo_state.repo_root, ref)
+    elseif cfg.worktree.directory_strategy == "sibling-bare" then
+      default_path = generate_sibling_bare_path(repo_state.repo_root, ref)
     end
 
     -- Step 3: Prompt for path (with default if sibling strategy)
@@ -263,6 +292,8 @@ function M._add_branch_and_worktree(repo_state, popup_data)
       local default_path = ""
       if cfg.worktree.directory_strategy == "sibling" then
         default_path = generate_sibling_path(repo_state.repo_root, branch)
+      elseif cfg.worktree.directory_strategy == "sibling-bare" then
+        default_path = generate_sibling_bare_path(repo_state.repo_root, branch)
       end
 
       -- Step 4: Prompt for path
@@ -648,5 +679,9 @@ function M._prune_worktrees(repo_state)
     end)
   end)
 end
+
+-- Expose path generation functions for testing
+M._generate_sibling_path = generate_sibling_path
+M._generate_sibling_bare_path = generate_sibling_bare_path
 
 return M
