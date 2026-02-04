@@ -1,66 +1,26 @@
 -- End-to-end tests for gitlad.nvim reset popup
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
 
 -- Helper to create a repo with multiple commits for reset testing
 local function create_multi_commit_repo(child)
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Commit 1
-  create_file(child, repo, "file1.txt", "v1")
-  git(child, repo, "add file1.txt")
-  git(child, repo, 'commit -m "Commit 1"')
+  helpers.create_file(child, repo, "file1.txt", "v1")
+  helpers.git(child, repo, "add file1.txt")
+  helpers.git(child, repo, 'commit -m "Commit 1"')
 
   -- Commit 2
-  create_file(child, repo, "file2.txt", "v2")
-  git(child, repo, "add file2.txt")
-  git(child, repo, 'commit -m "Commit 2"')
+  helpers.create_file(child, repo, "file2.txt", "v2")
+  helpers.git(child, repo, "add file2.txt")
+  helpers.git(child, repo, 'commit -m "Commit 2"')
 
   -- Commit 3
-  create_file(child, repo, "file3.txt", "v3")
-  git(child, repo, "add file3.txt")
-  git(child, repo, 'commit -m "Commit 3"')
+  helpers.create_file(child, repo, "file3.txt", "v3")
+  helpers.git(child, repo, "add file3.txt")
+  helpers.git(child, repo, 'commit -m "Commit 3"')
 
   return repo
 end
@@ -87,19 +47,19 @@ T["reset popup"] = MiniTest.new_set()
 
 T["reset popup"]["opens from status buffer with X key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press X to open reset popup
   child.type_keys("X")
@@ -151,21 +111,21 @@ T["reset popup"]["opens from status buffer with X key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["reset popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open reset popup
   child.type_keys("X")
@@ -174,7 +134,7 @@ T["reset popup"]["closes with q"] = function()
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -184,21 +144,21 @@ T["reset popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["reset popup"]["X keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
@@ -220,7 +180,7 @@ T["reset popup"]["X keybinding appears in help"] = function()
   eq(found_reset, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Reset operations tests
@@ -233,11 +193,11 @@ T["reset operations"]["soft reset moves HEAD but preserves index"] = function()
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Stage some changes to verify they are preserved
-  create_file(child, repo, "new.txt", "new content")
-  git(child, repo, "add new.txt")
+  helpers.create_file(child, repo, "new.txt", "new content")
+  helpers.git(child, repo, "add new.txt")
 
   -- Get current commit count
-  local log_before = git(child, repo, "log --oneline")
+  local log_before = helpers.git(child, repo, "log --oneline")
   eq(log_before:match("Commit 3") ~= nil, true)
 
   -- Soft reset to HEAD~1
@@ -257,16 +217,16 @@ T["reset operations"]["soft reset moves HEAD but preserves index"] = function()
   eq(result.success, true)
 
   -- Verify HEAD moved (Commit 3 is no longer latest)
-  local log_after = git(child, repo, "log --oneline HEAD")
+  local log_after = helpers.git(child, repo, "log --oneline HEAD")
   eq(log_after:match("Commit 3") == nil, true)
   eq(log_after:match("Commit 2") ~= nil, true)
 
   -- Verify changes are staged (including the reset changes)
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   -- file3.txt should now be staged (from the reset)
   eq(status:match("A%s+file3.txt") ~= nil or status:match("A  file3.txt") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["reset operations"]["mixed reset moves HEAD and unstages changes"] = function()
@@ -292,17 +252,17 @@ T["reset operations"]["mixed reset moves HEAD and unstages changes"] = function(
   eq(result.success, true)
 
   -- Verify HEAD moved
-  local log_after = git(child, repo, "log --oneline HEAD")
+  local log_after = helpers.git(child, repo, "log --oneline HEAD")
   eq(log_after:match("Commit 3") == nil, true)
   eq(log_after:match("Commit 2") ~= nil, true)
 
   -- Verify file3.txt is now untracked (unstaged from reset)
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   eq(status:match("file3.txt") ~= nil, true)
   -- Should NOT be staged (mixed resets the index)
   eq(status:match("A%s+file3.txt") == nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["reset operations"]["hard reset moves HEAD and discards changes"] = function()
@@ -312,7 +272,7 @@ T["reset operations"]["hard reset moves HEAD and discards changes"] = function()
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Make uncommitted changes
-  create_file(child, repo, "file3.txt", "modified content")
+  helpers.create_file(child, repo, "file3.txt", "modified content")
 
   -- Hard reset to HEAD~1
   child.lua(string.format(
@@ -331,12 +291,12 @@ T["reset operations"]["hard reset moves HEAD and discards changes"] = function()
   eq(result.success, true)
 
   -- Verify HEAD moved
-  local log_after = git(child, repo, "log --oneline HEAD")
+  local log_after = helpers.git(child, repo, "log --oneline HEAD")
   eq(log_after:match("Commit 3") == nil, true)
   eq(log_after:match("Commit 2") ~= nil, true)
 
   -- Verify working directory is clean (all changes discarded)
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   eq(status:gsub("%s+", ""), "")
 
   -- file3.txt should not exist anymore
@@ -344,7 +304,7 @@ T["reset operations"]["hard reset moves HEAD and discards changes"] = function()
     child.lua_get(string.format([[vim.fn.filereadable(%q .. "/file3.txt") == 1]], repo))
   eq(file3_exists, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["reset operations"]["keep reset preserves uncommitted changes"] = function()
@@ -354,7 +314,7 @@ T["reset operations"]["keep reset preserves uncommitted changes"] = function()
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Make uncommitted changes to a file NOT affected by the reset
-  create_file(child, repo, "file1.txt", "modified v1")
+  helpers.create_file(child, repo, "file1.txt", "modified v1")
 
   -- Keep reset to HEAD~1
   child.lua(string.format(
@@ -373,35 +333,35 @@ T["reset operations"]["keep reset preserves uncommitted changes"] = function()
   eq(result.success, true)
 
   -- Verify HEAD moved
-  local log_after = git(child, repo, "log --oneline HEAD")
+  local log_after = helpers.git(child, repo, "log --oneline HEAD")
   eq(log_after:match("Commit 3") == nil, true)
   eq(log_after:match("Commit 2") ~= nil, true)
 
   -- Verify uncommitted change to file1.txt is preserved
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   eq(status:match("file1.txt") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["reset operations"]["index reset unstages all files"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage multiple files
-  create_file(child, repo, "file1.txt", "content1")
-  create_file(child, repo, "file2.txt", "content2")
-  git(child, repo, "add file1.txt file2.txt")
+  helpers.create_file(child, repo, "file1.txt", "content1")
+  helpers.create_file(child, repo, "file2.txt", "content2")
+  helpers.git(child, repo, "add file1.txt file2.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Verify files are staged
-  local status_before = git(child, repo, "status --porcelain")
+  local status_before = helpers.git(child, repo, "status --porcelain")
   eq(
     status_before:match("A%s+file1.txt") ~= nil or status_before:match("A  file1.txt") ~= nil,
     true
@@ -428,12 +388,12 @@ T["reset operations"]["index reset unstages all files"] = function()
   eq(result.success, true)
 
   -- Verify files are now untracked (not staged)
-  local status_after = git(child, repo, "status --porcelain")
+  local status_after = helpers.git(child, repo, "status --porcelain")
   eq(status_after:match("??") ~= nil, true) -- Untracked files
   eq(status_after:match("A%s+file1.txt") == nil, true) -- Not staged
   eq(status_after:match("A%s+file2.txt") == nil, true) -- Not staged
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["reset operations"]["worktree reset restores files without changing HEAD"] = function()
@@ -443,13 +403,13 @@ T["reset operations"]["worktree reset restores files without changing HEAD"] = f
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Save current HEAD
-  local head_before = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local head_before = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Modify a tracked file
-  create_file(child, repo, "file1.txt", "modified content")
+  helpers.create_file(child, repo, "file1.txt", "modified content")
 
   -- Verify modification
-  local status_before = git(child, repo, "status --porcelain")
+  local status_before = helpers.git(child, repo, "status --porcelain")
   eq(
     status_before:match("M%s+file1.txt") ~= nil or status_before:match(" M file1.txt") ~= nil,
     true
@@ -472,14 +432,14 @@ T["reset operations"]["worktree reset restores files without changing HEAD"] = f
   eq(result.success, true)
 
   -- Verify HEAD unchanged
-  local head_after = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local head_after = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
   eq(head_before, head_after)
 
   -- Verify working directory is clean (modifications discarded)
-  local status_after = git(child, repo, "status --porcelain")
+  local status_after = helpers.git(child, repo, "status --porcelain")
   eq(status_after:gsub("%s+", ""), "")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

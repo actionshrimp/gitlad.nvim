@@ -17,8 +17,8 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# Configuration - default to min(8, nproc)
-# Auto-detect CPU count and use up to 8 parallel jobs
+# Configuration - default to min(16, nproc)
+# Auto-detect CPU count and use up to 16 parallel jobs
 if [[ -z "$JOBS" ]]; then
     if command -v nproc > /dev/null 2>&1; then
         CPU_COUNT=$(nproc)
@@ -27,8 +27,8 @@ if [[ -z "$JOBS" ]]; then
     else
         CPU_COUNT=4
     fi
-    # Cap at 8 - diminishing returns beyond this for I/O bound tests
-    JOBS=$((CPU_COUNT < 8 ? CPU_COUNT : 8))
+    # Cap at 16 - higher parallelism works well after test optimizations
+    JOBS=$((CPU_COUNT < 16 ? CPU_COUNT : 16))
 fi
 
 TEMP_DIR=$(mktemp -d)

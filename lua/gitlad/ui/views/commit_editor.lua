@@ -261,6 +261,12 @@ local function setup_keymaps(bufnr)
     abort_commit()
   end, "Abort commit")
 
+  -- ZZ to commit (vim convention, matches rebase editor)
+  keymap_util.set(bufnr, "n", "ZZ", do_commit, "Confirm commit")
+
+  -- ZQ to abort (vim convention, matches rebase editor)
+  keymap_util.set(bufnr, "n", "ZQ", abort_commit, "Abort commit")
+
   -- q to abort (when not in insert mode)
   keymap_util.set(bufnr, "n", "q", abort_commit, "Abort commit")
 end

@@ -1,47 +1,7 @@
 -- End-to-end tests for gitlad.nvim revert functionality
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init -b main")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
 
 -- Helper to wait
 local function wait(child, ms)
@@ -73,12 +33,12 @@ T["revert popup"] = MiniTest.new_set()
 
 T["revert popup"]["opens from status buffer with _ key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -105,16 +65,16 @@ T["revert popup"]["opens from status buffer with _ key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["revert popup"]["has expected switches and actions"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -151,7 +111,7 @@ T["revert popup"]["has expected switches and actions"] = function()
   eq(found_revert_action, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- =============================================================================
@@ -162,20 +122,20 @@ T["revert operations"] = MiniTest.new_set()
 
 T["revert operations"]["reverts a commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Create second commit to revert
-  create_file(child, repo, "test.txt", "hello world")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Add world"')
+  helpers.create_file(child, repo, "test.txt", "hello world")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Add world"')
 
   -- Get the hash of the commit to revert
-  local commit_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local commit_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -196,7 +156,7 @@ T["revert operations"]["reverts a commit"] = function()
   eq(result.success, true)
 
   -- Verify we now have 3 commits (initial, add world, revert)
-  local log = git(child, repo, "log --oneline")
+  local log = helpers.git(child, repo, "log --oneline")
   local commit_count = 0
   for _ in log:gmatch("[^\n]+") do
     commit_count = commit_count + 1
@@ -215,24 +175,24 @@ T["revert operations"]["reverts a commit"] = function()
   local content = child.lua_get("_G.file_content")
   eq(content, "hello")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["revert operations"]["revert no-commit stages changes"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Create second commit to revert
-  create_file(child, repo, "test.txt", "hello world")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Add world"')
+  helpers.create_file(child, repo, "test.txt", "hello world")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Add world"')
 
-  local commit_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local commit_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -253,7 +213,7 @@ T["revert operations"]["revert no-commit stages changes"] = function()
   eq(result.success, true)
 
   -- Verify only 2 commits (no revert commit created)
-  local log = git(child, repo, "log --oneline")
+  local log = helpers.git(child, repo, "log --oneline")
   local commit_count = 0
   for _ in log:gmatch("[^\n]+") do
     commit_count = commit_count + 1
@@ -261,10 +221,10 @@ T["revert operations"]["revert no-commit stages changes"] = function()
   eq(commit_count, 2)
 
   -- Verify there are staged changes
-  local status = git(child, repo, "status --short")
+  local status = helpers.git(child, repo, "status --short")
   eq(status:match("M") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- =============================================================================
@@ -275,16 +235,16 @@ T["revert from log"] = MiniTest.new_set()
 
 T["revert from log"]["_ key opens revert popup from log view"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create commits
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "First commit"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "First commit"')
 
-  create_file(child, repo, "test.txt", "hello world")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Second commit"')
+  helpers.create_file(child, repo, "test.txt", "hello world")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Second commit"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -316,7 +276,7 @@ T["revert from log"]["_ key opens revert popup from log view"] = function()
   eq(found_revert, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- =============================================================================
@@ -327,26 +287,26 @@ T["revert in-progress"] = MiniTest.new_set()
 
 T["revert in-progress"]["detects revert in progress via git sequencer state"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "line1\nline2\nline3")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2\nline3")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create commit that modifies line2
-  create_file(child, repo, "test.txt", "line1\nmodified\nline3")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Modify line2"')
-  local commit_to_revert = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  helpers.create_file(child, repo, "test.txt", "line1\nmodified\nline3")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Modify line2"')
+  local commit_to_revert = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Create another commit that also modifies line2 (will conflict)
-  create_file(child, repo, "test.txt", "line1\nconflicting\nline3")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Conflict commit"')
+  helpers.create_file(child, repo, "test.txt", "line1\nconflicting\nline3")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Conflict commit"')
 
   -- Try to revert using git directly (will conflict and leave in-progress state)
-  git(child, repo, "revert --no-edit " .. commit_to_revert .. " 2>&1 || true")
+  helpers.git(child, repo, "revert --no-edit " .. commit_to_revert .. " 2>&1 || true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -371,8 +331,8 @@ T["revert in-progress"]["detects revert in progress via git sequencer state"] = 
   eq(state.revert_in_progress, true)
 
   -- Abort the revert
-  git(child, repo, "revert --abort")
-  cleanup_repo(child, repo)
+  helpers.git(child, repo, "revert --abort")
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

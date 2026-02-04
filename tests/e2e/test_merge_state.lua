@@ -1,47 +1,7 @@
 -- End-to-end tests for gitlad.nvim merge state detection
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init -b main")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
 
 local T = MiniTest.new_set({
   hooks = {
@@ -65,12 +25,12 @@ T["merge state detection"] = MiniTest.new_set()
 
 T["merge state detection"]["get_merge_state returns false when not merging"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -93,35 +53,35 @@ T["merge state detection"]["get_merge_state returns false when not merging"] = f
   local oid_is_nil = merge_state.merge_head_oid == nil or merge_state.merge_head_oid == vim.NIL
   eq(oid_is_nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge state detection"]["get_merge_state returns true during merge conflict"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Get feature branch commit hash
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   -- Try to merge feature (should conflict)
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -142,29 +102,29 @@ T["merge state detection"]["get_merge_state returns true during merge conflict"]
   eq(merge_state.merge_in_progress, true)
   eq(merge_state.merge_head_oid, feature_hash)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge state detection"]["merge_in_progress sync function works"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -174,14 +134,14 @@ T["merge state detection"]["merge_in_progress sync function works"] = function()
   eq(before_merge, false)
 
   -- Start merge with conflict
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   -- Check during merge
   local during_merge =
     child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
   eq(during_merge, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Merge git operations tests
@@ -189,21 +149,21 @@ T["merge operations"] = MiniTest.new_set()
 
 T["merge operations"]["merge performs fast-forward merge"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch and add commit
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
   -- Go back to main (which is now behind feature)
-  git(child, repo, "checkout main")
+  helpers.git(child, repo, "checkout main")
 
   -- Verify feature.txt doesn't exist on main
   local exists_before =
@@ -233,26 +193,26 @@ T["merge operations"]["merge performs fast-forward merge"] = function()
     child.lua_get(string.format([[vim.fn.filereadable(%q .. "/feature.txt")]], repo))
   eq(exists_after, 1)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge operations"]["merge with --no-ff creates merge commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch and add commit
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
   -- Go back to main
-  git(child, repo, "checkout main")
+  helpers.git(child, repo, "checkout main")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -273,32 +233,32 @@ T["merge operations"]["merge with --no-ff creates merge commit"] = function()
   eq(result.success, true)
 
   -- Verify a merge commit was created (should have "Merge branch" in message)
-  local log = git(child, repo, "log --oneline -1")
+  local log = helpers.git(child, repo, "log --oneline -1")
   eq(log:match("Merge branch") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge operations"]["merge detects conflicts"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -320,34 +280,34 @@ T["merge operations"]["merge detects conflicts"] = function()
   -- Error should mention conflict
   eq(result.err:match("CONFLICT") ~= nil or result.err:match("conflict") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge operations"]["merge_abort aborts in-progress merge"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
-  local head_before = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local head_before = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Start merge with conflict
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -373,7 +333,7 @@ T["merge operations"]["merge_abort aborts in-progress merge"] = function()
   eq(abort_result.success, true)
 
   -- Verify HEAD is back to where it was
-  local head_after = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local head_after = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
   eq(head_after, head_before)
 
   -- Verify merge is no longer in progress
@@ -381,36 +341,36 @@ T["merge operations"]["merge_abort aborts in-progress merge"] = function()
     child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
   eq(still_in_progress, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge operations"]["merge_continue commits resolved merge"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   -- Start merge with conflict
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   -- Resolve conflict manually
-  create_file(child, repo, "test.txt", "line1\nresolved")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "line1\nresolved")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -436,10 +396,10 @@ T["merge operations"]["merge_continue commits resolved merge"] = function()
   eq(still_in_progress, false)
 
   -- Verify merge commit was created
-  local log = git(child, repo, "log --oneline -1")
+  local log = helpers.git(child, repo, "log --oneline -1")
   eq(log:match("Merge branch") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Status header merge display tests
@@ -447,33 +407,33 @@ T["status header"] = MiniTest.new_set()
 
 T["status header"]["shows Merging line during merge conflict"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   -- Start merge with conflict
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load and render
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Get status buffer content
   child.lua([[
@@ -493,7 +453,7 @@ T["status header"]["shows Merging line during merge conflict"] = function()
 
   eq(found_merging, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Error path tests
@@ -501,12 +461,12 @@ T["error paths"] = MiniTest.new_set()
 
 T["error paths"]["merge_abort fails gracefully when not merging"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit - no merge in progress
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -528,30 +488,30 @@ T["error paths"]["merge_abort fails gracefully when not merging"] = function()
   -- Error should indicate no merge to abort
   eq(result.err ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["error paths"]["merge_continue fails with unresolved conflicts"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main"')
 
   -- Start merge with conflict but don't resolve
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -573,16 +533,16 @@ T["error paths"]["merge_continue fails with unresolved conflicts"] = function()
   -- Error should indicate unmerged paths
   eq(result.err ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["error paths"]["merge fails with invalid branch name"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -604,27 +564,27 @@ T["error paths"]["merge fails with invalid branch name"] = function()
   -- Error should mention the branch
   eq(result.err ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["error paths"]["ff-only merge fails when not fast-forwardable"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create divergent branches
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "feature.txt", "feature")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "feature.txt", "feature")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
-  git(child, repo, "checkout main")
-  create_file(child, repo, "main.txt", "main")
-  git(child, repo, "add main.txt")
-  git(child, repo, 'commit -m "Main diverge"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "main.txt", "main")
+  helpers.git(child, repo, "add main.txt")
+  helpers.git(child, repo, 'commit -m "Main diverge"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -646,7 +606,7 @@ T["error paths"]["ff-only merge fails when not fast-forwardable"] = function()
   -- Error should mention fast-forward
   eq(result.err ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Merge arguments tests
@@ -654,18 +614,18 @@ T["merge arguments"] = MiniTest.new_set()
 
 T["merge arguments"]["squash merge stages changes without creating merge commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
-  git(child, repo, "checkout main")
+  helpers.git(child, repo, "checkout main")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -686,7 +646,7 @@ T["merge arguments"]["squash merge stages changes without creating merge commit"
   eq(result.success, true)
 
   -- Changes should be staged
-  local staged = git(child, repo, "diff --cached --name-only")
+  local staged = helpers.git(child, repo, "diff --cached --name-only")
   eq(staged:match("feature%.txt") ~= nil, true)
 
   -- No MERGE_HEAD (not a merge commit pending)
@@ -695,31 +655,31 @@ T["merge arguments"]["squash merge stages changes without creating merge commit"
   eq(merge_in_progress, false)
 
   -- HEAD should not have changed (no auto-commit)
-  local log = git(child, repo, "log --oneline -1")
+  local log = helpers.git(child, repo, "log --oneline -1")
   eq(log:match("Initial") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge arguments"]["no-commit merge stages changes without committing"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
   -- Go back to main and create a divergent commit
   -- (--no-commit only creates MERGE_HEAD for non-fast-forward merges)
-  git(child, repo, "checkout main")
-  create_file(child, repo, "main.txt", "main content")
-  git(child, repo, "add main.txt")
-  git(child, repo, 'commit -m "Main diverge"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "main.txt", "main content")
+  helpers.git(child, repo, "add main.txt")
+  helpers.git(child, repo, 'commit -m "Main diverge"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -740,7 +700,7 @@ T["merge arguments"]["no-commit merge stages changes without committing"] = func
   eq(result.success, true)
 
   -- Changes should be staged
-  local staged = git(child, repo, "diff --cached --name-only")
+  local staged = helpers.git(child, repo, "diff --cached --name-only")
   eq(staged:match("feature%.txt") ~= nil, true)
 
   -- MERGE_HEAD should exist (merge pending)
@@ -748,7 +708,7 @@ T["merge arguments"]["no-commit merge stages changes without committing"] = func
     child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
   eq(merge_in_progress, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

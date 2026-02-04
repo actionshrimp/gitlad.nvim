@@ -3,47 +3,6 @@ local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
 local helpers = require("tests.helpers")
 
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init -b main")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -66,24 +25,24 @@ T["cherry-pick operations"] = MiniTest.new_set()
 
 T["cherry-pick operations"]["cherry_pick picks a commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second branch and add a commit
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
   -- Get the commit hash of the feature commit
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Go back to main
-  git(child, repo, "checkout main")
+  helpers.git(child, repo, "checkout main")
 
   -- Verify feature.txt doesn't exist on main
   local exists_before =
@@ -115,31 +74,31 @@ T["cherry-pick operations"]["cherry_pick picks a commit"] = function()
   eq(exists_after, 1)
 
   -- Verify a new commit was created
-  local log = git(child, repo, "log --oneline -1")
+  local log = helpers.git(child, repo, "log --oneline -1")
   eq(log:match("Add feature") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["cherry-pick operations"]["cherry_pick with -x adds reference"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second branch and add a commit
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Go back to main
-  git(child, repo, "checkout main")
+  helpers.git(child, repo, "checkout main")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -161,34 +120,34 @@ T["cherry-pick operations"]["cherry_pick with -x adds reference"] = function()
   eq(result.success, true)
 
   -- Verify commit message contains cherry-picked from reference
-  local log = git(child, repo, "log -1 --format=%B")
+  local log = helpers.git(child, repo, "log -1 --format=%B")
   eq(log:match("cherry picked from commit") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["cherry-pick operations"]["cherry_pick_continue continues after conflict resolution"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello\nworld")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello\nworld")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "hello\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "hello\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "hello\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "hello\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -225,8 +184,8 @@ T["cherry-pick operations"]["cherry_pick_continue continues after conflict resol
   eq(seq_state.cherry_pick_in_progress, true)
 
   -- Resolve conflict manually
-  create_file(child, repo, "test.txt", "hello\nresolved")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello\nresolved")
+  helpers.git(child, repo, "add test.txt")
 
   -- Continue cherry-pick
   child.lua(string.format(
@@ -258,33 +217,33 @@ T["cherry-pick operations"]["cherry_pick_continue continues after conflict resol
   local seq_state_after = child.lua_get([[_G.seq_state_after]])
   eq(seq_state_after.cherry_pick_in_progress, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["cherry-pick operations"]["cherry_pick_abort aborts in-progress cherry-pick"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello\nworld")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello\nworld")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "hello\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "hello\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "hello\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "hello\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
-  local main_head = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local main_head = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -319,7 +278,7 @@ T["cherry-pick operations"]["cherry_pick_abort aborts in-progress cherry-pick"] 
   eq(abort_result.success, true)
 
   -- Verify HEAD is back to where it was
-  local head_after = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local head_after = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
   eq(head_after, main_head)
 
   -- Verify cherry-pick is no longer in progress
@@ -336,7 +295,7 @@ T["cherry-pick operations"]["cherry_pick_abort aborts in-progress cherry-pick"] 
   local seq_state = child.lua_get([[_G.seq_state]])
   eq(seq_state.cherry_pick_in_progress, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Revert git operations tests
@@ -344,19 +303,19 @@ T["revert operations"] = MiniTest.new_set()
 
 T["revert operations"]["revert reverts a commit"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second commit to revert
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Verify feature.txt exists
   local exists_before =
@@ -388,34 +347,34 @@ T["revert operations"]["revert reverts a commit"] = function()
   eq(exists_after, 0)
 
   -- Verify a revert commit was created
-  local log = git(child, repo, "log --oneline -1")
+  local log = helpers.git(child, repo, "log --oneline -1")
   eq(log:match('Revert "Add feature"') ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["revert operations"]["revert_abort aborts in-progress revert"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a commit that modifies the file
-  create_file(child, repo, "test.txt", "line1\nmodified")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Modify file"')
+  helpers.create_file(child, repo, "test.txt", "line1\nmodified")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Modify file"')
 
-  local modify_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local modify_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Create another commit that conflicts with reverting the previous
-  create_file(child, repo, "test.txt", "line1\nmodified\nmore")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Add more"')
+  helpers.create_file(child, repo, "test.txt", "line1\nmodified\nmore")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Add more"')
 
-  local head_before = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local head_before = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -468,20 +427,20 @@ T["revert operations"]["revert_abort aborts in-progress revert"] = function()
   eq(abort_result.success, true)
 
   -- Verify HEAD is back to where it was
-  local head_after = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local head_after = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
   eq(head_after, head_before)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["revert operations"]["get_sequencer_state returns correct state"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -506,7 +465,7 @@ T["revert operations"]["get_sequencer_state returns correct state"] = function()
   local oid_is_nil = seq_state.sequencer_head_oid == nil or seq_state.sequencer_head_oid == vim.NIL
   eq(oid_is_nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Cherry-pick popup UI tests
@@ -514,12 +473,12 @@ T["cherrypick popup"] = MiniTest.new_set()
 
 T["cherrypick popup"]["opens from status buffer with A key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -561,17 +520,17 @@ T["cherrypick popup"]["opens from status buffer with A key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["cherrypick popup"]["has all expected switches"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -608,17 +567,17 @@ T["cherrypick popup"]["has all expected switches"] = function()
   eq(found_signoff, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["cherrypick popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -642,17 +601,17 @@ T["cherrypick popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["cherrypick popup"]["A keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -679,7 +638,7 @@ T["cherrypick popup"]["A keybinding appears in help"] = function()
   eq(found_cherrypick, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Revert popup UI tests
@@ -687,12 +646,12 @@ T["revert popup"] = MiniTest.new_set()
 
 T["revert popup"]["opens from status buffer with O key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -735,17 +694,17 @@ T["revert popup"]["opens from status buffer with O key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["revert popup"]["has all expected switches"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -782,17 +741,17 @@ T["revert popup"]["has all expected switches"] = function()
   eq(found_signoff, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["revert popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -816,17 +775,17 @@ T["revert popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["revert popup"]["O keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -853,7 +812,7 @@ T["revert popup"]["O keybinding appears in help"] = function()
   eq(found_revert, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

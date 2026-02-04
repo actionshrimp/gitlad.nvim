@@ -1,47 +1,7 @@
 -- End-to-end tests for gitlad.nvim branch creation functionality
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
 
 local T = MiniTest.new_set({
   hooks = {
@@ -65,19 +25,19 @@ T["branch popup"] = MiniTest.new_set()
 
 T["branch popup"]["opens from status buffer with b key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press b to open branch popup
   child.type_keys("b")
@@ -115,21 +75,21 @@ T["branch popup"]["opens from status buffer with b key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch popup"]["has all expected actions"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("b")
 
@@ -172,21 +132,21 @@ T["branch popup"]["has all expected actions"] = function()
   eq(found_delete, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch popup"]["has force switch"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("b")
 
@@ -207,21 +167,21 @@ T["branch popup"]["has force switch"] = function()
   eq(found_force, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch popup"]["switch toggling with -f"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("b")
 
@@ -242,7 +202,7 @@ T["branch popup"]["switch toggling with -f"] = function()
 
   -- Toggle force switch
   child.type_keys("-f")
-  child.lua([[vim.wait(50, function() return false end)]])
+  helpers.wait_short(child)
 
   -- Check that switch is now enabled (has * marker)
   child.lua([[
@@ -259,21 +219,21 @@ T["branch popup"]["switch toggling with -f"] = function()
   eq(force_enabled_after, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open branch popup
   child.type_keys("b")
@@ -282,7 +242,7 @@ T["branch popup"]["closes with q"] = function()
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -292,21 +252,21 @@ T["branch popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch popup"]["b keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
@@ -328,7 +288,7 @@ T["branch popup"]["b keybinding appears in help"] = function()
   eq(found_branch, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Branch creation operations tests
@@ -336,19 +296,19 @@ T["branch operations"] = MiniTest.new_set()
 
 T["branch operations"]["create and checkout branch"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Verify we're on main/master
-  local initial_branch = git(child, repo, "branch --show-current"):gsub("%s+", "")
+  local initial_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
   eq(initial_branch == "main" or initial_branch == "master", true)
 
   -- Create new branch using git directly (to test the git module)
@@ -368,28 +328,28 @@ T["branch operations"]["create and checkout branch"] = function()
   eq(result.success, true)
 
   -- Verify we're now on the new branch
-  local new_branch = git(child, repo, "branch --show-current"):gsub("%s+", "")
+  local new_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
   eq(new_branch, "feature-test")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch operations"]["rename branch"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a branch
-  git(child, repo, "branch old-name")
+  helpers.git(child, repo, "branch old-name")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Verify branch exists with old name
-  local branches_before = git(child, repo, "branch")
+  local branches_before = helpers.git(child, repo, "branch")
   eq(branches_before:match("old%-name") ~= nil, true)
 
   -- Rename the branch using git module
@@ -409,44 +369,44 @@ T["branch operations"]["rename branch"] = function()
   eq(result.success, true)
 
   -- Verify branch is renamed
-  local branches_after = git(child, repo, "branch")
+  local branches_after = helpers.git(child, repo, "branch")
   eq(branches_after:match("old%-name") == nil, true)
   eq(branches_after:match("new%-name") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch operations"]["spin-off switches to new branch"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a named branch to use as "main" for the upstream
   -- (avoids main/master ambiguity)
-  git(child, repo, "branch -M main-branch")
+  helpers.git(child, repo, "branch -M main-branch")
 
   -- Set up a fake remote and upstream to simulate the spin-off scenario
-  git(child, repo, "remote add origin https://example.com/repo.git")
+  helpers.git(child, repo, "remote add origin https://example.com/repo.git")
   -- Create a "remote" branch by making a commit reference
-  git(child, repo, "update-ref refs/remotes/origin/main-branch HEAD~0")
-  git(child, repo, "branch --set-upstream-to=origin/main-branch main-branch")
+  helpers.git(child, repo, "update-ref refs/remotes/origin/main-branch HEAD~0")
+  helpers.git(child, repo, "branch --set-upstream-to=origin/main-branch main-branch")
 
   -- Add commits that will be "spun off"
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Feature commit"')
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Feature commit"')
 
   -- Verify we're on main-branch and have a commit ahead
-  local initial_branch = git(child, repo, "branch --show-current"):gsub("%s+", "")
+  local initial_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
   eq(initial_branch, "main-branch")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Create the spin-off using the git module directly
   -- (testing the popup interaction would require mocking vim.ui.input)
@@ -488,52 +448,52 @@ T["branch operations"]["spin-off switches to new branch"] = function()
   eq(result.success, true)
 
   -- Verify we're now on the spun-off branch (the key fix)
-  local current_branch = git(child, repo, "branch --show-current"):gsub("%s+", "")
+  local current_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
   eq(current_branch, "spun-off-feature")
 
   -- Verify the spun-off branch has the feature commit
-  local log_spinoff = git(child, repo, "log --oneline -1")
+  local log_spinoff = helpers.git(child, repo, "log --oneline -1")
   eq(log_spinoff:match("Feature commit") ~= nil, true)
 
   -- Verify main-branch was reset (doesn't have the feature commit)
-  local log_main = git(child, repo, "log --oneline main-branch -1")
+  local log_main = helpers.git(child, repo, "log --oneline main-branch -1")
   eq(log_main:match("Feature commit") == nil, true)
   eq(log_main:match("Initial") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch operations"]["spin-off works with push remote only (no upstream)"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a named branch
-  git(child, repo, "branch -M main-branch")
+  helpers.git(child, repo, "branch -M main-branch")
 
   -- Set up a fake remote but NO upstream tracking
   -- This simulates the user's scenario: push remote exists, but no branch.<name>.merge set
-  git(child, repo, "remote add origin https://example.com/repo.git")
+  helpers.git(child, repo, "remote add origin https://example.com/repo.git")
   -- Create a "remote" branch reference (simulates origin/main-branch existing)
-  git(child, repo, "update-ref refs/remotes/origin/main-branch HEAD~0")
+  helpers.git(child, repo, "update-ref refs/remotes/origin/main-branch HEAD~0")
   -- Note: We intentionally do NOT set upstream tracking via --set-upstream-to
 
   -- Add commits that will be "spun off"
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Feature commit"')
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Feature commit"')
 
   -- Verify we're on main-branch
-  local initial_branch = git(child, repo, "branch --show-current"):gsub("%s+", "")
+  local initial_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
   eq(initial_branch, "main-branch")
 
   -- Verify there's no upstream configured
   local upstream_check =
-    git(child, repo, "rev-parse --abbrev-ref main-branch@{upstream} 2>&1 || true")
+    helpers.git(child, repo, "rev-parse --abbrev-ref main-branch@{upstream} 2>&1 || true")
   eq(
     upstream_check:match("no upstream configured") ~= nil or upstream_check:match("fatal") ~= nil,
     true
@@ -541,7 +501,7 @@ T["branch operations"]["spin-off works with push remote only (no upstream)"] = f
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(1000, function() return false end)]])
+  helpers.wait_short(child, 1000)
 
   -- Get the status to verify push_remote is set
   child.lua([[
@@ -595,19 +555,19 @@ T["branch operations"]["spin-off works with push remote only (no upstream)"] = f
   eq(result.success, true)
 
   -- Verify we're now on the spun-off branch
-  local current_branch = git(child, repo, "branch --show-current"):gsub("%s+", "")
+  local current_branch = helpers.git(child, repo, "branch --show-current"):gsub("%s+", "")
   eq(current_branch, "spun-off-feature")
 
   -- Verify the spun-off branch has the feature commit
-  local log_spinoff = git(child, repo, "log --oneline -1")
+  local log_spinoff = helpers.git(child, repo, "log --oneline -1")
   eq(log_spinoff:match("Feature commit") ~= nil, true)
 
   -- Verify main-branch was reset to origin/main-branch (doesn't have the feature commit)
-  local log_main = git(child, repo, "log --oneline main-branch -1")
+  local log_main = helpers.git(child, repo, "log --oneline main-branch -1")
   eq(log_main:match("Feature commit") == nil, true)
   eq(log_main:match("Initial") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

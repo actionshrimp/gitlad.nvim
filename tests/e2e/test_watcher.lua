@@ -1,24 +1,9 @@
 -- E2E tests for file watcher and stale indicator
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
 
 local child = MiniTest.new_child_neovim()
-
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to clean up test repo
 local function cleanup_test_repo(child_nvim, repo)
@@ -26,25 +11,7 @@ local function cleanup_test_repo(child_nvim, repo)
 end
 
 -- Helper to create a file in the test repo
-local function create_file(child_nvim, repo, filename, content)
-  child_nvim.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
 -- Helper to run git command in repo
-local function git(child_nvim, repo, args)
-  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
 -- Helper to change directory
 local function cd(child_nvim, dir)
   child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
@@ -146,13 +113,13 @@ end
 T["stale indicator"] = MiniTest.new_set()
 
 T["stale indicator"]["spinner shows idle by default"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Setup without watcher
   child.lua([[require("gitlad").setup({})]])
@@ -172,13 +139,13 @@ T["stale indicator"]["spinner shows idle by default"] = function()
 end
 
 T["stale indicator"]["shows stale message when set_stale is called"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Setup without watcher (we'll manually trigger stale)
   child.lua([[require("gitlad").setup({})]])
@@ -212,13 +179,13 @@ T["stale indicator"]["shows stale message when set_stale is called"] = function(
 end
 
 T["stale indicator"]["clears when spinner clear_stale is called"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Setup without watcher
   child.lua([[require("gitlad").setup({})]])
@@ -272,13 +239,13 @@ end
 T["repo state stale"] = MiniTest.new_set()
 
 T["repo state stale"]["mark_stale sets stale flag"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.lua([[require("gitlad").setup({})]])
 
@@ -302,13 +269,13 @@ T["repo state stale"]["mark_stale sets stale flag"] = function()
 end
 
 T["repo state stale"]["clear_stale clears stale flag"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.lua([[require("gitlad").setup({})]])
 
@@ -330,13 +297,13 @@ T["repo state stale"]["clear_stale clears stale flag"] = function()
 end
 
 T["repo state stale"]["emits stale event when marked stale"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.lua([[require("gitlad").setup({})]])
 
@@ -372,13 +339,13 @@ end
 T["watcher integration"] = MiniTest.new_set()
 
 T["watcher integration"]["creates watcher when enabled"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Setup with watcher enabled
   child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
@@ -402,13 +369,13 @@ T["watcher integration"]["creates watcher when enabled"] = function()
 end
 
 T["watcher integration"]["does not create watcher when disabled"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Setup with watcher explicitly disabled
   child.lua([[require("gitlad").setup({ watcher = { enabled = false } })]])
@@ -432,13 +399,13 @@ T["watcher integration"]["does not create watcher when disabled"] = function()
 end
 
 T["watcher integration"]["watcher is running after open"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Setup with watcher enabled
   child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
@@ -462,13 +429,13 @@ T["watcher integration"]["watcher is running after open"] = function()
 end
 
 T["watcher integration"]["creates watcher in indicator mode by default"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Setup with watcher enabled (defaults to stale_indicator=true, auto_refresh=false)
   child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
@@ -495,13 +462,13 @@ T["watcher integration"]["creates watcher in indicator mode by default"] = funct
 end
 
 T["watcher integration"]["creates watcher with auto_refresh when configured"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Setup with auto_refresh enabled
   child.lua([[require("gitlad").setup({ watcher = { enabled = true, auto_refresh = true } })]])
@@ -531,13 +498,13 @@ T["watcher integration"]["creates watcher with auto_refresh when configured"] = 
 end
 
 T["watcher integration"]["creates watcher with both features enabled"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Setup with both stale_indicator and auto_refresh enabled
   child.lua(
@@ -572,13 +539,13 @@ end
 T["git command cooldown"] = MiniTest.new_set()
 
 T["git command cooldown"]["git commands set last_operation_time"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
 
@@ -611,13 +578,13 @@ T["git command cooldown"]["git commands set last_operation_time"] = function()
 end
 
 T["git command cooldown"]["watcher is in cooldown after git command"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.lua([[require("gitlad").setup({ watcher = { enabled = true, cooldown_ms = 2000 } })]])
 
@@ -654,17 +621,17 @@ end
 T["worktree watcher"] = MiniTest.new_set()
 
 T["worktree watcher"]["uses correct git_dir for worktree"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit (required for worktrees)
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Create a worktree
   local worktree_path = child.lua_get("vim.fn.tempname()")
-  git(child, repo, string.format("worktree add -b feature %s", worktree_path))
+  helpers.git(child, repo, string.format("worktree add -b feature %s", worktree_path))
 
   -- Change to worktree directory
   child.lua(string.format([[vim.cmd("cd %s")]], worktree_path))
@@ -690,22 +657,22 @@ T["worktree watcher"]["uses correct git_dir for worktree"] = function()
 
   -- Cleanup worktree
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  git(child, repo, string.format("worktree remove %s", worktree_path))
+  helpers.git(child, repo, string.format("worktree remove %s", worktree_path))
   cleanup_test_repo(child, repo)
 end
 
 T["worktree watcher"]["watcher watches correct directory for worktree"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit (required for worktrees)
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Create a worktree
   local worktree_path = child.lua_get("vim.fn.tempname()")
-  git(child, repo, string.format("worktree add -b feature %s", worktree_path))
+  helpers.git(child, repo, string.format("worktree add -b feature %s", worktree_path))
 
   -- Change to worktree directory
   child.lua(string.format([[vim.cmd("cd %s")]], worktree_path))
@@ -737,7 +704,7 @@ T["worktree watcher"]["watcher watches correct directory for worktree"] = functi
 
   -- Cleanup worktree
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
-  git(child, repo, string.format("worktree remove %s", worktree_path))
+  helpers.git(child, repo, string.format("worktree remove %s", worktree_path))
   cleanup_test_repo(child, repo)
 end
 

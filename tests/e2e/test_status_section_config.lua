@@ -1,5 +1,6 @@
 -- End-to-end tests for configurable status buffer sections
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
 local T = MiniTest.new_set({
@@ -17,41 +18,6 @@ local T = MiniTest.new_set({
     end,
   },
 })
-
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local dir = vim.fn.fnamemodify(path, ":h")
-    vim.fn.mkdir(dir, "p")
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
-local function git(child, repo, args)
-  return child.lua_get(string.format("vim.fn.system('git -C ' .. %q .. ' ' .. %q)", repo, args))
-end
 
 local function get_buffer_lines(child)
   return child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -80,16 +46,16 @@ T["section_config"] = MiniTest.new_set()
 
 T["section_config"]["default sections show in correct order"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
-  create_file(child, repo, "initial.txt", "initial content")
-  git(child, repo, "add .")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "initial.txt", "initial content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Create untracked and unstaged files
-  create_file(child, repo, "untracked.txt", "untracked")
-  create_file(child, repo, "initial.txt", "modified content")
+  helpers.create_file(child, repo, "untracked.txt", "untracked")
+  helpers.create_file(child, repo, "initial.txt", "modified content")
 
   -- Setup with default config (no sections override)
   child.lua(string.format(
@@ -116,16 +82,16 @@ end
 
 T["section_config"]["custom section order is respected"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
-  create_file(child, repo, "initial.txt", "initial content")
-  git(child, repo, "add .")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "initial.txt", "initial content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Create both untracked and unstaged files
-  create_file(child, repo, "untracked.txt", "untracked")
-  create_file(child, repo, "initial.txt", "modified content")
+  helpers.create_file(child, repo, "untracked.txt", "untracked")
+  helpers.create_file(child, repo, "initial.txt", "modified content")
 
   -- Setup with custom section order: unstaged before untracked
   child.lua(string.format(
@@ -156,15 +122,15 @@ end
 
 T["section_config"]["omitted sections are hidden"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
-  create_file(child, repo, "initial.txt", "initial content")
-  git(child, repo, "add .")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "initial.txt", "initial content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Create untracked file
-  create_file(child, repo, "untracked.txt", "untracked content")
+  helpers.create_file(child, repo, "untracked.txt", "untracked content")
 
   -- Setup with sections that exclude "untracked"
   child.lua(string.format(
@@ -190,13 +156,13 @@ end
 
 T["section_config"]["recent section count option limits commits"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create multiple commits
   for i = 1, 5 do
-    create_file(child, repo, "file" .. i .. ".txt", "content " .. i)
-    git(child, repo, "add .")
-    git(child, repo, "commit -m 'Commit " .. i .. "'")
+    helpers.create_file(child, repo, "file" .. i .. ".txt", "content " .. i)
+    helpers.git(child, repo, "add .")
+    helpers.git(child, repo, "commit -m 'Commit " .. i .. "'")
   end
 
   -- Setup with recent section limited to 2 commits
@@ -229,15 +195,15 @@ end
 
 T["section_config"]["staged section appears when configured"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit and staged file
-  create_file(child, repo, "initial.txt", "initial content")
-  git(child, repo, "add .")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "initial.txt", "initial content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
-  create_file(child, repo, "staged.txt", "staged content")
-  git(child, repo, "add staged.txt")
+  helpers.create_file(child, repo, "staged.txt", "staged content")
+  helpers.git(child, repo, "add staged.txt")
 
   -- Setup with only staged section
   child.lua(string.format(
@@ -263,20 +229,20 @@ end
 
 T["section_config"]["stashes section respects config order"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
-  create_file(child, repo, "initial.txt", "initial content")
-  git(child, repo, "add .")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "initial.txt", "initial content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Create a stash
-  create_file(child, repo, "stash_me.txt", "stash content")
-  git(child, repo, "add stash_me.txt")
-  git(child, repo, "stash push -m 'Test stash'")
+  helpers.create_file(child, repo, "stash_me.txt", "stash content")
+  helpers.git(child, repo, "add stash_me.txt")
+  helpers.git(child, repo, "stash push -m 'Test stash'")
 
   -- Create an unstaged change for reference
-  create_file(child, repo, "initial.txt", "modified")
+  helpers.create_file(child, repo, "initial.txt", "modified")
 
   -- Setup with stashes before unstaged
   child.lua(string.format(

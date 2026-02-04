@@ -1,5 +1,6 @@
 -- End-to-end tests for gitlad.nvim status view rendering
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
 -- Helper for truthy assertions (mini.test doesn't have expect.truthy)
@@ -26,45 +27,6 @@ local T = MiniTest.new_set({
     end,
   },
 })
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local dir = vim.fn.fnamemodify(path, ":h")
-    vim.fn.mkdir(dir, "p")
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run git command in repo
-local function git(child, repo, args)
-  -- Use %q for both repo and args to properly escape quotes
-  return child.lua_get(string.format("vim.fn.system('git -C ' .. %q .. ' ' .. %q)", repo, args))
-end
 
 -- Helper to get buffer lines
 local function get_buffer_lines(child)
@@ -112,6 +74,7 @@ local function create_test_repo_with_upstream(child)
     vim.fn.system("git -C " .. repo .. " init")
     vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
     vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
+    vim.fn.system("git -C " .. repo .. " config commit.gpgsign false")
 
     -- Create initial commit
     local f = io.open(repo .. "/init.txt", "w")
@@ -141,12 +104,12 @@ T["status view"] = MiniTest.new_set()
 
 T["status view"]["shows branch info"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial content")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "init.txt", "initial content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   open_gitlad(child, repo)
 
@@ -163,16 +126,16 @@ end
 
 T["status view"]["shows untracked files"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked files
-  create_file(child, repo, "untracked1.txt", "content1")
-  create_file(child, repo, "untracked2.txt", "content2")
+  helpers.create_file(child, repo, "untracked1.txt", "content1")
+  helpers.create_file(child, repo, "untracked2.txt", "content2")
 
   open_gitlad(child, repo)
 
@@ -188,16 +151,16 @@ end
 
 T["status view"]["shows staged files with A status"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage a new file
-  create_file(child, repo, "new_file.txt", "new content")
-  git(child, repo, "add new_file.txt")
+  helpers.create_file(child, repo, "new_file.txt", "new content")
+  helpers.git(child, repo, "add new_file.txt")
 
   open_gitlad(child, repo)
 
@@ -213,15 +176,15 @@ end
 
 T["status view"]["shows unstaged modified files with M status"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
-  create_file(child, repo, "file.txt", "original content")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "original content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify the file without staging
-  create_file(child, repo, "file.txt", "modified content")
+  helpers.create_file(child, repo, "file.txt", "modified content")
 
   open_gitlad(child, repo)
 
@@ -236,15 +199,15 @@ end
 
 T["status view"]["shows staged deleted files with D status"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
-  create_file(child, repo, "to_delete.txt", "content")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "to_delete.txt", "content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Delete and stage the deletion
-  git(child, repo, "rm to_delete.txt")
+  helpers.git(child, repo, "rm to_delete.txt")
 
   open_gitlad(child, repo)
 
@@ -259,17 +222,17 @@ end
 
 T["status view"]["shows files in alphabetical order"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked files in non-alphabetical order
-  create_file(child, repo, "zebra.txt", "z")
-  create_file(child, repo, "apple.txt", "a")
-  create_file(child, repo, "mango.txt", "m")
+  helpers.create_file(child, repo, "zebra.txt", "z")
+  helpers.create_file(child, repo, "apple.txt", "a")
+  helpers.create_file(child, repo, "mango.txt", "m")
 
   open_gitlad(child, repo)
 
@@ -296,12 +259,12 @@ T["status header"] = MiniTest.new_set()
 
 T["status header"]["shows Head line with commit message"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit with a specific message
-  create_file(child, repo, "init.txt", "initial content")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Add initial file"')
+  helpers.create_file(child, repo, "init.txt", "initial content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Add initial file"')
 
   open_gitlad(child, repo)
 
@@ -336,12 +299,12 @@ end
 
 T["status header"]["hides Merge line when no upstream"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit without any remote
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   open_gitlad(child, repo)
 
@@ -358,9 +321,9 @@ T["buffer protection"] = MiniTest.new_set()
 
 T["buffer protection"]["status buffer is not modifiable"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
 
   open_gitlad(child, repo)
 
@@ -371,9 +334,9 @@ end
 
 T["buffer protection"]["cannot edit status buffer with normal commands"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
 
   open_gitlad(child, repo)
 
@@ -401,23 +364,23 @@ T["recent commits"] = MiniTest.new_set()
 
 T["recent commits"]["shows Recent commits section even with unpushed commits"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "file1.txt", "content 1")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "First commit"')
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "First commit"')
 
   -- Create a named branch and set up fake remote/upstream
-  git(child, repo, "branch -M main-branch")
-  git(child, repo, "remote add origin https://example.com/repo.git")
-  git(child, repo, "update-ref refs/remotes/origin/main-branch HEAD~0")
-  git(child, repo, "branch --set-upstream-to=origin/main-branch main-branch")
+  helpers.git(child, repo, "branch -M main-branch")
+  helpers.git(child, repo, "remote add origin https://example.com/repo.git")
+  helpers.git(child, repo, "update-ref refs/remotes/origin/main-branch HEAD~0")
+  helpers.git(child, repo, "branch --set-upstream-to=origin/main-branch main-branch")
 
   -- Add a commit that will be "unpushed"
-  create_file(child, repo, "file2.txt", "content 2")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Second commit (unpushed)"')
+  helpers.create_file(child, repo, "file2.txt", "content 2")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Second commit (unpushed)"')
 
   open_gitlad(child, repo)
 
@@ -445,16 +408,16 @@ end
 
 T["recent commits"]["shows Recent commits section when no upstream"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create multiple commits (no remote/upstream)
-  create_file(child, repo, "file1.txt", "content 1")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "First commit"')
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "First commit"')
 
-  create_file(child, repo, "file2.txt", "content 2")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Second commit"')
+  helpers.create_file(child, repo, "file2.txt", "content 2")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Second commit"')
 
   open_gitlad(child, repo)
 
@@ -480,12 +443,12 @@ T["status indicator"] = MiniTest.new_set()
 
 T["status indicator"]["shows placeholder dot when idle"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   open_gitlad(child, repo)
 
@@ -506,12 +469,12 @@ end
 
 T["status indicator"]["appears at very top of buffer"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   open_gitlad(child, repo)
 
@@ -545,12 +508,12 @@ T["gitlad command"] = MiniTest.new_set()
 
 T["gitlad command"]["triggers refresh when re-running with status already open"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "file.txt", "original content")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", "original content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Open gitlad
   open_gitlad(child, repo)
@@ -561,7 +524,7 @@ T["gitlad command"]["triggers refresh when re-running with status already open"]
   eq(has_new_file, nil, "Should not have new_file.txt initially")
 
   -- Create a new untracked file while status buffer is open
-  create_file(child, repo, "new_file.txt", "new content")
+  helpers.create_file(child, repo, "new_file.txt", "new content")
 
   -- Without calling :Gitlad again, the status buffer wouldn't know about the new file
   -- Now run :Gitlad again to force refresh

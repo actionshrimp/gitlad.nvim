@@ -3,47 +3,6 @@ local MiniTest = require("mini.test")
 local eq = MiniTest.expect.equality
 local helpers = require("tests.helpers")
 
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -66,12 +25,12 @@ T["stash popup"] = MiniTest.new_set()
 
 T["stash popup"]["opens from status buffer with z key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -115,17 +74,17 @@ T["stash popup"]["opens from status buffer with z key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash popup"]["has all expected switches"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -162,17 +121,17 @@ T["stash popup"]["has all expected switches"] = function()
   eq(found_keep_index, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -196,17 +155,17 @@ T["stash popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash popup"]["z keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -232,7 +191,7 @@ T["stash popup"]["z keybinding appears in help"] = function()
   eq(found_stash, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Stash operations tests
@@ -240,20 +199,20 @@ T["stash operations"] = MiniTest.new_set()
 
 T["stash operations"]["stash push creates a stash"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Make changes
-  create_file(child, repo, "test.txt", "modified")
+  helpers.create_file(child, repo, "test.txt", "modified")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Verify no stashes initially
-  local stashes_before = git(child, repo, "stash list")
+  local stashes_before = helpers.git(child, repo, "stash list")
   eq(stashes_before:match("stash@") == nil, true)
 
   -- Stash changes using git module
@@ -273,34 +232,34 @@ T["stash operations"]["stash push creates a stash"] = function()
   eq(result.success, true)
 
   -- Verify stash was created
-  local stashes_after = git(child, repo, "stash list")
+  local stashes_after = helpers.git(child, repo, "stash list")
   eq(stashes_after:match("stash@{0}") ~= nil, true)
   eq(stashes_after:match("test stash") ~= nil, true)
 
   -- Verify working directory is clean
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   eq(status:gsub("%s+", ""), "")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash operations"]["stash pop applies and removes stash"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Make changes and stash them
-  create_file(child, repo, "test.txt", "modified content")
-  git(child, repo, "stash push -m 'test stash'")
+  helpers.create_file(child, repo, "test.txt", "modified content")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Verify stash exists
-  local stashes_before = git(child, repo, "stash list")
+  local stashes_before = helpers.git(child, repo, "stash list")
   eq(stashes_before:match("stash@{0}") ~= nil, true)
 
   -- Pop the stash
@@ -320,28 +279,28 @@ T["stash operations"]["stash pop applies and removes stash"] = function()
   eq(result.success, true)
 
   -- Verify stash is gone
-  local stashes_after = git(child, repo, "stash list")
+  local stashes_after = helpers.git(child, repo, "stash list")
   eq(stashes_after:match("stash@{0}") == nil, true)
 
   -- Verify changes are back
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   eq(status:match("M test.txt") ~= nil or status:match("M%s+test.txt") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash operations"]["stash apply keeps stash in list"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Make changes and stash them
-  create_file(child, repo, "test.txt", "modified content")
-  git(child, repo, "stash push -m 'test stash'")
+  helpers.create_file(child, repo, "test.txt", "modified content")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -362,37 +321,37 @@ T["stash operations"]["stash apply keeps stash in list"] = function()
   eq(result.success, true)
 
   -- Verify stash still exists
-  local stashes_after = git(child, repo, "stash list")
+  local stashes_after = helpers.git(child, repo, "stash list")
   eq(stashes_after:match("stash@{0}") ~= nil, true)
 
   -- Verify changes are applied
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   eq(status:match("M test.txt") ~= nil or status:match("M%s+test.txt") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash operations"]["stash drop removes stash without applying"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Make changes and stash them
-  create_file(child, repo, "test.txt", "modified content")
-  git(child, repo, "stash push -m 'test stash'")
+  helpers.create_file(child, repo, "test.txt", "modified content")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
   -- Verify stash exists
-  local stashes_before = git(child, repo, "stash list")
+  local stashes_before = helpers.git(child, repo, "stash list")
   eq(stashes_before:match("stash@{0}") ~= nil, true)
 
   -- Verify working directory is clean
-  local status_before = git(child, repo, "status --porcelain")
+  local status_before = helpers.git(child, repo, "status --porcelain")
   eq(status_before:gsub("%s+", ""), "")
 
   -- Drop the stash
@@ -412,31 +371,31 @@ T["stash operations"]["stash drop removes stash without applying"] = function()
   eq(result.success, true)
 
   -- Verify stash is gone
-  local stashes_after = git(child, repo, "stash list")
+  local stashes_after = helpers.git(child, repo, "stash list")
   eq(stashes_after:match("stash@{0}") == nil, true)
 
   -- Verify working directory is still clean (changes weren't applied)
-  local status_after = git(child, repo, "status --porcelain")
+  local status_after = helpers.git(child, repo, "status --porcelain")
   eq(status_after:gsub("%s+", ""), "")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash operations"]["stash list returns parsed entries"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create multiple stashes
-  create_file(child, repo, "test.txt", "modified 1")
-  git(child, repo, "stash push -m 'first stash'")
+  helpers.create_file(child, repo, "test.txt", "modified 1")
+  helpers.git(child, repo, "stash push -m 'first stash'")
 
-  create_file(child, repo, "test.txt", "modified 2")
-  git(child, repo, "stash push -m 'second stash'")
+  helpers.create_file(child, repo, "test.txt", "modified 2")
+  helpers.git(child, repo, "stash push -m 'second stash'")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -466,7 +425,7 @@ T["stash operations"]["stash list returns parsed entries"] = function()
   eq(result.stashes[2].ref, "stash@{1}")
   eq(result.stashes[2].message, "first stash")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Stash section in status view tests
@@ -474,16 +433,16 @@ T["stash section"] = MiniTest.new_set()
 
 T["stash section"]["shows Stashes section when stashes exist"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a stash
-  create_file(child, repo, "test.txt", "modified")
-  git(child, repo, "stash push -m 'test stash'")
+  helpers.create_file(child, repo, "test.txt", "modified")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -512,17 +471,17 @@ T["stash section"]["shows Stashes section when stashes exist"] = function()
   eq(found_stashes_section, true)
   eq(found_stash_entry, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash section"]["hides Stashes section when no stashes"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit only (no stashes)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -546,23 +505,23 @@ T["stash section"]["hides Stashes section when no stashes"] = function()
 
   eq(found_stashes_section, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash section"]["navigation includes stash entries with gj/gk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create two stashes
-  create_file(child, repo, "test.txt", "modified 1")
-  git(child, repo, "stash push -m 'first stash'")
-  create_file(child, repo, "test.txt", "modified 2")
-  git(child, repo, "stash push -m 'second stash'")
+  helpers.create_file(child, repo, "test.txt", "modified 1")
+  helpers.git(child, repo, "stash push -m 'first stash'")
+  helpers.create_file(child, repo, "test.txt", "modified 2")
+  helpers.git(child, repo, "stash push -m 'second stash'")
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -600,19 +559,19 @@ T["stash section"]["navigation includes stash entries with gj/gk"] = function()
   local final_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
   eq(final_line, stash_line)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash section"]["TAB collapses and expands stash section"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and stash
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  create_file(child, repo, "test.txt", "modified")
-  git(child, repo, "stash push -m 'test stash'")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "modified")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -687,19 +646,19 @@ T["stash section"]["TAB collapses and expands stash section"] = function()
   ]])
   eq(child.lua_get([[_G.has_stash_entry_after_expand]]), true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash section"]["p on stash entry opens stash popup"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and stash
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  create_file(child, repo, "test.txt", "modified")
-  git(child, repo, "stash push -m 'test stash'")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "modified")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -752,17 +711,17 @@ T["stash section"]["p on stash entry opens stash popup"] = function()
   eq(child.lua_get([[_G.has_pop_action]]), true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash section"]["p not on stash opens push popup"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no stashes)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -792,19 +751,19 @@ T["stash section"]["p not on stash opens push popup"] = function()
   eq(child.lua_get([[_G.is_push_popup]]), true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash section"]["RET on stash entry calls diff_stash"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and stash
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  create_file(child, repo, "test.txt", "modified content")
-  git(child, repo, "stash push -m 'test stash'")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "modified content")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -871,19 +830,19 @@ T["stash section"]["RET on stash entry calls diff_stash"] = function()
   -- One of these should be true (either diffview fallback kicked in)
   eq(diffview_warning or terminal_opened, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["stash section"]["d d (dwim) on stash entry shows stash diff"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and stash
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  create_file(child, repo, "test.txt", "modified content")
-  git(child, repo, "stash push -m 'test stash'")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "modified content")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -949,7 +908,7 @@ T["stash section"]["d d (dwim) on stash entry shows stash diff"] = function()
   -- One of these should be true (stash diff was triggered via dwim)
   eq(diffview_warning or terminal_opened, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

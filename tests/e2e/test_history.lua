@@ -1,24 +1,9 @@
 -- E2E tests for git command history view
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local expect, eq = MiniTest.expect, MiniTest.expect.equality
 
 local child = MiniTest.new_child_neovim()
-
--- Helper to create a test git repository
-local function create_test_repo(child_nvim)
-  local repo = child_nvim.lua_get("vim.fn.tempname()")
-  child_nvim.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
 
 -- Helper to clean up test repo
 local function cleanup_test_repo(child_nvim, repo)
@@ -26,25 +11,7 @@ local function cleanup_test_repo(child_nvim, repo)
 end
 
 -- Helper to create a file in the test repo
-local function create_file(child_nvim, repo, filename, content)
-  child_nvim.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
 -- Helper to run git command in repo
-local function git(child_nvim, repo, args)
-  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
 -- Helper to change directory
 local function cd(child_nvim, dir)
   child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
@@ -74,13 +41,13 @@ local T = MiniTest.new_set({
 T["history view"] = MiniTest.new_set()
 
 T["history view"]["opens from status buffer with $ key"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit so status works
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status buffer
   child.cmd("Gitlad")
@@ -106,13 +73,13 @@ T["history view"]["opens from status buffer with $ key"] = function()
 end
 
 T["history view"]["displays git command history entries"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status buffer (this triggers git status command via plugin)
   child.cmd("Gitlad")
@@ -149,13 +116,13 @@ T["history view"]["displays git command history entries"] = function()
 end
 
 T["history view"]["shows command count in header"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status (triggers at least one git command)
   child.cmd("Gitlad")
@@ -182,13 +149,13 @@ T["history view"]["shows command count in header"] = function()
 end
 
 T["history view"]["expands entry with <Tab>"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status
   child.cmd("Gitlad")
@@ -228,13 +195,13 @@ T["history view"]["expands entry with <Tab>"] = function()
 end
 
 T["history view"]["collapses entry with <Tab> again"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status
   child.cmd("Gitlad")
@@ -267,13 +234,13 @@ T["history view"]["collapses entry with <Tab> again"] = function()
 end
 
 T["history view"]["expands entry with <CR>"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status
   child.cmd("Gitlad")
@@ -302,13 +269,13 @@ T["history view"]["expands entry with <CR>"] = function()
 end
 
 T["history view"]["closes with q key"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status
   child.cmd("Gitlad")
@@ -334,13 +301,13 @@ T["history view"]["closes with q key"] = function()
 end
 
 T["history view"]["closes with $ key (toggle behavior)"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status
   child.cmd("Gitlad")
@@ -362,13 +329,13 @@ T["history view"]["closes with $ key (toggle behavior)"] = function()
 end
 
 T["history view"]["shows success indicator for successful commands"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit (successful commands)
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status (successful git status)
   child.cmd("Gitlad")
@@ -395,13 +362,13 @@ T["history view"]["shows success indicator for successful commands"] = function(
 end
 
 T["history view"]["shows duration in milliseconds"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status
   child.cmd("Gitlad")
@@ -432,13 +399,13 @@ end
 -- The refresh functionality is tested implicitly through re-opening the view.
 
 T["history view"]["empty history shows helpful message"] = function()
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
   -- Create commit manually without going through plugin
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Manually clear history to test empty state
   child.lua([[require("gitlad.git.history").clear()]])

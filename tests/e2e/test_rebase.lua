@@ -1,47 +1,7 @@
 -- End-to-end tests for gitlad.nvim rebase popup
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
 
 local T = MiniTest.new_set({
   hooks = {
@@ -65,22 +25,23 @@ T["rebase popup"] = MiniTest.new_set()
 
 T["rebase popup"]["opens from status buffer with r key"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
 
   -- Wait for status to load
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Press r to open rebase popup
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   -- Verify popup window exists (should be 2 windows now)
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -116,23 +77,24 @@ T["rebase popup"]["opens from status buffer with r key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase popup"]["has all expected switches"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   -- Check for switches in popup
   child.lua([[
@@ -163,23 +125,24 @@ T["rebase popup"]["has all expected switches"] = function()
   -- Note: interactive (-i) is an action, not a switch, so it's tested separately in test_rebase_editor.lua
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase popup"]["autostash is enabled by default"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   -- Check that autostash is enabled (has * marker)
   child.lua([[
@@ -197,23 +160,24 @@ T["rebase popup"]["autostash is enabled by default"] = function()
   eq(autostash_enabled, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase popup"]["switch toggling with -A"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   -- Check initial state - autostash should be enabled
   child.lua([[
@@ -232,7 +196,19 @@ T["rebase popup"]["switch toggling with -A"] = function()
 
   -- Toggle autostash switch off
   child.type_keys("-A")
-  child.lua([[vim.wait(50, function() return false end)]])
+
+  -- Wait for popup to update (check that the * marker is gone)
+  child.lua([[
+    vim.wait(1000, function()
+      popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
+      for _, line in ipairs(popup_lines) do
+        if line:match("^%s+%-A.*[Aa]utostash") and not line:match("%*%-A") then
+          return true
+        end
+      end
+      return false
+    end, 20)
+  ]])
 
   -- Check that switch is now disabled (no * marker)
   child.lua([[
@@ -249,21 +225,21 @@ T["rebase popup"]["switch toggling with -A"] = function()
   eq(autostash_enabled_after, false)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase popup"]["prompts to set upstream when not configured"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no remote, no upstream)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Mock the prompt module's prompt_for_ref function to track if it was called
   -- This is more reliable than mocking vim.ui.input since the prompt module
@@ -283,11 +259,17 @@ T["rebase popup"]["prompts to set upstream when not configured"] = function()
 
   -- Open rebase popup
   child.type_keys("r")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Try to rebase onto upstream (should prompt to set it)
   child.type_keys("u")
-  child.lua([[vim.wait(300, function() return false end)]])
+
+  -- Wait for prompt to be called
+  child.lua([[
+    vim.wait(1000, function()
+      return _G.prompt_was_called
+    end, 20)
+  ]])
 
   -- Verify prompt was invoked (magit-style flow: prompt to set upstream)
   local prompt_called = child.lua_get([[_G.prompt_was_called]])
@@ -299,30 +281,32 @@ T["rebase popup"]["prompts to set upstream when not configured"] = function()
     prompt.prompt_for_ref = _G.original_prompt_for_ref
   ]])
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase popup"]["closes with q"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open rebase popup
   child.type_keys("r")
+  helpers.wait_for_popup(child)
+
   local win_count_popup = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_popup, 2)
 
   -- Close with q
   child.type_keys("q")
-  child.lua([[vim.wait(100, function() return false end)]])
+  helpers.wait_for_popup_closed(child)
 
   -- Should be back to 1 window
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -332,24 +316,25 @@ T["rebase popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase popup"]["r keybinding appears in help"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open help with ?
   child.type_keys("?")
+  helpers.wait_for_popup(child)
 
   -- Check for rebase popup in help
   child.lua([[
@@ -368,40 +353,41 @@ T["rebase popup"]["r keybinding appears in help"] = function()
   eq(found_rebase, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase popup"]["shows in-progress actions when rebase is active"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second commit on a named branch (avoid main/master ambiguity)
-  git(child, repo, "checkout -b target")
-  create_file(child, repo, "test.txt", "hello world")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Second"')
+  helpers.git(child, repo, "checkout -b target")
+  helpers.create_file(child, repo, "test.txt", "hello world")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Second"')
 
   -- Create a conflicting change and start rebase that will conflict
   -- First, create a branch from initial commit
-  git(child, repo, "checkout -b feature HEAD~1")
-  create_file(child, repo, "test.txt", "conflicting change")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature HEAD~1")
+  helpers.create_file(child, repo, "test.txt", "conflicting change")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
   -- Try to rebase onto target (this will cause conflict)
-  git(child, repo, "rebase target 2>&1 || true")
+  helpers.git(child, repo, "rebase target 2>&1 || true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Open rebase popup - should show in-progress actions
   child.type_keys("r")
+  helpers.wait_for_popup(child)
 
   child.lua([[
     popup_buf = vim.api.nvim_get_current_buf()
@@ -430,38 +416,47 @@ T["rebase popup"]["shows in-progress actions when rebase is active"] = function(
 
   -- Abort the rebase to clean up
   child.type_keys("a")
-  child.lua([[vim.wait(300, function() return false end)]])
 
-  cleanup_repo(child, repo)
+  -- Wait for rebase to be aborted
+  child.lua(string.format(
+    [[
+    vim.wait(2000, function()
+      return not require("gitlad.git").rebase_in_progress({ cwd = %q })
+    end, 50)
+  ]],
+    repo
+  ))
+
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase popup"]["status shows rebase in progress"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second commit on a named branch (avoid main/master ambiguity)
-  git(child, repo, "checkout -b target")
-  create_file(child, repo, "test.txt", "hello world")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Second"')
+  helpers.git(child, repo, "checkout -b target")
+  helpers.create_file(child, repo, "test.txt", "hello world")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Second"')
 
   -- Create a conflicting change and start rebase that will conflict
-  git(child, repo, "checkout -b feature HEAD~1")
-  create_file(child, repo, "test.txt", "conflicting change")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature HEAD~1")
+  helpers.create_file(child, repo, "test.txt", "conflicting change")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
   -- Start rebase that will conflict
-  git(child, repo, "rebase target 2>&1 || true")
+  helpers.git(child, repo, "rebase target 2>&1 || true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Check that status shows rebase in progress
   child.lua([[
@@ -480,42 +475,42 @@ T["rebase popup"]["status shows rebase in progress"] = function()
   eq(found_rebasing, true)
 
   -- Abort the rebase to clean up
-  git(child, repo, "rebase --abort")
-  cleanup_repo(child, repo)
+  helpers.git(child, repo, "rebase --abort")
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase popup"]["continue after resolving conflicts opens commit editor"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second commit on a named branch
-  git(child, repo, "checkout -b target")
-  create_file(child, repo, "test.txt", "hello world")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Second"')
+  helpers.git(child, repo, "checkout -b target")
+  helpers.create_file(child, repo, "test.txt", "hello world")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Second"')
 
   -- Create a conflicting change and start rebase that will conflict
-  git(child, repo, "checkout -b feature HEAD~1")
-  create_file(child, repo, "test.txt", "conflicting change")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature HEAD~1")
+  helpers.create_file(child, repo, "test.txt", "conflicting change")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
   -- Start rebase that will conflict
-  git(child, repo, "rebase target 2>&1 || true")
+  helpers.git(child, repo, "rebase target 2>&1 || true")
 
   -- Resolve the conflict by writing the resolved content
-  create_file(child, repo, "test.txt", "resolved content")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "resolved content")
+  helpers.git(child, repo, "add test.txt")
 
   -- Open gitlad status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  child.lua([[vim.wait(500, function() return false end)]])
+  helpers.wait_for_status(child)
 
   -- Verify rebase is in progress
   local rebase_in_progress =
@@ -524,7 +519,7 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
 
   -- Open rebase popup with 'r'
   child.type_keys("r")
-  child.lua([[vim.wait(200, function() return false end)]])
+  helpers.wait_for_popup(child)
 
   -- Press 'r' to continue
   child.type_keys("r")
@@ -532,7 +527,7 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
   -- Wait for the commit editor to open (COMMIT_EDITMSG file)
   -- The editor should open because git needs to confirm the conflict resolution message
   child.lua([[
-    vim.wait(2000, function()
+    vim.wait(3000, function()
       local bufname = vim.api.nvim_buf_get_name(0)
       return bufname:match("COMMIT_EDITMSG") ~= nil
     end, 50)
@@ -553,7 +548,16 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
 
   -- Accept the commit message with ZZ to complete the rebase
   child.type_keys("ZZ")
-  child.lua([[vim.wait(1000, function() return false end)]])
+
+  -- Wait for rebase to complete (condition-based wait instead of fixed timeout)
+  child.lua(string.format(
+    [[
+    vim.wait(5000, function()
+      return not require("gitlad.git").rebase_in_progress({ cwd = %q })
+    end, 50)
+  ]],
+    repo
+  ))
 
   -- Verify rebase completed (no longer in progress)
   local rebase_still_in_progress =
@@ -564,7 +568,7 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
   local final_bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(final_bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

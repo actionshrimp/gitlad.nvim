@@ -1,5 +1,6 @@
 -- End-to-end tests for gitlad.nvim navigation and refresh
 local MiniTest = require("mini.test")
+local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
 -- Helper for truthy assertions (mini.test doesn't have expect.truthy)
@@ -26,45 +27,6 @@ local T = MiniTest.new_set({
     end,
   },
 })
-
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local dir = vim.fn.fnamemodify(path, ":h")
-    vim.fn.mkdir(dir, "p")
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run git command in repo
-local function git(child, repo, args)
-  -- Use %q for both repo and args to properly escape quotes
-  return child.lua_get(string.format("vim.fn.system('git -C ' .. %q .. ' ' .. %q)", repo, args))
-end
 
 -- Helper to get buffer lines
 local function get_buffer_lines(child)
@@ -102,12 +64,12 @@ T["refresh"] = MiniTest.new_set()
 
 T["refresh"]["gr refreshes status"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   open_gitlad(child, repo)
 
@@ -117,7 +79,7 @@ T["refresh"]["gr refreshes status"] = function()
   eq(has_newfile, nil, "Should not show newfile.txt initially")
 
   -- Create a new file externally
-  create_file(child, repo, "newfile.txt", "content")
+  helpers.create_file(child, repo, "newfile.txt", "content")
 
   -- Simulate pressing 'gr' using feedkeys and process events
   child.lua([[
@@ -141,15 +103,15 @@ end
 
 T["refresh"]["shows updated status after external git changes"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "file.txt", "original")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "original")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked file
-  create_file(child, repo, "new.txt", "content")
+  helpers.create_file(child, repo, "new.txt", "content")
 
   open_gitlad(child, repo)
 
@@ -159,7 +121,7 @@ T["refresh"]["shows updated status after external git changes"] = function()
   assert_truthy(untracked_section, "Should have Untracked section initially")
 
   -- Stage externally via git
-  git(child, repo, "add new.txt")
+  helpers.git(child, repo, "add new.txt")
 
   -- Simulate pressing 'gr' using feedkeys and process events
   child.lua([[
@@ -195,10 +157,10 @@ T["navigation"] = MiniTest.new_set()
 
 T["navigation"]["gj/gk keymaps are set up"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file to have something to navigate
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
 
   open_gitlad(child, repo)
 
@@ -220,11 +182,11 @@ end
 
 T["navigation"]["gj navigates to next file entry"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create multiple files
-  create_file(child, repo, "aaa.txt", "content a")
-  create_file(child, repo, "bbb.txt", "content b")
+  helpers.create_file(child, repo, "aaa.txt", "content a")
+  helpers.create_file(child, repo, "bbb.txt", "content b")
 
   open_gitlad(child, repo)
 
@@ -248,9 +210,9 @@ end
 
 T["navigation"]["j/k are not overridden (normal vim movement)"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
 
   open_gitlad(child, repo)
 
@@ -273,9 +235,9 @@ end
 
 T["navigation"]["gr is mapped for refresh"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
 
   open_gitlad(child, repo)
 
@@ -293,12 +255,12 @@ end
 
 T["navigation"]["gg works to jump to top of buffer"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create files to have content in buffer
-  create_file(child, repo, "file1.txt", "content 1")
-  create_file(child, repo, "file2.txt", "content 2")
-  create_file(child, repo, "file3.txt", "content 3")
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.create_file(child, repo, "file2.txt", "content 2")
+  helpers.create_file(child, repo, "file3.txt", "content 3")
 
   open_gitlad(child, repo)
 
@@ -325,16 +287,16 @@ T["cr on commit"] = MiniTest.new_set()
 
 T["cr on commit"]["<CR> on commit in log view triggers diff"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create commits
-  create_file(child, repo, "file1.txt", "content 1")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "First commit"')
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "First commit"')
 
-  create_file(child, repo, "file2.txt", "content 2")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Second commit"')
+  helpers.create_file(child, repo, "file2.txt", "content 2")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Second commit"')
 
   open_gitlad(child, repo)
 
@@ -372,12 +334,12 @@ end
 
 T["cr on commit"]["<CR> keymap is set on log buffer"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a commit
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   open_gitlad(child, repo)
 
@@ -399,11 +361,11 @@ end
 
 T["navigation"]["reopening status buffer positions cursor at first item"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create multiple files so we have enough content to scroll
   for i = 1, 20 do
-    create_file(child, repo, "file" .. i .. ".txt", "content " .. i)
+    helpers.create_file(child, repo, "file" .. i .. ".txt", "content " .. i)
   end
 
   open_gitlad(child, repo)

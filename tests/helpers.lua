@@ -24,6 +24,7 @@ function M.reset_child()
 end
 
 --- Create a temporary git repository for testing
+--- Uses a template repo for faster setup (cp -r instead of git init + config)
 ---@param child table MiniTest child process
 ---@return string repo_path Path to the temporary repository
 function M.create_test_repo(child)
@@ -31,29 +32,37 @@ function M.create_test_repo(child)
 
   child.lua(string.format(
     [[
-    vim.fn.mkdir(%q, "p")
-    vim.fn.system("git -C " .. %q .. " init")
-    vim.fn.system("git -C " .. %q .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. %q .. " config user.name 'Test User'")
+    -- Lazily create template repo on first use
+    if not _G._gitlad_test_template then
+      local template = vim.fn.tempname() .. "_template"
+      vim.fn.mkdir(template, "p")
+      vim.fn.system("git -C " .. template .. " init -b main")
+      vim.fn.system("git -C " .. template .. " config user.email 'test@test.com'")
+      vim.fn.system("git -C " .. template .. " config user.name 'Test User'")
+      vim.fn.system("git -C " .. template .. " config commit.gpgsign false")
+      _G._gitlad_test_template = template
+    end
+
+    -- Copy template to new location (much faster than git init + config)
+    vim.fn.system("cp -r " .. _G._gitlad_test_template .. " " .. %q)
   ]],
-    tmp_dir,
-    tmp_dir,
-    tmp_dir,
     tmp_dir
   ))
 
   return tmp_dir
 end
 
---- Create a file in the test repo
+--- Create a file in the test repo (creates parent directories if needed)
 ---@param child table MiniTest child process
 ---@param repo_path string Repository path
----@param filename string File name
+---@param filename string File name (can include subdirectories like "dir/file.txt")
 ---@param content string File content
 function M.create_file(child, repo_path, filename, content)
   child.lua(string.format(
     [[
     local path = %q .. "/" .. %q
+    local dir = vim.fn.fnamemodify(path, ":h")
+    vim.fn.mkdir(dir, "p")
     local f = io.open(path, "w")
     f:write(%q)
     f:close()
@@ -70,7 +79,7 @@ end
 ---@param args string Git command arguments
 ---@return string output Command output
 function M.git(child, repo_path, args)
-  return child.lua_get(string.format([[vim.fn.system("git -C %s %s")]], repo_path, args))
+  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo_path .. " " .. args))
 end
 
 --- Wait for async operations to complete
@@ -156,16 +165,28 @@ end
 ---@param timeout? number Timeout in milliseconds (default 1000)
 function M.wait_for_buffer(child, pattern, timeout)
   timeout = timeout or 1000
-  child.lua(string.format(
-    [[
-    vim.wait(%d, function()
-      local bufname = vim.api.nvim_buf_get_name(0)
-      return bufname:match(%q) ~= nil
-    end, 10)
-  ]],
+  local success = child.lua_get(string.format(
+    [[(function()
+      local ok = vim.wait(%d, function()
+        local bufname = vim.api.nvim_buf_get_name(0)
+        return bufname:match(%q) ~= nil
+      end, 10)
+      return ok
+    end)()]],
     timeout,
     pattern
   ))
+  if not success then
+    local actual = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+    error(
+      string.format(
+        "wait_for_buffer timed out after %dms waiting for %q, got %q",
+        timeout,
+        pattern,
+        actual
+      )
+    )
+  end
 end
 
 --- Wait until the current buffer contains specific text

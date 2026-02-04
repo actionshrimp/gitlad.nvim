@@ -28,45 +28,6 @@ local T = MiniTest.new_set({
   },
 })
 
--- Helper to create a test git repository
-local function create_test_repo(child)
-  local repo = child.lua_get("vim.fn.tempname()")
-  child.lua(string.format(
-    [[
-    local repo = %q
-    vim.fn.mkdir(repo, "p")
-    vim.fn.system("git -C " .. repo .. " init")
-    vim.fn.system("git -C " .. repo .. " config user.email 'test@test.com'")
-    vim.fn.system("git -C " .. repo .. " config user.name 'Test User'")
-  ]],
-    repo
-  ))
-  return repo
-end
-
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local dir = vim.fn.fnamemodify(path, ":h")
-    vim.fn.mkdir(dir, "p")
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run git command in repo
-local function git(child, repo, args)
-  -- Use %q for both repo and args to properly escape quotes
-  return child.lua_get(string.format("vim.fn.system('git -C ' .. %q .. ' ' .. %q)", repo, args))
-end
-
 -- Helper to get buffer lines
 local function get_buffer_lines(child)
   return child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -97,15 +58,15 @@ T["diff expansion"] = MiniTest.new_set()
 
 T["diff expansion"]["TAB expands diff for modified file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file with multiple lines
-  create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify the file
-  create_file(child, repo, "file.txt", "line1\nline2 modified\nline3\n")
+  helpers.create_file(child, repo, "file.txt", "line1\nline2 modified\nline3\n")
 
   open_gitlad(child, repo)
 
@@ -129,15 +90,15 @@ end
 
 T["diff expansion"]["TAB collapses expanded diff"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
-  create_file(child, repo, "file.txt", "original\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "original\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify the file
-  create_file(child, repo, "file.txt", "modified\n")
+  helpers.create_file(child, repo, "file.txt", "modified\n")
 
   open_gitlad(child, repo)
 
@@ -165,15 +126,15 @@ end
 
 T["diff expansion"]["shows content for untracked file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked file
-  create_file(child, repo, "new.txt", "line1\nline2\nline3\n")
+  helpers.create_file(child, repo, "new.txt", "line1\nline2\nline3\n")
 
   open_gitlad(child, repo)
 
@@ -201,18 +162,18 @@ T["hunk staging"] = MiniTest.new_set()
 
 T["hunk staging"]["s on diff line stages single hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with multiple sections that will create multiple hunks
   local original = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
-  create_file(child, repo, "file.txt", original)
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", original)
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify to create two separate hunks
   local modified =
     "line1 modified\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10 modified\n"
-  create_file(child, repo, "file.txt", modified)
+  helpers.create_file(child, repo, "file.txt", modified)
 
   open_gitlad(child, repo)
 
@@ -234,7 +195,7 @@ T["hunk staging"]["s on diff line stages single hunk"] = function()
 
   -- Verify: file should now appear in both staged and unstaged
   -- (first hunk staged, second hunk still unstaged)
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(
     status:find("MM file.txt"),
     "File should show MM status (staged + unstaged changes)"
@@ -243,16 +204,16 @@ end
 
 T["hunk staging"]["u on diff line unstages single hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file
-  create_file(child, repo, "file.txt", "original line\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "original line\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify and stage
-  create_file(child, repo, "file.txt", "modified line\n")
-  git(child, repo, "add file.txt")
+  helpers.create_file(child, repo, "file.txt", "modified line\n")
+  helpers.git(child, repo, "add file.txt")
 
   open_gitlad(child, repo)
 
@@ -273,7 +234,7 @@ T["hunk staging"]["u on diff line unstages single hunk"] = function()
   helpers.wait_short(child, 150)
 
   -- Verify file is now unstaged
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find(" M file.txt"), "File should show unstaged modified status")
 end
 
@@ -285,15 +246,15 @@ T["visual selection"] = MiniTest.new_set()
 
 T["visual selection"]["stages selected lines from hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file
-  create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify multiple lines
-  create_file(child, repo, "file.txt", "line1 changed\nline2 changed\nline3\n")
+  helpers.create_file(child, repo, "file.txt", "line1 changed\nline2 changed\nline3\n")
 
   open_gitlad(child, repo)
 
@@ -315,23 +276,23 @@ T["visual selection"]["stages selected lines from hunk"] = function()
   helpers.wait_short(child, 150)
 
   -- Verify partial staging occurred
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   -- File should have both staged and unstaged changes (MM)
   assert_truthy(status:find("MM file.txt"), "File should have partial staging (MM status)")
 end
 
 T["visual selection"]["unstages selected lines from staged hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file
-  create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify and stage all changes
-  create_file(child, repo, "file.txt", "line1 changed\nline2 changed\nline3\n")
-  git(child, repo, "add file.txt")
+  helpers.create_file(child, repo, "file.txt", "line1 changed\nline2 changed\nline3\n")
+  helpers.git(child, repo, "add file.txt")
 
   open_gitlad(child, repo)
 
@@ -353,7 +314,7 @@ T["visual selection"]["unstages selected lines from staged hunk"] = function()
   helpers.wait_short(child, 150)
 
   -- Verify partial unstaging occurred
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   -- File should have both staged and unstaged changes (MM)
   assert_truthy(
     status:find("MM file.txt"),
@@ -363,15 +324,15 @@ end
 
 T["visual selection"]["stages multiple selected lines"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with more lines
-  create_file(child, repo, "file.txt", "a\nb\nc\nd\ne\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "a\nb\nc\nd\ne\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify lines b, c, d
-  create_file(child, repo, "file.txt", "a\nB\nC\nD\ne\n")
+  helpers.create_file(child, repo, "file.txt", "a\nB\nC\nD\ne\n")
 
   open_gitlad(child, repo)
 
@@ -397,15 +358,15 @@ T["visual selection"]["stages multiple selected lines"] = function()
   helpers.wait_short(child, 150)
 
   -- Verify partial staging - should have MM status
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("MM file.txt"), "File should have partial staging (MM status)")
 
   -- Verify staged diff contains B and C but D is still in working copy
-  local staged_diff = git(child, repo, "diff --cached file.txt")
+  local staged_diff = helpers.git(child, repo, "diff --cached file.txt")
   assert_truthy(staged_diff:find("+B"), "Staged diff should contain +B")
   assert_truthy(staged_diff:find("+C"), "Staged diff should contain +C")
 
-  local unstaged_diff = git(child, repo, "diff file.txt")
+  local unstaged_diff = helpers.git(child, repo, "diff file.txt")
   assert_truthy(unstaged_diff:find("+D"), "Unstaged diff should still contain +D")
 end
 
@@ -417,19 +378,19 @@ T["hunk navigation"] = MiniTest.new_set()
 
 T["hunk navigation"]["<CR> on diff line jumps to file at correct line"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with multiple lines and commit it
   local content =
     "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\n"
-  create_file(child, repo, "file.txt", content)
-  git(child, repo, "add file.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", content)
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Modify lines 5-7 to create a change
   local modified =
     "line 1\nline 2\nline 3\nline 4\nmodified 5\nmodified 6\nmodified 7\nline 8\nline 9\nline 10\n"
-  create_file(child, repo, "file.txt", modified)
+  helpers.create_file(child, repo, "file.txt", modified)
 
   open_gitlad(child, repo)
 
@@ -461,16 +422,16 @@ end
 
 T["hunk navigation"]["<CR> on hunk header jumps to hunk start line"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with many lines
   local content = ""
   for i = 1, 20 do
     content = content .. "line " .. i .. "\n"
   end
-  create_file(child, repo, "file.txt", content)
-  git(child, repo, "add file.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", content)
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Modify line 15
   local modified = ""
@@ -481,7 +442,7 @@ T["hunk navigation"]["<CR> on hunk header jumps to hunk start line"] = function(
       modified = modified .. "line " .. i .. "\n"
     end
   end
-  create_file(child, repo, "file.txt", modified)
+  helpers.create_file(child, repo, "file.txt", modified)
 
   open_gitlad(child, repo)
 
@@ -524,18 +485,18 @@ T["expansion memory"] = MiniTest.new_set()
 
 T["expansion memory"]["re-expanding file restores remembered hunk state"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with multiple sections to get multiple hunks
   local original = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
-  create_file(child, repo, "file.txt", original)
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", original)
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify to create two separate hunks
   local modified =
     "line1 modified\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10 modified\n"
-  create_file(child, repo, "file.txt", modified)
+  helpers.create_file(child, repo, "file.txt", modified)
 
   open_gitlad(child, repo)
 
@@ -577,15 +538,15 @@ end
 
 T["expansion memory"]["defaults to fully expanded when no remembered state"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
-  create_file(child, repo, "file.txt", "original\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "original\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify the file
-  create_file(child, repo, "file.txt", "modified\n")
+  helpers.create_file(child, repo, "file.txt", "modified\n")
 
   open_gitlad(child, repo)
 
@@ -639,18 +600,18 @@ end
 
 T["hunk discard"]["x on diff line discards single hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file with multiple sections that will create multiple hunks
   local original = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n"
-  create_file(child, repo, "file.txt", original)
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", original)
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify to create two separate hunks
   local modified =
     "line1 modified\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10 modified\n"
-  create_file(child, repo, "file.txt", modified)
+  helpers.create_file(child, repo, "file.txt", modified)
 
   open_gitlad(child, repo)
 
@@ -684,13 +645,13 @@ end
 
 T["hunk discard"]["x on file discards whole file when not on hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create and modify a file
-  create_file(child, repo, "file.txt", "original\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
-  create_file(child, repo, "file.txt", "modified\n")
+  helpers.create_file(child, repo, "file.txt", "original\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "modified\n")
 
   open_gitlad(child, repo)
 
@@ -714,15 +675,15 @@ end
 
 T["hunk discard"]["visual selection discards single line from hunk"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create a file
-  create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Add multiple new lines that will be in same hunk
-  create_file(child, repo, "file.txt", "line1\nnew1\nnew2\nline2\nline3\n")
+  helpers.create_file(child, repo, "file.txt", "line1\nnew1\nnew2\nline2\nline3\n")
 
   open_gitlad(child, repo)
 
@@ -756,14 +717,14 @@ end
 
 T["hunk discard"]["cannot discard staged changes"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create, modify, and stage
-  create_file(child, repo, "file.txt", "original\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
-  create_file(child, repo, "file.txt", "modified\n")
-  git(child, repo, "add file.txt")
+  helpers.create_file(child, repo, "file.txt", "original\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "modified\n")
+  helpers.git(child, repo, "add file.txt")
 
   open_gitlad(child, repo)
 
@@ -785,7 +746,7 @@ T["hunk discard"]["cannot discard staged changes"] = function()
   helpers.wait_short(child, 100)
 
   -- File should still be staged (discard blocked)
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(
     status:find("M  file.txt") or status:find("A  file.txt"),
     "File should still be staged"
@@ -800,15 +761,15 @@ T["visual selection untracked"] = MiniTest.new_set()
 
 T["visual selection untracked"]["stages selected lines from untracked file"] = function()
   local child = _G.child
-  local repo = create_test_repo(child)
+  local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create an untracked file with multiple lines
-  create_file(child, repo, "new.txt", "line1\nline2\nline3\nline4\nline5\n")
+  helpers.create_file(child, repo, "new.txt", "line1\nline2\nline3\nline4\nline5\n")
 
   open_gitlad(child, repo)
 
@@ -840,17 +801,17 @@ T["visual selection untracked"]["stages selected lines from untracked file"] = f
   -- - git add -N was run first
   -- - Then partial patch was applied
   -- File should have both staged (line1, line2) and unstaged (line3, line4, line5) changes
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   -- Should be AM (Added in index with modifications in worktree)
   assert_truthy(status:find("AM new.txt"), "File should have partial staging (AM status)")
 
   -- Verify staged diff contains line1 and line2
-  local staged_diff = git(child, repo, "diff --cached new.txt")
+  local staged_diff = helpers.git(child, repo, "diff --cached new.txt")
   assert_truthy(staged_diff:find("+line1"), "Staged diff should contain +line1")
   assert_truthy(staged_diff:find("+line2"), "Staged diff should contain +line2")
 
   -- Verify unstaged diff contains line3, line4, line5 (but not line1, line2)
-  local unstaged_diff = git(child, repo, "diff new.txt")
+  local unstaged_diff = helpers.git(child, repo, "diff new.txt")
   assert_truthy(unstaged_diff:find("+line3"), "Unstaged diff should contain +line3")
   assert_truthy(unstaged_diff:find("+line4"), "Unstaged diff should contain +line4")
   assert_truthy(unstaged_diff:find("+line5"), "Unstaged diff should contain +line5")
