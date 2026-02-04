@@ -3,26 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -62,7 +42,7 @@ T["help popup"]["opens from status buffer with ? key"] = function()
 
   -- Close and cleanup
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["displays Navigation section"] = function()
@@ -105,7 +85,7 @@ T["help popup"]["displays Navigation section"] = function()
   eq(found_k, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["displays Applying changes section"] = function()
@@ -157,7 +137,7 @@ T["help popup"]["displays Applying changes section"] = function()
   eq(found_U, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["displays Transient commands section"] = function()
@@ -198,7 +178,7 @@ T["help popup"]["displays Transient commands section"] = function()
   eq(found_p, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["displays Essential commands section"] = function()
@@ -249,7 +229,7 @@ T["help popup"]["displays Essential commands section"] = function()
   eq(found_question, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["closes with q key"] = function()
@@ -278,7 +258,7 @@ T["help popup"]["closes with q key"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["closes with Esc key"] = function()
@@ -303,7 +283,7 @@ T["help popup"]["closes with Esc key"] = function()
   win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count, 1)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["pressing c opens commit popup"] = function()
@@ -311,7 +291,7 @@ T["help popup"]["pressing c opens commit popup"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create and stage a file so commit popup can open
-  create_file(child, repo, "test.txt", "hello")
+  helpers.create_file(child, repo, "test.txt", "hello")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -350,7 +330,7 @@ T["help popup"]["pressing c opens commit popup"] = function()
   eq(found_commit_action, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["pressing p opens push popup"] = function()
@@ -394,7 +374,7 @@ T["help popup"]["pressing p opens push popup"] = function()
   eq(found_push_action, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["pressing $ opens git command history"] = function()
@@ -418,7 +398,7 @@ T["help popup"]["pressing $ opens git command history"] = function()
   eq(bufname:match("gitlad://history") ~= nil, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["help popup"]["has title 'Help'"] = function()
@@ -444,7 +424,7 @@ T["help popup"]["has title 'Help'"] = function()
   eq(#lines > 0, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

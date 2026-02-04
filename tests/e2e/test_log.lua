@@ -11,25 +11,7 @@ local function cleanup_test_repo(child_nvim, repo)
 end
 
 -- Helper to create a file in the test repo
-local function create_file(child_nvim, repo, filename, content)
-  child_nvim.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
 -- Helper to run git command in repo
-local function git(child_nvim, repo, args)
-  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
 -- Helper to change directory
 local function cd(child_nvim, dir)
   child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
@@ -56,9 +38,9 @@ T["log popup"]["opens from status buffer with l key"] = function()
   cd(child, repo)
 
   -- Create initial commit so status works
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status buffer
   child.cmd("Gitlad")
@@ -90,9 +72,9 @@ T["log popup"]["has switches and options"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -119,9 +101,9 @@ T["log popup"]["closes with q"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -153,13 +135,13 @@ T["log view"]["opens when action is triggered"] = function()
   cd(child, repo)
 
   -- Create some commits to show
-  create_file(child, repo, "file1.txt", "content 1")
-  git(child, repo, "add file1.txt")
-  git(child, repo, "commit -m 'Add file1'")
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.git(child, repo, "add file1.txt")
+  helpers.git(child, repo, "commit -m 'Add file1'")
 
-  create_file(child, repo, "file2.txt", "content 2")
-  git(child, repo, "add file2.txt")
-  git(child, repo, "commit -m 'Add file2'")
+  helpers.create_file(child, repo, "file2.txt", "content 2")
+  helpers.git(child, repo, "add file2.txt")
+  helpers.git(child, repo, "commit -m 'Add file2'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -184,13 +166,13 @@ T["log view"]["displays commits"] = function()
   cd(child, repo)
 
   -- Create commits
-  create_file(child, repo, "file1.txt", "content")
-  git(child, repo, "add file1.txt")
-  git(child, repo, "commit -m 'First commit'")
+  helpers.create_file(child, repo, "file1.txt", "content")
+  helpers.git(child, repo, "add file1.txt")
+  helpers.git(child, repo, "commit -m 'First commit'")
 
-  create_file(child, repo, "file2.txt", "content")
-  git(child, repo, "add file2.txt")
-  git(child, repo, "commit -m 'Second commit'")
+  helpers.create_file(child, repo, "file2.txt", "content")
+  helpers.git(child, repo, "add file2.txt")
+  helpers.git(child, repo, "commit -m 'Second commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -215,9 +197,9 @@ T["log view"]["commit lines have no leading indent"] = function()
   cd(child, repo)
 
   -- Create a commit
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add file.txt")
-  git(child, repo, "commit -m 'Test commit'")
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -249,9 +231,9 @@ T["log view"]["can yank commit hash with y"] = function()
   cd(child, repo)
 
   -- Create a commit
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add file.txt")
-  git(child, repo, "commit -m 'Test commit'")
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -281,9 +263,9 @@ T["log view"]["closes with q"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add file.txt")
-  git(child, repo, "commit -m 'Test'")
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -313,13 +295,13 @@ T["log view"]["gj/gk keymaps are set up"] = function()
   cd(child, repo)
 
   -- Create commits
-  create_file(child, repo, "file1.txt", "content 1")
-  git(child, repo, "add file1.txt")
-  git(child, repo, "commit -m 'Commit 1'")
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.git(child, repo, "add file1.txt")
+  helpers.git(child, repo, "commit -m 'Commit 1'")
 
-  create_file(child, repo, "file2.txt", "content 2")
-  git(child, repo, "add file2.txt")
-  git(child, repo, "commit -m 'Commit 2'")
+  helpers.create_file(child, repo, "file2.txt", "content 2")
+  helpers.git(child, repo, "add file2.txt")
+  helpers.git(child, repo, "commit -m 'Commit 2'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -356,9 +338,9 @@ T["log view"]["buffer is not modifiable"] = function()
   cd(child, repo)
 
   -- Create a commit
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add file.txt")
-  git(child, repo, "commit -m 'Test commit'")
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -380,13 +362,13 @@ T["log view"]["has sign column with expand indicators"] = function()
   cd(child, repo)
 
   -- Create commits
-  create_file(child, repo, "file1.txt", "content 1")
-  git(child, repo, "add file1.txt")
-  git(child, repo, "commit -m 'First commit'")
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.git(child, repo, "add file1.txt")
+  helpers.git(child, repo, "commit -m 'First commit'")
 
-  create_file(child, repo, "file2.txt", "content 2")
-  git(child, repo, "add file2.txt")
-  git(child, repo, "commit -m 'Second commit'")
+  helpers.create_file(child, repo, "file2.txt", "content 2")
+  helpers.git(child, repo, "add file2.txt")
+  helpers.git(child, repo, "commit -m 'Second commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -424,9 +406,9 @@ T["log view"]["sign indicator changes when commit is expanded"] = function()
   cd(child, repo)
 
   -- Create a commit with a body
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add file.txt")
-  git(child, repo, 'commit -m "Test commit" -m "This is the body of the commit"')
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, 'commit -m "Test commit" -m "This is the body of the commit"')
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -487,9 +469,9 @@ T["log view"]["has popup keymaps (b, r, A, _, X)"] = function()
   cd(child, repo)
 
   -- Create a commit
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add file.txt")
-  git(child, repo, "commit -m 'Test commit'")
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -532,9 +514,9 @@ T["log view"]["branch popup opens from log view"] = function()
   cd(child, repo)
 
   -- Create a commit
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add file.txt")
-  git(child, repo, "commit -m 'Test commit'")
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
@@ -562,13 +544,13 @@ T["log view"]["reset popup opens with commit context"] = function()
   cd(child, repo)
 
   -- Create commits
-  create_file(child, repo, "file1.txt", "content 1")
-  git(child, repo, "add file1.txt")
-  git(child, repo, "commit -m 'First commit'")
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.git(child, repo, "add file1.txt")
+  helpers.git(child, repo, "commit -m 'First commit'")
 
-  create_file(child, repo, "file2.txt", "content 2")
-  git(child, repo, "add file2.txt")
-  git(child, repo, "commit -m 'Second commit'")
+  helpers.create_file(child, repo, "file2.txt", "content 2")
+  helpers.git(child, repo, "add file2.txt")
+  helpers.git(child, repo, "commit -m 'Second commit'")
 
   child.cmd("Gitlad")
   helpers.wait_for_status(child)

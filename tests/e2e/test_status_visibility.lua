@@ -26,28 +26,6 @@ local T = MiniTest.new_set({
   },
 })
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local dir = vim.fn.fnamemodify(path, ":h")
-    vim.fn.mkdir(dir, "p")
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run git command in repo
-local function git(child, repo, args)
-  return child.lua_get(string.format("vim.fn.system('git -C ' .. %q .. ' ' .. %q)", repo, args))
-end
-
 -- Helper to get buffer lines
 local function get_buffer_lines(child)
   return child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -100,7 +78,7 @@ T["visibility keybindings"] = MiniTest.new_set()
 T["visibility keybindings"]["<S-Tab> keymap is set up"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
   eq(has_keymap(child, "<S-Tab>"), true, "<S-Tab> should be mapped")
@@ -109,7 +87,7 @@ end
 T["visibility keybindings"]["1 keymap is set up"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
   eq(has_keymap(child, "1"), true, "1 should be mapped")
@@ -118,7 +96,7 @@ end
 T["visibility keybindings"]["2 keymap is set up"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
   eq(has_keymap(child, "2"), true, "2 should be mapped")
@@ -127,7 +105,7 @@ end
 T["visibility keybindings"]["3 keymap is set up"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
   eq(has_keymap(child, "3"), true, "3 should be mapped")
@@ -136,7 +114,7 @@ end
 T["visibility keybindings"]["4 keymap is set up"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
   eq(has_keymap(child, "4"), true, "4 should be mapped")
@@ -153,13 +131,13 @@ T["visibility levels"]["default visibility level is 2"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create unpushed commits (need a remote to show unpushed section)
   -- For now, just test with untracked files which always show their items
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
 
   open_gitlad(child, repo)
 
@@ -177,18 +155,18 @@ T["visibility levels"]["<S-Tab> toggles all sections"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create more commits to have collapsible sections
-  create_file(child, repo, "file2.txt", "content2")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Second"')
+  helpers.create_file(child, repo, "file2.txt", "content2")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Second"')
 
   -- Create a stash to have a collapsible stash section
-  create_file(child, repo, "file3.txt", "content3")
-  git(child, repo, "stash push -m 'test stash'")
+  helpers.create_file(child, repo, "file3.txt", "content3")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   open_gitlad(child, repo)
   wait(child, 200)
@@ -244,11 +222,11 @@ T["visibility levels"]["1 sets level 1 (headers only)"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create commits to have collapsible sections
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
   -- Move to header line for global visibility behavior (not scoped to file)
@@ -271,7 +249,7 @@ T["visibility levels"]["2 sets level 2 (items visible)"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "file.txt", "content")
+  helpers.create_file(child, repo, "file.txt", "content")
   open_gitlad(child, repo)
 
   -- Move to header line for global visibility behavior
@@ -308,12 +286,12 @@ T["visibility levels"]["3 shows diff headers only"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create an initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify file to create unstaged changes
-  create_file(child, repo, "init.txt", "modified content")
+  helpers.create_file(child, repo, "init.txt", "modified content")
 
   open_gitlad(child, repo)
 
@@ -360,12 +338,12 @@ T["visibility levels"]["4 expands everything including hunk content"] = function
   local repo = helpers.create_test_repo(child)
 
   -- Create commits
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify file to create unstaged changes
-  create_file(child, repo, "init.txt", "modified")
+  helpers.create_file(child, repo, "init.txt", "modified")
 
   open_gitlad(child, repo)
 

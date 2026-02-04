@@ -3,31 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -53,9 +28,9 @@ T["worktree popup"]["opens from status buffer with % key"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -105,7 +80,7 @@ T["worktree popup"]["opens from status buffer with % key"] = function()
   eq(found_delete, true)
   eq(found_visit, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktree popup"]["has correct switches"] = function()
@@ -113,9 +88,9 @@ T["worktree popup"]["has correct switches"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -153,7 +128,7 @@ T["worktree popup"]["has correct switches"] = function()
   eq(found_detach, true)
   eq(found_lock, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktree popup"]["closes on q key"] = function()
@@ -161,9 +136,9 @@ T["worktree popup"]["closes on q key"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -186,7 +161,7 @@ T["worktree popup"]["closes on q key"] = function()
   local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count_after, 1)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktree popup"]["context-aware when cursor on worktree entry"] = function()
@@ -194,13 +169,13 @@ T["worktree popup"]["context-aware when cursor on worktree entry"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second worktree
   local worktree_path = child.lua_get("vim.fn.tempname()")
-  git(child, repo, string.format("worktree add -b feature %s", worktree_path))
+  helpers.git(child, repo, string.format("worktree add -b feature %s", worktree_path))
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -230,8 +205,8 @@ T["worktree popup"]["context-aware when cursor on worktree entry"] = function()
 
   -- Cleanup
   child.type_keys("q")
-  git(child, repo, string.format("worktree remove %s", worktree_path))
-  cleanup_repo(child, repo)
+  helpers.git(child, repo, string.format("worktree remove %s", worktree_path))
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktree popup"]["shows all action groups"] = function()
@@ -239,9 +214,9 @@ T["worktree popup"]["shows all action groups"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -284,7 +259,7 @@ T["worktree popup"]["shows all action groups"] = function()
   eq(found_lock_heading, true)
   eq(found_maintenance, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktree popup"]["branch and worktree action available"] = function()
@@ -292,9 +267,9 @@ T["worktree popup"]["branch and worktree action available"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -323,7 +298,7 @@ T["worktree popup"]["branch and worktree action available"] = function()
 
   eq(found_branch_and_worktree, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktree popup"]["prune action available"] = function()
@@ -331,9 +306,9 @@ T["worktree popup"]["prune action available"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -362,7 +337,7 @@ T["worktree popup"]["prune action available"] = function()
 
   eq(found_prune, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

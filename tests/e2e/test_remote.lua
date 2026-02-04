@@ -3,31 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -53,9 +28,9 @@ T["remote popup"]["opens from status buffer with M key"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -105,7 +80,7 @@ T["remote popup"]["opens from status buffer with M key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["remote popup"]["has fetch after add switch"] = function()
@@ -113,9 +88,9 @@ T["remote popup"]["has fetch after add switch"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -140,7 +115,7 @@ T["remote popup"]["has fetch after add switch"] = function()
   eq(found_fetch, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["remote popup"]["closes with q"] = function()
@@ -148,9 +123,9 @@ T["remote popup"]["closes with q"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -173,7 +148,7 @@ T["remote popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["remote popup"]["M keybinding appears in help"] = function()
@@ -181,9 +156,9 @@ T["remote popup"]["M keybinding appears in help"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -209,7 +184,7 @@ T["remote popup"]["M keybinding appears in help"] = function()
   eq(found_remote, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Git remote operations tests
@@ -220,9 +195,9 @@ T["git remote operations"]["remote_add adds a new remote"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Add a remote using gitlad
   child.lua(string.format(
@@ -242,11 +217,11 @@ T["git remote operations"]["remote_add adds a new remote"] = function()
   eq(result.success, true)
 
   -- Verify remote was added
-  local remotes = git(child, repo, "remote -v")
+  local remotes = helpers.git(child, repo, "remote -v")
   eq(remotes:match("origin") ~= nil, true)
   eq(remotes:match("https://github.com/test/repo.git") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git remote operations"]["remote_rename renames a remote"] = function()
@@ -254,12 +229,12 @@ T["git remote operations"]["remote_rename renames a remote"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Add a remote first
-  git(child, repo, "remote add origin https://github.com/test/repo.git")
+  helpers.git(child, repo, "remote add origin https://github.com/test/repo.git")
 
   -- Rename using gitlad
   child.lua(string.format(
@@ -279,11 +254,11 @@ T["git remote operations"]["remote_rename renames a remote"] = function()
   eq(result.success, true)
 
   -- Verify remote was renamed
-  local remotes = git(child, repo, "remote -v")
+  local remotes = helpers.git(child, repo, "remote -v")
   eq(remotes:match("origin") == nil, true)
   eq(remotes:match("upstream") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git remote operations"]["remote_remove removes a remote"] = function()
@@ -291,12 +266,12 @@ T["git remote operations"]["remote_remove removes a remote"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Add a remote first
-  git(child, repo, "remote add origin https://github.com/test/repo.git")
+  helpers.git(child, repo, "remote add origin https://github.com/test/repo.git")
 
   -- Remove using gitlad
   child.lua(string.format(
@@ -316,10 +291,10 @@ T["git remote operations"]["remote_remove removes a remote"] = function()
   eq(result.success, true)
 
   -- Verify remote was removed
-  local remotes = git(child, repo, "remote -v")
+  local remotes = helpers.git(child, repo, "remote -v")
   eq(remotes:match("origin") == nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git remote operations"]["remote_get_url returns the URL of a remote"] = function()
@@ -327,12 +302,12 @@ T["git remote operations"]["remote_get_url returns the URL of a remote"] = funct
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Add a remote first
-  git(child, repo, "remote add origin https://github.com/test/repo.git")
+  helpers.git(child, repo, "remote add origin https://github.com/test/repo.git")
 
   -- Get URL using gitlad
   child.lua(string.format(
@@ -352,7 +327,7 @@ T["git remote operations"]["remote_get_url returns the URL of a remote"] = funct
   eq(result.url, "https://github.com/test/repo.git")
   eq(result.err, nil)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git remote operations"]["remote_set_url changes the URL of a remote"] = function()
@@ -360,12 +335,12 @@ T["git remote operations"]["remote_set_url changes the URL of a remote"] = funct
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Add a remote first
-  git(child, repo, "remote add origin https://github.com/test/repo.git")
+  helpers.git(child, repo, "remote add origin https://github.com/test/repo.git")
 
   -- Set URL using gitlad
   child.lua(string.format(
@@ -385,10 +360,10 @@ T["git remote operations"]["remote_set_url changes the URL of a remote"] = funct
   eq(result.success, true)
 
   -- Verify URL was changed
-  local remotes = git(child, repo, "remote -v")
+  local remotes = helpers.git(child, repo, "remote -v")
   eq(remotes:match("https://github.com/new/url.git") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

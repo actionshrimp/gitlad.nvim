@@ -47,15 +47,17 @@ function M.create_test_repo(child)
   return tmp_dir
 end
 
---- Create a file in the test repo
+--- Create a file in the test repo (creates parent directories if needed)
 ---@param child table MiniTest child process
 ---@param repo_path string Repository path
----@param filename string File name
+---@param filename string File name (can include subdirectories like "dir/file.txt")
 ---@param content string File content
 function M.create_file(child, repo_path, filename, content)
   child.lua(string.format(
     [[
     local path = %q .. "/" .. %q
+    local dir = vim.fn.fnamemodify(path, ":h")
+    vim.fn.mkdir(dir, "p")
     local f = io.open(path, "w")
     f:write(%q)
     f:close()
@@ -72,7 +74,7 @@ end
 ---@param args string Git command arguments
 ---@return string output Command output
 function M.git(child, repo_path, args)
-  return child.lua_get(string.format([[vim.fn.system("git -C %s %s")]], repo_path, args))
+  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo_path .. " " .. args))
 end
 
 --- Wait for async operations to complete

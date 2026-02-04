@@ -3,31 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -53,9 +28,9 @@ T["push popup"]["opens from status buffer with p key"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -95,7 +70,7 @@ T["push popup"]["opens from status buffer with p key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push popup"]["has all expected switches"] = function()
@@ -103,9 +78,9 @@ T["push popup"]["has all expected switches"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -146,7 +121,7 @@ T["push popup"]["has all expected switches"] = function()
   eq(found_tags, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push popup"]["switch toggling with -f"] = function()
@@ -154,9 +129,9 @@ T["push popup"]["switch toggling with -f"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -198,7 +173,7 @@ T["push popup"]["switch toggling with -f"] = function()
   eq(force_lease_enabled_after, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push popup"]["shows warning when no remote configured"] = function()
@@ -206,9 +181,9 @@ T["push popup"]["shows warning when no remote configured"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no remote at all)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -235,7 +210,7 @@ T["push popup"]["shows warning when no remote configured"] = function()
   eq(found_push_heading, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push popup"]["has remote option for manual override"] = function()
@@ -243,15 +218,15 @@ T["push popup"]["has remote option for manual override"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Add a single remote
-  git(child, repo, "remote add myremote https://example.com/repo.git")
+  helpers.git(child, repo, "remote add myremote https://example.com/repo.git")
 
   -- Create a new branch with no upstream configured
-  git(child, repo, "checkout -b feature-branch")
+  helpers.git(child, repo, "checkout -b feature-branch")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -278,7 +253,7 @@ T["push popup"]["has remote option for manual override"] = function()
   eq(found_remote_option, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push popup"]["shows magit-style push actions"] = function()
@@ -286,17 +261,17 @@ T["push popup"]["shows magit-style push actions"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Add multiple remotes
-  git(child, repo, "remote add upstream https://example.com/upstream.git")
-  git(child, repo, "remote add origin https://example.com/origin.git")
-  git(child, repo, "remote add fork https://example.com/fork.git")
+  helpers.git(child, repo, "remote add upstream https://example.com/upstream.git")
+  helpers.git(child, repo, "remote add origin https://example.com/origin.git")
+  helpers.git(child, repo, "remote add fork https://example.com/fork.git")
 
   -- Create a new branch with no upstream configured
-  git(child, repo, "checkout -b feature-branch")
+  helpers.git(child, repo, "checkout -b feature-branch")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -337,7 +312,7 @@ T["push popup"]["shows magit-style push actions"] = function()
   eq(found_elsewhere, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push popup"]["closes with q"] = function()
@@ -345,9 +320,9 @@ T["push popup"]["closes with q"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -370,7 +345,7 @@ T["push popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push popup"]["p keybinding appears in help"] = function()
@@ -378,9 +353,9 @@ T["push popup"]["p keybinding appears in help"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -406,7 +381,7 @@ T["push popup"]["p keybinding appears in help"] = function()
   eq(found_push, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Push section tests (o, T, t actions)
@@ -417,9 +392,9 @@ T["push section"]["popup shows Push section with o, T, t actions"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -463,7 +438,7 @@ T["push section"]["popup shows Push section with o, T, t actions"] = function()
   eq(found_all_tags, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push section"]["T action shows no tags message when no tags exist"] = function()
@@ -471,9 +446,9 @@ T["push section"]["T action shows no tags message when no tags exist"] = functio
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no tags)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -491,7 +466,7 @@ T["push section"]["T action shows no tags message when no tags exist"] = functio
   local messages = child.lua_get([[vim.fn.execute("messages")]])
   eq(messages:match("No tags found") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push section"]["t action shows no remotes message when no remotes configured"] = function()
@@ -499,9 +474,9 @@ T["push section"]["t action shows no remotes message when no remotes configured"
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no remote)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -519,7 +494,7 @@ T["push section"]["t action shows no remotes message when no remotes configured"
   local messages = child.lua_get([[vim.fn.execute("messages")]])
   eq(messages:match("No remotes configured") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["push section"]["T action shows tag list when tags exist"] = function()
@@ -527,14 +502,14 @@ T["push section"]["T action shows tag list when tags exist"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit with tags
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  git(child, repo, "tag v1.0.0")
-  git(child, repo, "tag v1.0.1")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.git(child, repo, "tag v1.0.0")
+  helpers.git(child, repo, "tag v1.0.1")
 
   -- Add a remote
-  git(child, repo, "remote add origin https://example.com/repo.git")
+  helpers.git(child, repo, "remote add origin https://example.com/repo.git")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -559,7 +534,7 @@ T["push section"]["T action shows tag list when tags exist"] = function()
   child.type_keys("<Esc>")
   child.lua([[vim.wait(100, function() return false end)]])
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

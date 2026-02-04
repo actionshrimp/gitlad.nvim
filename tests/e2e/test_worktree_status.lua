@@ -3,31 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 -- Helper to get status buffer lines
 local function get_status_lines(child)
   return child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
@@ -58,9 +33,9 @@ T["worktree status section"]["hidden when only main worktree exists"] = function
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (required for worktrees)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -83,7 +58,7 @@ T["worktree status section"]["hidden when only main worktree exists"] = function
 
   eq(found_worktrees, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktree status section"]["shown when 2+ worktrees exist"] = function()
@@ -91,13 +66,13 @@ T["worktree status section"]["shown when 2+ worktrees exist"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (required for worktrees)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second worktree
   local worktree_path = child.lua_get("vim.fn.tempname()")
-  git(child, repo, string.format("worktree add -b feature %s", worktree_path))
+  helpers.git(child, repo, string.format("worktree add -b feature %s", worktree_path))
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -121,8 +96,8 @@ T["worktree status section"]["shown when 2+ worktrees exist"] = function()
   eq(found_worktrees, true)
 
   -- Cleanup
-  git(child, repo, string.format("worktree remove %s", worktree_path))
-  cleanup_repo(child, repo)
+  helpers.git(child, repo, string.format("worktree remove %s", worktree_path))
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktree status section"]["shows current worktree with marker"] = function()
@@ -130,13 +105,13 @@ T["worktree status section"]["shows current worktree with marker"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (required for worktrees)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second worktree
   local worktree_path = child.lua_get("vim.fn.tempname()")
-  git(child, repo, string.format("worktree add -b feature %s", worktree_path))
+  helpers.git(child, repo, string.format("worktree add -b feature %s", worktree_path))
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -170,8 +145,8 @@ T["worktree status section"]["shows current worktree with marker"] = function()
   eq(found_current_marker, true)
 
   -- Cleanup
-  git(child, repo, string.format("worktree remove %s", worktree_path))
-  cleanup_repo(child, repo)
+  helpers.git(child, repo, string.format("worktree remove %s", worktree_path))
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktree status section"]["can be collapsed and expanded"] = function()
@@ -179,13 +154,13 @@ T["worktree status section"]["can be collapsed and expanded"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (required for worktrees)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a second worktree
   local worktree_path = child.lua_get("vim.fn.tempname()")
-  git(child, repo, string.format("worktree add -b feature %s", worktree_path))
+  helpers.git(child, repo, string.format("worktree add -b feature %s", worktree_path))
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -265,8 +240,8 @@ T["worktree status section"]["can be collapsed and expanded"] = function()
   eq(worktree_lines_expanded, worktree_lines_before)
 
   -- Cleanup
-  git(child, repo, string.format("worktree remove %s", worktree_path))
-  cleanup_repo(child, repo)
+  helpers.git(child, repo, string.format("worktree remove %s", worktree_path))
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

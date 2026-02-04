@@ -3,31 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -53,9 +28,9 @@ T["pull popup"]["opens from status buffer with F key"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -99,7 +74,7 @@ T["pull popup"]["opens from status buffer with F key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["pull popup"]["has all expected switches"] = function()
@@ -107,9 +82,9 @@ T["pull popup"]["has all expected switches"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -150,7 +125,7 @@ T["pull popup"]["has all expected switches"] = function()
   eq(found_autostash, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["pull popup"]["switch toggling with -r"] = function()
@@ -158,9 +133,9 @@ T["pull popup"]["switch toggling with -r"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -202,7 +177,7 @@ T["pull popup"]["switch toggling with -r"] = function()
   eq(rebase_enabled_after, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["pull popup"]["shows warning when no upstream configured for u"] = function()
@@ -210,9 +185,9 @@ T["pull popup"]["shows warning when no upstream configured for u"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit (no remote, no upstream)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -233,7 +208,7 @@ T["pull popup"]["shows warning when no upstream configured for u"] = function()
   local messages = child.lua_get([[vim.fn.execute("messages")]])
   eq(messages:match("No upstream configured") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["pull popup"]["closes with q"] = function()
@@ -241,9 +216,9 @@ T["pull popup"]["closes with q"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -266,7 +241,7 @@ T["pull popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["pull popup"]["F keybinding appears in help"] = function()
@@ -274,9 +249,9 @@ T["pull popup"]["F keybinding appears in help"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -302,7 +277,7 @@ T["pull popup"]["F keybinding appears in help"] = function()
   eq(found_pull, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

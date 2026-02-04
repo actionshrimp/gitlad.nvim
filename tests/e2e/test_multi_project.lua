@@ -11,25 +11,7 @@ local function cleanup_test_repo(child_nvim, repo)
 end
 
 -- Helper to create a file in the test repo
-local function create_file(child_nvim, repo, filename, content)
-  child_nvim.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
 -- Helper to run git command in repo
-local function git(child_nvim, repo, args)
-  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
 -- Helper to change directory
 local function cd(child_nvim, dir)
   child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
@@ -62,13 +44,13 @@ T["multi-project"]["can open status for two different repos without E95 error"] 
   local repo_b = helpers.create_test_repo(child)
 
   -- Create initial commits so status works
-  create_file(child, repo_a, "a.txt", "repo a content")
-  git(child, repo_a, "add a.txt")
-  git(child, repo_a, "commit -m 'Initial commit A'")
+  helpers.create_file(child, repo_a, "a.txt", "repo a content")
+  helpers.git(child, repo_a, "add a.txt")
+  helpers.git(child, repo_a, "commit -m 'Initial commit A'")
 
-  create_file(child, repo_b, "b.txt", "repo b content")
-  git(child, repo_b, "add b.txt")
-  git(child, repo_b, "commit -m 'Initial commit B'")
+  helpers.create_file(child, repo_b, "b.txt", "repo b content")
+  helpers.git(child, repo_b, "add b.txt")
+  helpers.git(child, repo_b, "commit -m 'Initial commit B'")
 
   -- Open status for repo A
   cd(child, repo_a)
@@ -110,9 +92,9 @@ T["multi-project"]["reopening same repo focuses existing window"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "content")
-  git(child, repo, "add test.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "test.txt", "content")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   cd(child, repo)
 
@@ -151,15 +133,15 @@ T["multi-project"]["each repo gets independent status buffer"] = function()
   local repo_b = helpers.create_test_repo(child)
 
   -- Create different files in each repo
-  create_file(child, repo_a, "file_a.txt", "content a")
-  git(child, repo_a, "add file_a.txt")
-  git(child, repo_a, "commit -m 'Commit A'")
-  create_file(child, repo_a, "unstaged_a.txt", "unstaged a")
+  helpers.create_file(child, repo_a, "file_a.txt", "content a")
+  helpers.git(child, repo_a, "add file_a.txt")
+  helpers.git(child, repo_a, "commit -m 'Commit A'")
+  helpers.create_file(child, repo_a, "unstaged_a.txt", "unstaged a")
 
-  create_file(child, repo_b, "file_b.txt", "content b")
-  git(child, repo_b, "add file_b.txt")
-  git(child, repo_b, "commit -m 'Commit B'")
-  create_file(child, repo_b, "unstaged_b.txt", "unstaged b")
+  helpers.create_file(child, repo_b, "file_b.txt", "content b")
+  helpers.git(child, repo_b, "add file_b.txt")
+  helpers.git(child, repo_b, "commit -m 'Commit B'")
+  helpers.create_file(child, repo_b, "unstaged_b.txt", "unstaged b")
 
   -- Open repo A's status
   cd(child, repo_a)
@@ -200,13 +182,13 @@ T["multi-project"]["q key closes correct window when multiple status buffers ope
   local repo_b = helpers.create_test_repo(child)
 
   -- Create initial commits
-  create_file(child, repo_a, "a.txt", "content a")
-  git(child, repo_a, "add a.txt")
-  git(child, repo_a, "commit -m 'Commit A'")
+  helpers.create_file(child, repo_a, "a.txt", "content a")
+  helpers.git(child, repo_a, "add a.txt")
+  helpers.git(child, repo_a, "commit -m 'Commit A'")
 
-  create_file(child, repo_b, "b.txt", "content b")
-  git(child, repo_b, "add b.txt")
-  git(child, repo_b, "commit -m 'Commit B'")
+  helpers.create_file(child, repo_b, "b.txt", "content b")
+  helpers.git(child, repo_b, "add b.txt")
+  helpers.git(child, repo_b, "commit -m 'Commit B'")
 
   -- Open status for repo A
   cd(child, repo_a)

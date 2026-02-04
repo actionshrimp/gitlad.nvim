@@ -3,31 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 -- Helper to read the .git/config file contents
 local function read_git_config_file(child, repo)
   child.lua(string.format(
@@ -66,10 +41,10 @@ T["git config"]["config_get returns value when set"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Set a config value using git command
-  git(child, repo, "config test.mykey myvalue")
+  helpers.git(child, repo, "config test.mykey myvalue")
 
   -- Verify it was actually set using git command
-  local git_value = git(child, repo, "config --get test.mykey"):gsub("%s+", "")
+  local git_value = helpers.git(child, repo, "config --get test.mykey"):gsub("%s+", "")
   eq(git_value, "myvalue")
 
   -- Now read it using our config_get
@@ -79,7 +54,7 @@ T["git config"]["config_get returns value when set"] = function()
   local value = child.lua_get([[_G.config_value]])
   eq(value, "myvalue")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git config"]["config_get returns nil when not set"] = function()
@@ -96,7 +71,7 @@ T["git config"]["config_get returns nil when not set"] = function()
   local value = child.lua_get([[_G.config_value]])
   eq(value, vim.NIL)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git config"]["config_set writes value to git config"] = function()
@@ -118,7 +93,7 @@ T["git config"]["config_set writes value to git config"] = function()
   eq(result.success, true)
 
   -- Verify using git command directly
-  local value = git(child, repo, "config --get test.newkey"):gsub("%s+", "")
+  local value = helpers.git(child, repo, "config --get test.newkey"):gsub("%s+", "")
   eq(value, "newvalue")
 
   -- Verify the .git/config file contains the value
@@ -126,7 +101,7 @@ T["git config"]["config_set writes value to git config"] = function()
   eq(config_content:match("%[test%]") ~= nil, true)
   eq(config_content:match("newkey%s*=%s*newvalue") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git config"]["config_unset removes value from git config"] = function()
@@ -134,7 +109,7 @@ T["git config"]["config_unset removes value from git config"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- First set a value
-  git(child, repo, "config test.toremove somevalue")
+  helpers.git(child, repo, "config test.toremove somevalue")
 
   -- Verify it exists in .git/config file
   local config_before = read_git_config_file(child, repo)
@@ -158,7 +133,7 @@ T["git config"]["config_unset removes value from git config"] = function()
   local config_after = read_git_config_file(child, repo)
   eq(config_after:match("toremove%s*=%s*somevalue") == nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git config"]["config_unset succeeds even if key doesn't exist"] = function()
@@ -181,7 +156,7 @@ T["git config"]["config_unset succeeds even if key doesn't exist"] = function()
   -- Should succeed (exit code 5 is acceptable for "key doesn't exist")
   eq(result.success, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Boolean config operations
@@ -191,10 +166,10 @@ T["git config bool"]["config_get_bool returns true for 'true'"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  git(child, repo, "config test.mybool true")
+  helpers.git(child, repo, "config test.mybool true")
 
   -- Verify it was set
-  local git_value = git(child, repo, "config --get test.mybool"):gsub("%s+", "")
+  local git_value = helpers.git(child, repo, "config --get test.mybool"):gsub("%s+", "")
   eq(git_value, "true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -203,14 +178,14 @@ T["git config bool"]["config_get_bool returns true for 'true'"] = function()
   local value = child.lua_get([[_G.bool_result]])
   eq(value, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git config bool"]["config_get_bool returns false for 'false'"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  git(child, repo, "config test.mybool false")
+  helpers.git(child, repo, "config test.mybool false")
 
   child.lua(string.format(
     [[
@@ -222,7 +197,7 @@ T["git config bool"]["config_get_bool returns false for 'false'"] = function()
   local value = child.lua_get([[_G.bool_result]])
   eq(value, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git config bool"]["config_get_bool returns false for unset"] = function()
@@ -239,14 +214,14 @@ T["git config bool"]["config_get_bool returns false for unset"] = function()
   local value = child.lua_get([[_G.bool_result]])
   eq(value, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git config bool"]["config_toggle toggles false to true"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  git(child, repo, "config test.toggle false")
+  helpers.git(child, repo, "config test.toggle false")
 
   child.lua(string.format(
     [[
@@ -263,20 +238,20 @@ T["git config bool"]["config_toggle toggles false to true"] = function()
   eq(result.new_value, true)
 
   -- Verify in git config
-  local value = git(child, repo, "config --get test.toggle"):gsub("%s+", "")
+  local value = helpers.git(child, repo, "config --get test.toggle"):gsub("%s+", "")
   eq(value, "true")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["git config bool"]["config_toggle toggles true to false"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  git(child, repo, "config test.toggle true")
+  helpers.git(child, repo, "config test.toggle true")
 
   -- Verify it was set
-  local git_value = git(child, repo, "config --get test.toggle"):gsub("%s+", "")
+  local git_value = helpers.git(child, repo, "config --get test.toggle"):gsub("%s+", "")
   eq(git_value, "true")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -292,10 +267,10 @@ T["git config bool"]["config_toggle toggles true to false"] = function()
   eq(result.new_value, false)
 
   -- Verify in git config
-  local value = git(child, repo, "config --get test.toggle"):gsub("%s+", "")
+  local value = helpers.git(child, repo, "config --get test.toggle"):gsub("%s+", "")
   eq(value, "false")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Branch-specific config (upstream/pushRemote)
@@ -306,11 +281,11 @@ T["branch config"]["setting upstream sets both remote and merge"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and branch
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  git(child, repo, "checkout -b feature-branch")
-  git(child, repo, "remote add origin https://example.com/repo.git")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.git(child, repo, "checkout -b feature-branch")
+  helpers.git(child, repo, "remote add origin https://example.com/repo.git")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -334,8 +309,8 @@ T["branch config"]["setting upstream sets both remote and merge"] = function()
   eq(result.success, true)
 
   -- Verify both values are set correctly in git config
-  local remote = git(child, repo, "config --get branch.feature-branch.remote"):gsub("%s+", "")
-  local merge = git(child, repo, "config --get branch.feature-branch.merge"):gsub("%s+", "")
+  local remote = helpers.git(child, repo, "config --get branch.feature-branch.remote"):gsub("%s+", "")
+  local merge = helpers.git(child, repo, "config --get branch.feature-branch.merge"):gsub("%s+", "")
 
   eq(remote, "origin")
   eq(merge, "refs/heads/main")
@@ -346,7 +321,7 @@ T["branch config"]["setting upstream sets both remote and merge"] = function()
   eq(config_content:match("remote%s*=%s*origin") ~= nil, true)
   eq(config_content:match("merge%s*=%s*refs/heads/main") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch config"]["setting local upstream sets remote to dot"] = function()
@@ -354,10 +329,10 @@ T["branch config"]["setting local upstream sets remote to dot"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and branches
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  git(child, repo, "checkout -b feature-branch")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.git(child, repo, "checkout -b feature-branch")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -381,14 +356,14 @@ T["branch config"]["setting local upstream sets remote to dot"] = function()
   eq(result.success, true)
 
   -- Verify remote is set to "." in git config
-  local remote = git(child, repo, "config --get branch.feature-branch.remote"):gsub("%s+", "")
+  local remote = helpers.git(child, repo, "config --get branch.feature-branch.remote"):gsub("%s+", "")
   eq(remote, ".")
 
   -- Verify the .git/config file contains the literal dot
   local config_content = read_git_config_file(child, repo)
   eq(config_content:match("remote%s*=%s*%.") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch config"]["unsetting upstream clears both remote and merge"] = function()
@@ -396,13 +371,13 @@ T["branch config"]["unsetting upstream clears both remote and merge"] = function
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and branch with upstream configured
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  git(child, repo, "checkout -b feature-branch")
-  git(child, repo, "remote add origin https://example.com/repo.git")
-  git(child, repo, "config branch.feature-branch.remote origin")
-  git(child, repo, "config branch.feature-branch.merge refs/heads/main")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.git(child, repo, "checkout -b feature-branch")
+  helpers.git(child, repo, "remote add origin https://example.com/repo.git")
+  helpers.git(child, repo, "config branch.feature-branch.remote origin")
+  helpers.git(child, repo, "config branch.feature-branch.merge refs/heads/main")
 
   -- Verify they're set in .git/config file
   local config_before = read_git_config_file(child, repo)
@@ -436,7 +411,7 @@ T["branch config"]["unsetting upstream clears both remote and merge"] = function
   eq(config_after:match("remote%s*=%s*origin") == nil, true)
   eq(config_after:match("merge%s*=%s*refs/heads/main") == nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch config"]["pushRemote is set correctly"] = function()
@@ -444,12 +419,12 @@ T["branch config"]["pushRemote is set correctly"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit and branch
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  git(child, repo, "checkout -b feature-branch")
-  git(child, repo, "remote add origin https://example.com/repo.git")
-  git(child, repo, "remote add fork https://example.com/fork.git")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.git(child, repo, "checkout -b feature-branch")
+  helpers.git(child, repo, "remote add origin https://example.com/repo.git")
+  helpers.git(child, repo, "remote add fork https://example.com/fork.git")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -469,14 +444,14 @@ T["branch config"]["pushRemote is set correctly"] = function()
 
   -- Verify in git config
   local pushRemote =
-    git(child, repo, "config --get branch.feature-branch.pushRemote"):gsub("%s+", "")
+    helpers.git(child, repo, "config --get branch.feature-branch.pushRemote"):gsub("%s+", "")
   eq(pushRemote, "fork")
 
   -- Verify in .git/config file
   local config_content = read_git_config_file(child, repo)
   eq(config_content:match("pushRemote%s*=%s*fork") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch config"]["remote.pushDefault is set correctly"] = function()
@@ -484,11 +459,11 @@ T["branch config"]["remote.pushDefault is set correctly"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create repo with remotes
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
-  git(child, repo, "remote add origin https://example.com/repo.git")
-  git(child, repo, "remote add upstream https://example.com/upstream.git")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.git(child, repo, "remote add origin https://example.com/repo.git")
+  helpers.git(child, repo, "remote add upstream https://example.com/upstream.git")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
 
@@ -507,7 +482,7 @@ T["branch config"]["remote.pushDefault is set correctly"] = function()
   eq(result.success, true)
 
   -- Verify in git config
-  local pushDefault = git(child, repo, "config --get remote.pushDefault"):gsub("%s+", "")
+  local pushDefault = helpers.git(child, repo, "config --get remote.pushDefault"):gsub("%s+", "")
   eq(pushDefault, "upstream")
 
   -- Verify in .git/config file
@@ -515,7 +490,7 @@ T["branch config"]["remote.pushDefault is set correctly"] = function()
   eq(config_content:match("%[remote%]") ~= nil, true)
   eq(config_content:match("pushDefault%s*=%s*upstream") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

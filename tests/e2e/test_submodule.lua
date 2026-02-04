@@ -6,30 +6,6 @@ local helpers = require("tests.helpers")
 local child = MiniTest.new_child_neovim()
 
 -- Helper to create a file in the repo
-local function create_file(child_nvim, repo, filename, content)
-  child_nvim.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child_nvim, repo, args)
-  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child_nvim, repo)
-  child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 -- Helper to create a repo with a submodule
 local function create_repo_with_submodule(child_nvim)
   -- Create the submodule repo first
@@ -47,15 +23,15 @@ local function create_repo_with_submodule(child_nvim)
   ))
 
   -- Create initial commit in submodule
-  create_file(child_nvim, submodule_repo, "subfile.txt", "submodule content")
-  git(child_nvim, submodule_repo, "add subfile.txt")
-  git(child_nvim, submodule_repo, 'commit -m "Initial submodule commit"')
+  helpers.create_file(child_nvim, submodule_repo, "subfile.txt", "submodule content")
+  helpers.git(child_nvim, submodule_repo, "add subfile.txt")
+  helpers.git(child_nvim, submodule_repo, 'commit -m "Initial submodule commit"')
 
   -- Create the parent repo
   local parent_repo = helpers.create_test_repo(child_nvim)
-  create_file(child_nvim, parent_repo, "main.txt", "main content")
-  git(child_nvim, parent_repo, "add main.txt")
-  git(child_nvim, parent_repo, 'commit -m "Initial commit"')
+  helpers.create_file(child_nvim, parent_repo, "main.txt", "main content")
+  helpers.git(child_nvim, parent_repo, "add main.txt")
+  helpers.git(child_nvim, parent_repo, 'commit -m "Initial commit"')
 
   -- Add submodule to parent
   -- Use -c protocol.file.allow=always to allow file:// protocol (Git security feature)
@@ -66,7 +42,7 @@ local function create_repo_with_submodule(child_nvim)
       submodule_repo
     )
   )
-  git(child_nvim, parent_repo, 'commit -m "Add submodule"')
+  helpers.git(child_nvim, parent_repo, 'commit -m "Add submodule"')
 
   return parent_repo, submodule_repo
 end
@@ -120,17 +96,17 @@ T["submodule section"]["shows Submodules section when enabled"] = function()
   eq(found_submodules_section, true)
   eq(found_submodule_entry, true)
 
-  cleanup_repo(child, parent_repo)
-  cleanup_repo(child, submodule_repo)
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
 end
 
 T["submodule section"]["hides Submodules section when no submodules"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit only (no submodules)
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Open status view
   helpers.cd(child, repo)
@@ -154,7 +130,7 @@ T["submodule section"]["hides Submodules section when no submodules"] = function
 
   eq(found_submodules_section, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Submodule popup tests
@@ -164,9 +140,9 @@ T["submodule popup"]["opens from status buffer with ' key"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   helpers.cd(child, repo)
@@ -210,16 +186,16 @@ T["submodule popup"]["opens from status buffer with ' key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["submodule popup"]["has all expected switches"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -256,16 +232,16 @@ T["submodule popup"]["has all expected switches"] = function()
   eq(found_no_fetch, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["submodule popup"]["closes with q"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -289,16 +265,16 @@ T["submodule popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["submodule popup"]["' keybinding appears in help"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -325,7 +301,7 @@ T["submodule popup"]["' keybinding appears in help"] = function()
   eq(found_submodule, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Submodule navigation tests
@@ -376,8 +352,8 @@ T["submodule navigation"]["gj/gk navigates to submodule entries"] = function()
   local final_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
   eq(final_line, submodule_line)
 
-  cleanup_repo(child, parent_repo)
-  cleanup_repo(child, submodule_repo)
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
 end
 
 T["submodule navigation"]["TAB collapses and expands submodule section"] = function()
@@ -462,8 +438,8 @@ T["submodule navigation"]["TAB collapses and expands submodule section"] = funct
   ]])
   eq(child.lua_get([[_G.has_submodule_entry_after_expand]]), true)
 
-  cleanup_repo(child, parent_repo)
-  cleanup_repo(child, submodule_repo)
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
 end
 
 -- Submodule RET behavior tests
@@ -500,8 +476,8 @@ T["submodule RET"]["RET on submodule opens its directory"] = function()
   local submodule_line = child.lua_get([[_G.found_submodule_line]])
   -- Skip test if submodule line not found (shouldn't happen but makes test more robust)
   if submodule_line == nil or submodule_line == vim.NIL then
-    cleanup_repo(child, parent_repo)
-    cleanup_repo(child, submodule_repo)
+    helpers.cleanup_repo(child, parent_repo)
+    helpers.cleanup_repo(child, submodule_repo)
     return
   end
 
@@ -518,8 +494,8 @@ T["submodule RET"]["RET on submodule opens its directory"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("mysub") ~= nil, true)
 
-  cleanup_repo(child, parent_repo)
-  cleanup_repo(child, submodule_repo)
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
 end
 
 -- Submodule popup on submodule entry tests
@@ -573,20 +549,20 @@ T["submodule popup context"]["' on submodule entry shows submodule path in popup
   eq(found_path, true)
 
   child.type_keys("q")
-  cleanup_repo(child, parent_repo)
-  cleanup_repo(child, submodule_repo)
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
 end
 
 T["submodule popup context"]["' on submodule in unstaged changes shows path in popup"] = function()
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Modify the submodule (create a new commit in it) so it appears in Unstaged changes
-  create_file(child, submodule_repo, "newfile.txt", "new content")
-  git(child, submodule_repo, "add newfile.txt")
-  git(child, submodule_repo, 'commit -m "New commit in submodule"')
+  helpers.create_file(child, submodule_repo, "newfile.txt", "new content")
+  helpers.git(child, submodule_repo, "add newfile.txt")
+  helpers.git(child, submodule_repo, 'commit -m "New commit in submodule"')
 
   -- Update the submodule in parent to new commit (this makes it show as modified/unstaged)
-  git(child, parent_repo, "submodule update --remote mysub")
+  helpers.git(child, parent_repo, "submodule update --remote mysub")
 
   -- Disable dedicated submodules section to ensure we test the file entry path
   child.lua(
@@ -621,8 +597,8 @@ T["submodule popup context"]["' on submodule in unstaged changes shows path in p
 
   -- Skip test if no unstaged submodule found (may not show depending on git version)
   if unstaged_line == nil or unstaged_line == vim.NIL then
-    cleanup_repo(child, parent_repo)
-    cleanup_repo(child, submodule_repo)
+    helpers.cleanup_repo(child, parent_repo)
+    helpers.cleanup_repo(child, submodule_repo)
     return
   end
 
@@ -651,8 +627,8 @@ T["submodule popup context"]["' on submodule in unstaged changes shows path in p
   eq(found_path, true)
 
   child.type_keys("q")
-  cleanup_repo(child, parent_repo)
-  cleanup_repo(child, submodule_repo)
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
 end
 
 -- Submodule diff tests
@@ -662,12 +638,12 @@ T["submodule diff"]["TAB on submodule in Submodules section shows SHA diff"] = f
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Modify the submodule (create a new commit in it)
-  create_file(child, submodule_repo, "newfile.txt", "new content")
-  git(child, submodule_repo, "add newfile.txt")
-  git(child, submodule_repo, 'commit -m "New commit in submodule"')
+  helpers.create_file(child, submodule_repo, "newfile.txt", "new content")
+  helpers.git(child, submodule_repo, "add newfile.txt")
+  helpers.git(child, submodule_repo, 'commit -m "New commit in submodule"')
 
   -- Also update the submodule in the parent to the new commit
-  git(child, parent_repo, "submodule update --remote mysub")
+  helpers.git(child, parent_repo, "submodule update --remote mysub")
 
   -- Enable submodules section for this test
   child.lua(
@@ -702,8 +678,8 @@ T["submodule diff"]["TAB on submodule in Submodules section shows SHA diff"] = f
 
   -- Skip test if no submodule entry found (shouldn't happen with proper setup)
   if submodule_line == nil or submodule_line == vim.NIL then
-    cleanup_repo(child, parent_repo)
-    cleanup_repo(child, submodule_repo)
+    helpers.cleanup_repo(child, parent_repo)
+    helpers.cleanup_repo(child, submodule_repo)
     return
   end
 
@@ -733,20 +709,20 @@ T["submodule diff"]["TAB on submodule in Submodules section shows SHA diff"] = f
   eq(child.lua_get([[_G.found_minus_sha]]), true)
   eq(child.lua_get([[_G.found_plus_sha]]), true)
 
-  cleanup_repo(child, parent_repo)
-  cleanup_repo(child, submodule_repo)
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
 end
 
 T["submodule diff"]["TAB on submodule in Unstaged section shows SHA diff"] = function()
   local parent_repo, submodule_repo = create_repo_with_submodule(child)
 
   -- Modify the submodule (create a new commit in it)
-  create_file(child, submodule_repo, "newfile.txt", "new content")
-  git(child, submodule_repo, "add newfile.txt")
-  git(child, submodule_repo, 'commit -m "New commit in submodule"')
+  helpers.create_file(child, submodule_repo, "newfile.txt", "new content")
+  helpers.git(child, submodule_repo, "add newfile.txt")
+  helpers.git(child, submodule_repo, 'commit -m "New commit in submodule"')
 
   -- Update the submodule in the parent to the new commit (this makes it appear in unstaged)
-  git(child, parent_repo, "submodule update --remote mysub")
+  helpers.git(child, parent_repo, "submodule update --remote mysub")
 
   -- Disable dedicated submodules section - submodule will only appear in Unstaged
   child.lua(
@@ -781,8 +757,8 @@ T["submodule diff"]["TAB on submodule in Unstaged section shows SHA diff"] = fun
 
   -- Skip test if no submodule entry found (depends on git version behavior)
   if submodule_line == nil or submodule_line == vim.NIL then
-    cleanup_repo(child, parent_repo)
-    cleanup_repo(child, submodule_repo)
+    helpers.cleanup_repo(child, parent_repo)
+    helpers.cleanup_repo(child, submodule_repo)
     return
   end
 
@@ -818,8 +794,8 @@ T["submodule diff"]["TAB on submodule in Unstaged section shows SHA diff"] = fun
   eq(child.lua_get([[_G.found_minus_sha]]), true)
   eq(child.lua_get([[_G.found_plus_sha]]), true)
 
-  cleanup_repo(child, parent_repo)
-  cleanup_repo(child, submodule_repo)
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
 end
 
 -- Submodule list action test
@@ -868,8 +844,8 @@ T["submodule list"]["l action triggers submodule list"] = function()
   end
   eq(found_mysub, true)
 
-  cleanup_repo(child, parent_repo)
-  cleanup_repo(child, submodule_repo)
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
 end
 
 return T

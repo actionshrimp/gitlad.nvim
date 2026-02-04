@@ -3,32 +3,7 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
 -- Helper to run a git command
-local function git(child, repo, args)
-  -- Use %q to properly escape the entire command
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -54,8 +29,8 @@ T["commit popup"]["opens from status buffer with c key"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create and stage a file
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
 
   -- Change to repo directory and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -104,7 +79,7 @@ T["commit popup"]["opens from status buffer with c key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit popup"]["has all expected switches"] = function()
@@ -150,7 +125,7 @@ T["commit popup"]["has all expected switches"] = function()
   eq(found_no_verify, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Commit editor tests
@@ -161,8 +136,8 @@ T["commit editor"]["opens when pressing c in commit popup"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create and stage a file
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -183,15 +158,15 @@ T["commit editor"]["opens when pressing c in commit popup"] = function()
   local filetype = child.lua_get([[vim.bo.filetype]])
   eq(filetype, "gitcommit")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit editor"]["has help comments"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -213,15 +188,15 @@ T["commit editor"]["has help comments"] = function()
 
   eq(found_help, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit editor"]["aborts with C-c C-k"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -242,18 +217,18 @@ T["commit editor"]["aborts with C-c C-k"] = function()
   eq(bufname:match("gitlad://status") ~= nil, true)
 
   -- Verify no commit was made
-  local log = git(child, repo, "log --oneline 2>&1")
+  local log = helpers.git(child, repo, "log --oneline 2>&1")
   eq(log:match("does not have any commits") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit editor"]["can close status with q after abort"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -314,7 +289,7 @@ T["commit editor"]["can close status with q after abort"] = function()
   bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") == nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit editor"]["rapid q after abort does not error"] = function()
@@ -322,8 +297,8 @@ T["commit editor"]["rapid q after abort does not error"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -353,7 +328,7 @@ T["commit editor"]["rapid q after abort does not error"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") == nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit editor"]["q works after abort without error"] = function()
@@ -361,8 +336,8 @@ T["commit editor"]["q works after abort without error"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -396,15 +371,15 @@ T["commit editor"]["q works after abort without error"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") == nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit editor"]["creates commit with C-c C-c"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -430,10 +405,10 @@ T["commit editor"]["creates commit with C-c C-c"] = function()
   eq(bufname:match("gitlad://status") ~= nil, true)
 
   -- Verify commit was made
-  local log = git(child, repo, "log --oneline")
+  local log = helpers.git(child, repo, "log --oneline")
   eq(log:match("Test commit message") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit editor"]["shows staged files summary"] = function()
@@ -441,15 +416,15 @@ T["commit editor"]["shows staged files summary"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create and stage multiple files
-  create_file(child, repo, "new_file.txt", "new content")
-  create_file(child, repo, "modified.txt", "original")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "new_file.txt", "new content")
+  helpers.create_file(child, repo, "modified.txt", "original")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify and stage
-  create_file(child, repo, "modified.txt", "modified content")
-  create_file(child, repo, "another_new.txt", "more content")
-  git(child, repo, "add .")
+  helpers.create_file(child, repo, "modified.txt", "modified content")
+  helpers.create_file(child, repo, "another_new.txt", "more content")
+  helpers.git(child, repo, "add .")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -485,15 +460,15 @@ T["commit editor"]["shows staged files summary"] = function()
   eq(found_new, true)
 
   child.type_keys("<C-c><C-k>")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit editor"]["opens in split above status"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -526,7 +501,7 @@ T["commit editor"]["opens in split above status"] = function()
   eq(editor_row < status_row, true)
 
   child.type_keys("<C-c><C-k>")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Validation tests
@@ -537,7 +512,7 @@ T["commit validation"]["prevents commit with nothing staged"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create a file but don't stage it
-  create_file(child, repo, "test.txt", "hello")
+  helpers.create_file(child, repo, "test.txt", "hello")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -561,7 +536,7 @@ T["commit validation"]["prevents commit with nothing staged"] = function()
   eq(messages:match("Nothing staged") ~= nil, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit validation"]["allows commit with -a flag when nothing staged"] = function()
@@ -569,12 +544,12 @@ T["commit validation"]["allows commit with -a flag when nothing staged"] = funct
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify file but don't stage it
-  create_file(child, repo, "test.txt", "modified")
+  helpers.create_file(child, repo, "test.txt", "modified")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -597,7 +572,7 @@ T["commit validation"]["allows commit with -a flag when nothing staged"] = funct
   eq(bufname:match("COMMIT_EDITMSG") ~= nil, true)
 
   child.type_keys("<C-c><C-k>")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

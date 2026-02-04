@@ -3,32 +3,7 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
 -- Helper to run a git command
-local function git(child, repo, args)
-  -- Use %q to properly escape the entire command
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -54,13 +29,13 @@ T["extend action"]["amends without opening editor"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Modify file and stage
-  create_file(child, repo, "test.txt", "hello world")
-  git(child, repo, "add test.txt")
+  helpers.create_file(child, repo, "test.txt", "hello world")
+  helpers.git(child, repo, "add test.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -73,7 +48,7 @@ T["extend action"]["amends without opening editor"] = function()
   child.lua([[vim.wait(500, function() return false end)]])
 
   -- Verify only one commit exists (amend, not new commit)
-  local log = git(child, repo, "log --oneline")
+  local log = helpers.git(child, repo, "log --oneline")
   local commit_count = 0
   for _ in log:gmatch("[^\n]+") do
     commit_count = commit_count + 1
@@ -81,10 +56,10 @@ T["extend action"]["amends without opening editor"] = function()
   eq(commit_count, 1)
 
   -- Verify the file change is in the commit
-  local show = git(child, repo, "show --name-only")
+  local show = helpers.git(child, repo, "show --name-only")
   eq(show:match("test.txt") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Amend action tests
@@ -95,9 +70,9 @@ T["amend action"]["opens editor with previous commit message"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "My original message"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "My original message"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -121,7 +96,7 @@ T["amend action"]["opens editor with previous commit message"] = function()
 
   -- Clean up - abort the amend
   child.type_keys("<C-c><C-k>")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Reword action tests
@@ -132,9 +107,9 @@ T["reword action"]["opens editor with previous commit message"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Original commit message"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Original commit message"')
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -158,7 +133,7 @@ T["reword action"]["opens editor with previous commit message"] = function()
 
   -- Clean up - abort the reword
   child.type_keys("<C-c><C-k>")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["reword action"]["ignores staged changes"] = function()
@@ -166,13 +141,13 @@ T["reword action"]["ignores staged changes"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Stage a new file that should NOT be included in the reword
-  create_file(child, repo, "newfile.txt", "new content")
-  git(child, repo, "add newfile.txt")
+  helpers.create_file(child, repo, "newfile.txt", "new content")
+  helpers.git(child, repo, "add newfile.txt")
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
@@ -196,7 +171,7 @@ T["reword action"]["ignores staged changes"] = function()
   child.lua([[vim.wait(1500, function() return false end)]])
 
   -- Verify only one commit exists (reword, not new commit)
-  local log = git(child, repo, "log --oneline")
+  local log = helpers.git(child, repo, "log --oneline")
   local commit_count = 0
   for _ in log:gmatch("[^\n]+") do
     commit_count = commit_count + 1
@@ -204,18 +179,18 @@ T["reword action"]["ignores staged changes"] = function()
   eq(commit_count, 1)
 
   -- Verify commit message was changed
-  local message = git(child, repo, "log -1 --pretty=%B")
+  local message = helpers.git(child, repo, "log -1 --pretty=%B")
   eq(message:match("Reworded message") ~= nil, true)
 
   -- Verify newfile.txt is NOT in the commit (still staged, not committed)
-  local show = git(child, repo, "show --name-only")
+  local show = helpers.git(child, repo, "show --name-only")
   eq(show:match("newfile.txt") == nil, true)
 
   -- Verify newfile.txt is still staged
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   eq(status:match("A%s+newfile.txt") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

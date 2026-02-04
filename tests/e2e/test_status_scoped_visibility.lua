@@ -26,28 +26,6 @@ local T = MiniTest.new_set({
   },
 })
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local dir = vim.fn.fnamemodify(path, ":h")
-    vim.fn.mkdir(dir, "p")
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run git command in repo
-local function git(child, repo, args)
-  return child.lua_get(string.format("vim.fn.system('git -C ' .. %q .. ' ' .. %q)", repo, args))
-end
-
 -- Helper to get buffer lines
 local function get_buffer_lines(child)
   return child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -87,14 +65,14 @@ T["scoped visibility on file"]["4 on file line expands only that file"] = functi
   local repo = helpers.create_test_repo(child)
 
   -- Create two files with changes
-  create_file(child, repo, "file1.txt", "original1\n")
-  create_file(child, repo, "file2.txt", "original2\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file1.txt", "original1\n")
+  helpers.create_file(child, repo, "file2.txt", "original2\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify both files
-  create_file(child, repo, "file1.txt", "modified1\n")
-  create_file(child, repo, "file2.txt", "modified2\n")
+  helpers.create_file(child, repo, "file1.txt", "modified1\n")
+  helpers.create_file(child, repo, "file2.txt", "modified2\n")
 
   open_gitlad(child, repo)
 
@@ -147,14 +125,14 @@ T["scoped visibility on file"]["1 on file collapses parent section and moves cur
   local repo = helpers.create_test_repo(child)
 
   -- Create two files with changes
-  create_file(child, repo, "file1.txt", "original1\n")
-  create_file(child, repo, "file2.txt", "original2\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file1.txt", "original1\n")
+  helpers.create_file(child, repo, "file2.txt", "original2\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify both files
-  create_file(child, repo, "file1.txt", "modified1\n")
-  create_file(child, repo, "file2.txt", "modified2\n")
+  helpers.create_file(child, repo, "file1.txt", "modified1\n")
+  helpers.create_file(child, repo, "file2.txt", "modified2\n")
 
   open_gitlad(child, repo)
 
@@ -216,12 +194,12 @@ T["scoped visibility on file"]["3 on file shows headers only for that file"] = f
   local repo = helpers.create_test_repo(child)
 
   -- Create a file with changes
-  create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "line1\nline2\nline3\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify file
-  create_file(child, repo, "file.txt", "modified1\nmodified2\nmodified3\n")
+  helpers.create_file(child, repo, "file.txt", "modified1\nmodified2\nmodified3\n")
 
   open_gitlad(child, repo)
 
@@ -261,14 +239,14 @@ T["scoped visibility on section"]["4 on section header expands all files in sect
   local repo = helpers.create_test_repo(child)
 
   -- Create files with changes
-  create_file(child, repo, "file1.txt", "original1\n")
-  create_file(child, repo, "file2.txt", "original2\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file1.txt", "original1\n")
+  helpers.create_file(child, repo, "file2.txt", "original2\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify both files
-  create_file(child, repo, "file1.txt", "modified1\n")
-  create_file(child, repo, "file2.txt", "modified2\n")
+  helpers.create_file(child, repo, "file1.txt", "modified1\n")
+  helpers.create_file(child, repo, "file2.txt", "modified2\n")
 
   open_gitlad(child, repo)
 
@@ -308,14 +286,14 @@ T["scoped visibility on section"]["1 on section header collapses all files in se
   local repo = helpers.create_test_repo(child)
 
   -- Create files with changes
-  create_file(child, repo, "file1.txt", "original1\n")
-  create_file(child, repo, "file2.txt", "original2\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file1.txt", "original1\n")
+  helpers.create_file(child, repo, "file2.txt", "original2\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify both files
-  create_file(child, repo, "file1.txt", "modified1\n")
-  create_file(child, repo, "file2.txt", "modified2\n")
+  helpers.create_file(child, repo, "file1.txt", "modified1\n")
+  helpers.create_file(child, repo, "file2.txt", "modified2\n")
 
   open_gitlad(child, repo)
 
@@ -364,10 +342,10 @@ T["global visibility"]["1/2/3/4 on header applies globally"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create a file with changes
-  create_file(child, repo, "file.txt", "original\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
-  create_file(child, repo, "file.txt", "modified\n")
+  helpers.create_file(child, repo, "file.txt", "original\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "modified\n")
 
   open_gitlad(child, repo)
 

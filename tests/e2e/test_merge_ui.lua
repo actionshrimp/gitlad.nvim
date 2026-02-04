@@ -6,30 +6,6 @@ local helpers = require("tests.helpers")
 local child = MiniTest.new_child_neovim()
 
 -- Helper to create a file in the repo
-local function create_file(child_nvim, repo, filename, content)
-  child_nvim.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child_nvim, repo, args)
-  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child_nvim, repo)
-  child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -47,9 +23,9 @@ T["merge popup"]["opens from status buffer with m key"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Change to repo directory and open status
   helpers.cd(child, repo)
@@ -87,16 +63,16 @@ T["merge popup"]["opens from status buffer with m key"] = function()
 
   -- Clean up
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge popup"]["has all expected switches"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -128,16 +104,16 @@ T["merge popup"]["has all expected switches"] = function()
   eq(found_no_ff, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge popup"]["closes with q"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -161,16 +137,16 @@ T["merge popup"]["closes with q"] = function()
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("gitlad://status") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge popup"]["m keybinding appears in help"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -197,31 +173,31 @@ T["merge popup"]["m keybinding appears in help"] = function()
   eq(found_merge, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["merge popup"]["shows in-progress popup during merge conflict"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   -- Start merge with conflict
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -277,7 +253,7 @@ T["merge popup"]["shows in-progress popup during merge conflict"] = function()
   eq(found_normal_merge, false) -- Squash should NOT be in in-progress popup
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Branch selection tests
@@ -287,16 +263,16 @@ T["branch selection"]["prompts with vim.ui.select when no context branch"] = fun
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create a feature branch
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "feature.txt", "feature")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Feature"')
-  git(child, repo, "checkout main")
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "feature.txt", "feature")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout main")
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -338,21 +314,21 @@ T["branch selection"]["prompts with vim.ui.select when no context branch"] = fun
 
   -- Restore
   child.lua([[vim.ui.select = _G.original_select]])
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch selection"]["excludes current branch from selection list"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branches
-  git(child, repo, "checkout -b feature1")
-  git(child, repo, "checkout -b feature2")
-  git(child, repo, "checkout main")
+  helpers.git(child, repo, "checkout -b feature1")
+  helpers.git(child, repo, "checkout -b feature2")
+  helpers.git(child, repo, "checkout main")
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -387,16 +363,16 @@ T["branch selection"]["excludes current branch from selection list"] = function(
   eq(found_main, false)
 
   child.lua([[vim.ui.select = _G.original_select]])
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["branch selection"]["shows notification when no branches available"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main - only one branch exists
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -428,7 +404,7 @@ T["branch selection"]["shows notification when no branches available"] = functio
   eq(found_no_branches, true)
 
   child.lua([[vim.notify = _G.original_notify]])
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Abort confirmation tests
@@ -438,21 +414,21 @@ T["abort confirmation"]["does not abort when user selects No"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main"')
 
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   helpers.cd(child, repo)
 
@@ -488,28 +464,28 @@ T["abort confirmation"]["does not abort when user selects No"] = function()
   eq(in_progress_after, true)
 
   child.lua([[vim.ui.select = _G.original_select]])
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["abort confirmation"]["aborts when user selects Yes"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main"')
 
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   helpers.cd(child, repo)
 
@@ -540,7 +516,7 @@ T["abort confirmation"]["aborts when user selects Yes"] = function()
   eq(in_progress_after, false)
 
   child.lua([[vim.ui.select = _G.original_select]])
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Switch toggling tests
@@ -549,16 +525,16 @@ T["switch toggling"] = MiniTest.new_set()
 T["switch toggling"]["multiple switches can be combined"] = function()
   local repo = helpers.create_test_repo(child)
 
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "feature.txt", "feature")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "feature.txt", "feature")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
-  git(child, repo, "checkout main")
+  helpers.git(child, repo, "checkout main")
 
   helpers.cd(child, repo)
   child.cmd("Gitlad")
@@ -589,7 +565,7 @@ T["switch toggling"]["multiple switches can be combined"] = function()
   eq(found_switch_line, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

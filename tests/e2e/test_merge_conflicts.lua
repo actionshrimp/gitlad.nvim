@@ -6,30 +6,6 @@ local helpers = require("tests.helpers")
 local child = MiniTest.new_child_neovim()
 
 -- Helper to create a file in the repo
-local function create_file(child_nvim, repo, filename, content)
-  child_nvim.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child_nvim, repo, args)
-  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child_nvim, repo)
-  child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 -- Helper to change directory
 local function cd(child_nvim, dir)
   child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
@@ -52,27 +28,27 @@ T["staging conflicted files"]["s on conflicted file stages it (marks as resolved
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   -- Start merge with conflict
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   -- Resolve conflict manually
-  create_file(child, repo, "test.txt", "line1\nresolved")
+  helpers.create_file(child, repo, "test.txt", "line1\nresolved")
 
   cd(child, repo)
   child.cmd("Gitlad")
@@ -109,7 +85,7 @@ T["staging conflicted files"]["s on conflicted file stages it (marks as resolved
   helpers.wait_for_var(child, "_G.gitlad_stage_complete", 1000)
 
   -- Verify file is now staged (in git status)
-  local staged_status = git(child, repo, "diff --cached --name-only")
+  local staged_status = helpers.git(child, repo, "diff --cached --name-only")
   eq(staged_status:match("test%.txt") ~= nil, true)
 
   -- Verify merge can now be completed
@@ -133,38 +109,38 @@ T["staging conflicted files"]["s on conflicted file stages it (marks as resolved
     child.lua_get(string.format([[require("gitlad.git").merge_in_progress({ cwd = %q })]], repo))
   eq(in_progress, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["staging conflicted files"]["s on Conflicted section header stages all conflicted files"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main with two files
-  create_file(child, repo, "file1.txt", "content1")
-  create_file(child, repo, "file2.txt", "content2")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file1.txt", "content1")
+  helpers.create_file(child, repo, "file2.txt", "content2")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting changes
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "file1.txt", "feature1")
-  create_file(child, repo, "file2.txt", "feature2")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Feature changes"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "file1.txt", "feature1")
+  helpers.create_file(child, repo, "file2.txt", "feature2")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Feature changes"')
 
   -- Go back to main and make conflicting changes
-  git(child, repo, "checkout main")
-  create_file(child, repo, "file1.txt", "main1")
-  create_file(child, repo, "file2.txt", "main2")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Main changes"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "file1.txt", "main1")
+  helpers.create_file(child, repo, "file2.txt", "main2")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Main changes"')
 
   -- Start merge with conflict
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   -- Resolve conflicts manually
-  create_file(child, repo, "file1.txt", "resolved1")
-  create_file(child, repo, "file2.txt", "resolved2")
+  helpers.create_file(child, repo, "file1.txt", "resolved1")
+  helpers.create_file(child, repo, "file2.txt", "resolved2")
 
   cd(child, repo)
   child.cmd("Gitlad")
@@ -196,11 +172,11 @@ T["staging conflicted files"]["s on Conflicted section header stages all conflic
   helpers.wait_for_var(child, "_G.gitlad_stage_complete", 1000)
 
   -- Verify both files are now staged
-  local staged_status = git(child, repo, "diff --cached --name-only")
+  local staged_status = helpers.git(child, repo, "diff --cached --name-only")
   eq(staged_status:match("file1%.txt") ~= nil, true)
   eq(staged_status:match("file2%.txt") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Conflict marker safeguard tests
@@ -210,27 +186,27 @@ T["conflict marker safeguard"]["s on file with conflict markers shows confirmati
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   -- Start merge with conflict (file will have conflict markers)
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   -- Verify the file has conflict markers
-  local file_content = git(child, repo, "cat test.txt || cat " .. repo .. "/test.txt")
+  local file_content = helpers.git(child, repo, "cat test.txt || cat " .. repo .. "/test.txt")
   eq(file_content:match("<<<<<<<") ~= nil, true)
 
   cd(child, repo)
@@ -281,34 +257,34 @@ T["conflict marker safeguard"]["s on file with conflict markers shows confirmati
 
   -- Restore
   child.lua([[vim.ui.select = _G.original_ui_select]])
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["conflict marker safeguard"]["s on resolved file without markers stages immediately"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit on main
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create feature branch with conflicting change
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature change"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature change"')
 
   -- Go back to main and make conflicting change
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main change"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main change"')
 
   -- Start merge with conflict
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   -- Resolve conflict by writing clean content (no conflict markers)
-  create_file(child, repo, "test.txt", "resolved content")
+  helpers.create_file(child, repo, "test.txt", "resolved content")
 
   cd(child, repo)
   child.cmd("Gitlad")
@@ -344,10 +320,10 @@ T["conflict marker safeguard"]["s on resolved file without markers stages immedi
   helpers.wait_for_var(child, "_G.gitlad_stage_complete", 1000)
 
   -- File should be staged since there were no conflict markers
-  local staged_status = git(child, repo, "diff --cached --name-only")
+  local staged_status = helpers.git(child, repo, "diff --cached --name-only")
   eq(staged_status:match("test%.txt") ~= nil, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Diffview integration tests
@@ -357,9 +333,9 @@ T["diffview integration"]["e keybinding is mapped in status buffer"] = function(
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   cd(child, repo)
   child.cmd("Gitlad")
@@ -380,16 +356,16 @@ T["diffview integration"]["e keybinding is mapped in status buffer"] = function(
   local has_e_map = child.lua_get([[_G.has_e_keymap]])
   eq(has_e_map, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["diffview integration"]["e keybinding appears in help"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "test.txt", "hello")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   cd(child, repo)
   child.cmd("Gitlad")
@@ -416,7 +392,7 @@ T["diffview integration"]["e keybinding appears in help"] = function()
   eq(found_e, true)
 
   child.type_keys("q")
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Diffview fallback tests
@@ -426,21 +402,21 @@ T["diffview fallback"]["shows message when diffview not installed"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main"')
 
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   cd(child, repo)
   child.cmd("Gitlad")
@@ -499,28 +475,28 @@ T["diffview fallback"]["shows message when diffview not installed"] = function()
   end
 
   child.lua([[vim.notify = _G.original_notify]])
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["diffview fallback"]["opens file directly when diffview not installed"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main"')
 
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   cd(child, repo)
   child.cmd("Gitlad")
@@ -562,7 +538,7 @@ T["diffview fallback"]["opens file directly when diffview not installed"] = func
     eq(bufname:match("test%.txt") ~= nil, true)
   end
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 -- Auto-staging after diffview tests
@@ -572,26 +548,26 @@ T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] =
   local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main"')
 
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   cd(child, repo)
 
   -- Manually resolve the conflict (remove markers)
-  create_file(child, repo, "test.txt", "line1\nresolved")
+  helpers.create_file(child, repo, "test.txt", "line1\nresolved")
 
   -- Set up mock diffview that captures the autocmd
   child.lua([[
@@ -635,33 +611,33 @@ T["auto-staging"]["stages resolved files when DiffviewViewClosed event fires"] =
 
     -- File should now be resolved (no longer in unmerged list)
     -- When a file is staged during merge, it's removed from the unmerged list
-    local unmerged = git(child, repo, "ls-files -u")
+    local unmerged = helpers.git(child, repo, "ls-files -u")
     local is_still_unmerged = unmerged:match("test%.txt") ~= nil
     eq(is_still_unmerged, false)
   end
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["auto-staging"]["does not stage files that still have conflict markers"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create merge conflict
-  create_file(child, repo, "test.txt", "line1\nline2")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "line1\nline2")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  git(child, repo, "checkout -b feature")
-  create_file(child, repo, "test.txt", "line1\nfeature")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Feature"')
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "test.txt", "line1\nfeature")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Feature"')
 
-  git(child, repo, "checkout main")
-  create_file(child, repo, "test.txt", "line1\nmain")
-  git(child, repo, "add test.txt")
-  git(child, repo, 'commit -m "Main"')
+  helpers.git(child, repo, "checkout main")
+  helpers.create_file(child, repo, "test.txt", "line1\nmain")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Main"')
 
-  git(child, repo, "merge feature --no-edit || true")
+  helpers.git(child, repo, "merge feature --no-edit || true")
 
   cd(child, repo)
 
@@ -709,12 +685,12 @@ T["auto-staging"]["does not stage files that still have conflict markers"] = fun
     -- File should still be unmerged (not resolved) since it has conflict markers
     -- Use git ls-files -u to check if file is still unmerged
     -- If file is in ls-files -u output, it's still conflicted (not resolved/staged)
-    local unmerged = git(child, repo, "ls-files -u")
+    local unmerged = helpers.git(child, repo, "ls-files -u")
     local is_still_unmerged = unmerged:match("test%.txt") ~= nil
     eq(is_still_unmerged, true)
   end
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

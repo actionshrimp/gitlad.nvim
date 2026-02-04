@@ -11,25 +11,7 @@ local function cleanup_test_repo(child_nvim, repo)
 end
 
 -- Helper to create a file in the test repo
-local function create_file(child_nvim, repo, filename, content)
-  child_nvim.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
 -- Helper to run git command in repo
-local function git(child_nvim, repo, args)
-  return child_nvim.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
 -- Helper to change directory
 local function cd(child_nvim, dir)
   child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
@@ -56,9 +38,9 @@ T["diff popup from status"]["opens with d key"] = function()
   cd(child, repo)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Open status buffer
   child.cmd("Gitlad")
@@ -90,9 +72,9 @@ T["diff popup from status"]["has expected actions"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")
@@ -117,9 +99,9 @@ T["diff popup from status"]["closes with q"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")
@@ -144,9 +126,9 @@ T["diff popup from status"]["closes with Esc"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")
@@ -171,12 +153,12 @@ T["diff popup from status"]["shows 3-way action when on unstaged file"] = functi
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Create unstaged change
-  create_file(child, repo, "init.txt", "modified content")
+  helpers.create_file(child, repo, "init.txt", "modified content")
 
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")
@@ -199,13 +181,13 @@ T["diff popup from status"]["shows 3-way action when on staged file"] = function
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Create and stage a change
-  create_file(child, repo, "init.txt", "modified content")
-  git(child, repo, "add init.txt")
+  helpers.create_file(child, repo, "init.txt", "modified content")
+  helpers.git(child, repo, "add init.txt")
 
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")
@@ -235,13 +217,13 @@ T["diff popup from log"]["opens with d key"] = function()
   cd(child, repo)
 
   -- Create commits
-  create_file(child, repo, "file1.txt", "content 1")
-  git(child, repo, "add file1.txt")
-  git(child, repo, "commit -m 'First commit'")
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.git(child, repo, "add file1.txt")
+  helpers.git(child, repo, "commit -m 'First commit'")
 
-  create_file(child, repo, "file2.txt", "content 2")
-  git(child, repo, "add file2.txt")
-  git(child, repo, "commit -m 'Second commit'")
+  helpers.create_file(child, repo, "file2.txt", "content 2")
+  helpers.git(child, repo, "add file2.txt")
+  helpers.git(child, repo, "commit -m 'Second commit'")
 
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")
@@ -285,9 +267,9 @@ T["diff popup from log"]["shows commit action when on commit"] = function()
   cd(child, repo)
 
   -- Create commits
-  create_file(child, repo, "file1.txt", "content 1")
-  git(child, repo, "add file1.txt")
-  git(child, repo, "commit -m 'First commit'")
+  helpers.create_file(child, repo, "file1.txt", "content 1")
+  helpers.git(child, repo, "add file1.txt")
+  helpers.git(child, repo, "commit -m 'First commit'")
 
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")
@@ -323,12 +305,12 @@ T["diff fallback"]["shows warning when diffview not installed"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  create_file(child, repo, "init.txt", "init")
-  git(child, repo, "add init.txt")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Create unstaged change
-  create_file(child, repo, "init.txt", "modified")
+  helpers.create_file(child, repo, "init.txt", "modified")
 
   child.cmd("Gitlad")
   child.lua("vim.wait(500, function() end)")

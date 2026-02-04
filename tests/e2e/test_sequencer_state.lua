@@ -3,31 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -54,29 +29,29 @@ T["sequencer state"]["detects cherry-pick in progress"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Make an initial commit
-  create_file(child, repo, "file.txt", "initial content")
-  git(child, repo, "add file.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", "initial content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Create a commit that we'll cherry-pick later
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
   -- Get the feature commit hash
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Go back to first commit and create a conflicting branch
-  git(child, repo, "checkout HEAD~1")
-  git(child, repo, "checkout -b test-branch")
+  helpers.git(child, repo, "checkout HEAD~1")
+  helpers.git(child, repo, "checkout -b test-branch")
 
   -- Modify the same file to create a conflict
-  create_file(child, repo, "feature.txt", "conflicting content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Conflicting commit"')
+  helpers.create_file(child, repo, "feature.txt", "conflicting content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Conflicting commit"')
 
   -- Try to cherry-pick - this should fail with conflict
-  git(child, repo, "cherry-pick " .. feature_hash .. " 2>&1 || true")
+  helpers.git(child, repo, "cherry-pick " .. feature_hash .. " 2>&1 || true")
 
   -- Check that CHERRY_PICK_HEAD exists
   local cherry_pick_head_exists =
@@ -103,7 +78,7 @@ T["sequencer state"]["detects cherry-pick in progress"] = function()
   eq(seq_state.revert_in_progress, false)
   eq(type(seq_state.sequencer_head_oid), "string")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["sequencer state"]["detects revert in progress"] = function()
@@ -112,25 +87,25 @@ T["sequencer state"]["detects revert in progress"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Make an initial commit
-  create_file(child, repo, "file.txt", "initial content")
-  git(child, repo, "add file.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", "initial content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Create a commit that we'll revert later
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
   -- Get the feature commit hash
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Modify the feature file to create a conflict when reverting
-  create_file(child, repo, "feature.txt", "modified content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Modify feature"')
+  helpers.create_file(child, repo, "feature.txt", "modified content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Modify feature"')
 
   -- Try to revert the feature commit - this should fail with conflict
-  git(child, repo, "revert --no-edit " .. feature_hash .. " 2>&1 || true")
+  helpers.git(child, repo, "revert --no-edit " .. feature_hash .. " 2>&1 || true")
 
   -- Check that REVERT_HEAD exists
   local revert_head_exists =
@@ -157,7 +132,7 @@ T["sequencer state"]["detects revert in progress"] = function()
   eq(seq_state.revert_in_progress, true)
   eq(type(seq_state.sequencer_head_oid), "string")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["sequencer state"]["detects no operation in progress"] = function()
@@ -166,9 +141,9 @@ T["sequencer state"]["detects no operation in progress"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Make a simple commit
-  create_file(child, repo, "file.txt", "content")
-  git(child, repo, "add file.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Check that no sequencer operation is detected
   child.lua(string.format(
@@ -189,7 +164,7 @@ T["sequencer state"]["detects no operation in progress"] = function()
   eq(seq_state.cherry_pick_in_progress, false)
   eq(seq_state.revert_in_progress, false)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["sequencer state"]["status buffer shows cherry-pick in progress"] = function()
@@ -198,29 +173,29 @@ T["sequencer state"]["status buffer shows cherry-pick in progress"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Make an initial commit
-  create_file(child, repo, "file.txt", "initial content")
-  git(child, repo, "add file.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", "initial content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Create a commit that we'll cherry-pick later
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
   -- Get the feature commit hash
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Go back to first commit and create a conflicting branch
-  git(child, repo, "checkout HEAD~1")
-  git(child, repo, "checkout -b test-branch")
+  helpers.git(child, repo, "checkout HEAD~1")
+  helpers.git(child, repo, "checkout -b test-branch")
 
   -- Modify the same file to create a conflict
-  create_file(child, repo, "feature.txt", "conflicting content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Conflicting commit"')
+  helpers.create_file(child, repo, "feature.txt", "conflicting content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Conflicting commit"')
 
   -- Try to cherry-pick - this should fail with conflict
-  git(child, repo, "cherry-pick " .. feature_hash .. " 2>&1 || true")
+  helpers.git(child, repo, "cherry-pick " .. feature_hash .. " 2>&1 || true")
 
   -- Open status buffer
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -247,7 +222,7 @@ T["sequencer state"]["status buffer shows cherry-pick in progress"] = function()
 
   eq(found_cherry_pick, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["sequencer state"]["status buffer shows revert in progress"] = function()
@@ -256,25 +231,25 @@ T["sequencer state"]["status buffer shows revert in progress"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Make an initial commit
-  create_file(child, repo, "file.txt", "initial content")
-  git(child, repo, "add file.txt")
-  git(child, repo, 'commit -m "Initial commit"')
+  helpers.create_file(child, repo, "file.txt", "initial content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, 'commit -m "Initial commit"')
 
   -- Create a commit that we'll revert later
-  create_file(child, repo, "feature.txt", "feature content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Add feature"')
+  helpers.create_file(child, repo, "feature.txt", "feature content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Add feature"')
 
   -- Get the feature commit hash
-  local feature_hash = git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
+  local feature_hash = helpers.git(child, repo, "rev-parse HEAD"):gsub("%s+", "")
 
   -- Modify the feature file to create a conflict when reverting
-  create_file(child, repo, "feature.txt", "modified content")
-  git(child, repo, "add feature.txt")
-  git(child, repo, 'commit -m "Modify feature"')
+  helpers.create_file(child, repo, "feature.txt", "modified content")
+  helpers.git(child, repo, "add feature.txt")
+  helpers.git(child, repo, 'commit -m "Modify feature"')
 
   -- Try to revert the feature commit - this should fail with conflict
-  git(child, repo, "revert --no-edit " .. feature_hash .. " 2>&1 || true")
+  helpers.git(child, repo, "revert --no-edit " .. feature_hash .. " 2>&1 || true")
 
   -- Open status buffer
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -301,7 +276,7 @@ T["sequencer state"]["status buffer shows revert in progress"] = function()
 
   eq(found_revert, true)
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T

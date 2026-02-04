@@ -28,29 +28,6 @@ local T = MiniTest.new_set({
   },
 })
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local dir = vim.fn.fnamemodify(path, ":h")
-    vim.fn.mkdir(dir, "p")
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run git command in repo
-local function git(child, repo, args)
-  -- Use %q for both repo and args to properly escape quotes
-  return child.lua_get(string.format("vim.fn.system('git -C ' .. %q .. ' ' .. %q)", repo, args))
-end
-
 -- Helper to get buffer lines
 local function get_buffer_lines(child)
   return child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -84,12 +61,12 @@ T["staging files"]["s stages untracked file"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked file
-  create_file(child, repo, "new.txt", "new content")
+  helpers.create_file(child, repo, "new.txt", "new content")
 
   open_gitlad(child, repo)
 
@@ -114,7 +91,7 @@ T["staging files"]["s stages untracked file"] = function()
   assert_truthy(new_line and new_line > staged_section, "new.txt should be in staged section")
 
   -- Verify git state
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("A  new.txt"), "Git should show file as staged (A)")
 end
 
@@ -123,12 +100,12 @@ T["staging files"]["s stages unstaged modified file"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
-  create_file(child, repo, "file.txt", "original")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "original")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify without staging
-  create_file(child, repo, "file.txt", "modified")
+  helpers.create_file(child, repo, "file.txt", "modified")
 
   open_gitlad(child, repo)
 
@@ -140,7 +117,7 @@ T["staging files"]["s stages unstaged modified file"] = function()
   helpers.wait_short(child, 100)
 
   -- Verify git state
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("M  file.txt"), "Git should show file as staged modified (M)")
 end
 
@@ -149,13 +126,13 @@ T["staging files"]["u unstages staged file"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage a new file
-  create_file(child, repo, "staged.txt", "content")
-  git(child, repo, "add staged.txt")
+  helpers.create_file(child, repo, "staged.txt", "content")
+  helpers.git(child, repo, "add staged.txt")
 
   open_gitlad(child, repo)
 
@@ -178,7 +155,7 @@ T["staging files"]["u unstages staged file"] = function()
   )
 
   -- Verify git state
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("%?%? staged.txt"), "Git should show file as untracked (??)")
 end
 
@@ -187,17 +164,17 @@ T["staging files"]["maintains sort order after staging"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage two files to have existing staged section
-  create_file(child, repo, "aaa.txt", "a")
-  create_file(child, repo, "zzz.txt", "z")
-  git(child, repo, "add aaa.txt zzz.txt")
+  helpers.create_file(child, repo, "aaa.txt", "a")
+  helpers.create_file(child, repo, "zzz.txt", "z")
+  helpers.git(child, repo, "add aaa.txt zzz.txt")
 
   -- Create an untracked file that should go in the middle alphabetically
-  create_file(child, repo, "mmm.txt", "m")
+  helpers.create_file(child, repo, "mmm.txt", "m")
 
   open_gitlad(child, repo)
 
@@ -223,14 +200,14 @@ T["staging files"]["S stages all files"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create multiple untracked and modified files
-  create_file(child, repo, "new1.txt", "new1")
-  create_file(child, repo, "new2.txt", "new2")
-  create_file(child, repo, "init.txt", "modified")
+  helpers.create_file(child, repo, "new1.txt", "new1")
+  helpers.create_file(child, repo, "new2.txt", "new2")
+  helpers.create_file(child, repo, "init.txt", "modified")
 
   open_gitlad(child, repo)
 
@@ -239,7 +216,7 @@ T["staging files"]["S stages all files"] = function()
   helpers.wait_short(child, 100)
 
   -- Verify all files are staged
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("A  new1.txt"), "new1.txt should be staged")
   assert_truthy(status:find("A  new2.txt"), "new2.txt should be staged")
   assert_truthy(status:find("M  init.txt"), "init.txt should be staged")
@@ -250,14 +227,14 @@ T["staging files"]["U unstages all files"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage multiple files
-  create_file(child, repo, "new1.txt", "new1")
-  create_file(child, repo, "new2.txt", "new2")
-  git(child, repo, "add .")
+  helpers.create_file(child, repo, "new1.txt", "new1")
+  helpers.create_file(child, repo, "new2.txt", "new2")
+  helpers.git(child, repo, "add .")
 
   open_gitlad(child, repo)
 
@@ -266,7 +243,7 @@ T["staging files"]["U unstages all files"] = function()
   helpers.wait_short(child, 100)
 
   -- Verify all files are unstaged
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("%?%? new1.txt"), "new1.txt should be untracked")
   assert_truthy(status:find("%?%? new2.txt"), "new2.txt should be untracked")
 end
@@ -276,16 +253,16 @@ T["staging files"]["shows mixed staged and unstaged for same file"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
-  create_file(child, repo, "mixed.txt", "line1\nline2\nline3\n")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "mixed.txt", "line1\nline2\nline3\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage a modification
-  create_file(child, repo, "mixed.txt", "line1\nline2 modified\nline3\n")
-  git(child, repo, "add mixed.txt")
+  helpers.create_file(child, repo, "mixed.txt", "line1\nline2 modified\nline3\n")
+  helpers.git(child, repo, "add mixed.txt")
 
   -- Make another unstaged modification
-  create_file(child, repo, "mixed.txt", "line1\nline2 modified\nline3 also modified\n")
+  helpers.create_file(child, repo, "mixed.txt", "line1\nline2 modified\nline3 also modified\n")
 
   open_gitlad(child, repo)
 
@@ -319,14 +296,14 @@ T["section staging"]["s on Untracked header stages all untracked files"] = funct
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create multiple untracked files
-  create_file(child, repo, "new1.txt", "content1")
-  create_file(child, repo, "new2.txt", "content2")
-  create_file(child, repo, "new3.txt", "content3")
+  helpers.create_file(child, repo, "new1.txt", "content1")
+  helpers.create_file(child, repo, "new2.txt", "content2")
+  helpers.create_file(child, repo, "new3.txt", "content3")
 
   open_gitlad(child, repo)
 
@@ -341,7 +318,7 @@ T["section staging"]["s on Untracked header stages all untracked files"] = funct
   helpers.wait_short(child, 100)
 
   -- Verify all files are now staged
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("A  new1.txt"), "new1.txt should be staged")
   assert_truthy(status:find("A  new2.txt"), "new2.txt should be staged")
   assert_truthy(status:find("A  new3.txt"), "new3.txt should be staged")
@@ -353,16 +330,16 @@ T["section staging"]["s on Unstaged header stages all unstaged files"] = functio
   local repo = helpers.create_test_repo(child)
 
   -- Create and commit files
-  create_file(child, repo, "file1.txt", "original1")
-  create_file(child, repo, "file2.txt", "original2")
-  create_file(child, repo, "file3.txt", "original3")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file1.txt", "original1")
+  helpers.create_file(child, repo, "file2.txt", "original2")
+  helpers.create_file(child, repo, "file3.txt", "original3")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify all files without staging
-  create_file(child, repo, "file1.txt", "modified1")
-  create_file(child, repo, "file2.txt", "modified2")
-  create_file(child, repo, "file3.txt", "modified3")
+  helpers.create_file(child, repo, "file1.txt", "modified1")
+  helpers.create_file(child, repo, "file2.txt", "modified2")
+  helpers.create_file(child, repo, "file3.txt", "modified3")
 
   open_gitlad(child, repo)
 
@@ -377,7 +354,7 @@ T["section staging"]["s on Unstaged header stages all unstaged files"] = functio
   helpers.wait_short(child, 100)
 
   -- Verify all files are now staged
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("M  file1.txt"), "file1.txt should be staged")
   assert_truthy(status:find("M  file2.txt"), "file2.txt should be staged")
   assert_truthy(status:find("M  file3.txt"), "file3.txt should be staged")
@@ -389,15 +366,15 @@ T["section staging"]["u on Staged header unstages all staged files"] = function(
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage multiple new files
-  create_file(child, repo, "staged1.txt", "content1")
-  create_file(child, repo, "staged2.txt", "content2")
-  create_file(child, repo, "staged3.txt", "content3")
-  git(child, repo, "add .")
+  helpers.create_file(child, repo, "staged1.txt", "content1")
+  helpers.create_file(child, repo, "staged2.txt", "content2")
+  helpers.create_file(child, repo, "staged3.txt", "content3")
+  helpers.git(child, repo, "add .")
 
   open_gitlad(child, repo)
 
@@ -412,7 +389,7 @@ T["section staging"]["u on Staged header unstages all staged files"] = function(
   helpers.wait_short(child, 100)
 
   -- Verify all files are now untracked
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("%?%? staged1.txt"), "staged1.txt should be untracked")
   assert_truthy(status:find("%?%? staged2.txt"), "staged2.txt should be untracked")
   assert_truthy(status:find("%?%? staged3.txt"), "staged3.txt should be untracked")
@@ -424,13 +401,13 @@ T["section staging"]["s on Staged header does nothing"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage a file
-  create_file(child, repo, "staged.txt", "content")
-  git(child, repo, "add staged.txt")
+  helpers.create_file(child, repo, "staged.txt", "content")
+  helpers.git(child, repo, "add staged.txt")
 
   open_gitlad(child, repo)
 
@@ -445,7 +422,7 @@ T["section staging"]["s on Staged header does nothing"] = function()
   helpers.wait_short(child, 100)
 
   -- Verify file is still staged (unchanged)
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("A  staged.txt"), "staged.txt should still be staged")
 end
 
@@ -454,12 +431,12 @@ T["section staging"]["u on Unstaged header does nothing"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
-  create_file(child, repo, "file.txt", "original")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "original")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify without staging
-  create_file(child, repo, "file.txt", "modified")
+  helpers.create_file(child, repo, "file.txt", "modified")
 
   open_gitlad(child, repo)
 
@@ -474,7 +451,7 @@ T["section staging"]["u on Unstaged header does nothing"] = function()
   helpers.wait_short(child, 100)
 
   -- Verify file is still unstaged (unchanged)
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find(" M file.txt"), "file.txt should still be unstaged")
 end
 
@@ -489,15 +466,15 @@ T["unstage cursor positioning"]["u moves cursor to next staged file"] = function
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage multiple files (alphabetical order: aaa, bbb, ccc)
-  create_file(child, repo, "aaa.txt", "a")
-  create_file(child, repo, "bbb.txt", "b")
-  create_file(child, repo, "ccc.txt", "c")
-  git(child, repo, "add .")
+  helpers.create_file(child, repo, "aaa.txt", "a")
+  helpers.create_file(child, repo, "bbb.txt", "b")
+  helpers.create_file(child, repo, "ccc.txt", "c")
+  helpers.git(child, repo, "add .")
 
   open_gitlad(child, repo)
 
@@ -526,14 +503,14 @@ T["unstage cursor positioning"]["u moves cursor to previous staged file when las
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage multiple files (alphabetical order: aaa, bbb)
-  create_file(child, repo, "aaa.txt", "a")
-  create_file(child, repo, "bbb.txt", "b")
-  git(child, repo, "add .")
+  helpers.create_file(child, repo, "aaa.txt", "a")
+  helpers.create_file(child, repo, "bbb.txt", "b")
+  helpers.git(child, repo, "add .")
 
   open_gitlad(child, repo)
 
@@ -562,15 +539,15 @@ T["unstage cursor positioning"]["repeated u unstages multiple files in successio
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Stage 3 files
-  create_file(child, repo, "file1.txt", "1")
-  create_file(child, repo, "file2.txt", "2")
-  create_file(child, repo, "file3.txt", "3")
-  git(child, repo, "add .")
+  helpers.create_file(child, repo, "file1.txt", "1")
+  helpers.create_file(child, repo, "file2.txt", "2")
+  helpers.create_file(child, repo, "file3.txt", "3")
+  helpers.git(child, repo, "add .")
 
   open_gitlad(child, repo)
 
@@ -589,7 +566,7 @@ T["unstage cursor positioning"]["repeated u unstages multiple files in successio
   helpers.wait_short(child, 100)
 
   -- All files should now be unstaged
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("%?%? file1.txt"), "file1.txt should be untracked")
   assert_truthy(status:find("%?%? file2.txt"), "file2.txt should be untracked")
   assert_truthy(status:find("%?%? file3.txt"), "file3.txt should be untracked")
@@ -607,12 +584,12 @@ T["intent to add"]["gs marks untracked file with intent-to-add"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked file
-  create_file(child, repo, "new.txt", "new content\nline 2\nline 3")
+  helpers.create_file(child, repo, "new.txt", "new content\nline 2\nline 3")
 
   open_gitlad(child, repo)
 
@@ -649,7 +626,7 @@ T["intent to add"]["gs marks untracked file with intent-to-add"] = function()
 
   -- Verify git state: after git add -N, porcelain shows " A new.txt" (space + A)
   -- meaning: index unchanged, worktree has added file
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find(" A new.txt"), "Git should show file as intent-to-add ( A)")
 end
 
@@ -658,12 +635,12 @@ T["intent to add"]["gs on non-untracked file shows info message"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create and commit a file
-  create_file(child, repo, "file.txt", "original")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "file.txt", "original")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Modify the file (will be unstaged)
-  create_file(child, repo, "file.txt", "modified")
+  helpers.create_file(child, repo, "file.txt", "modified")
 
   open_gitlad(child, repo)
 
@@ -678,7 +655,7 @@ T["intent to add"]["gs on non-untracked file shows info message"] = function()
   helpers.wait_short(child)
 
   -- File should still be in unstaged (gs is no-op for non-untracked)
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find(" M file.txt"), "Git should show file as unstaged modified")
 end
 
@@ -687,15 +664,15 @@ T["intent to add"]["gs followed by regular staging works"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked file
-  create_file(child, repo, "new.txt", "line 1\nline 2\nline 3")
+  helpers.create_file(child, repo, "new.txt", "line 1\nline 2\nline 3")
 
   -- First, verify file is untracked
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("%?%? new.txt"), "File should start as untracked")
 
   open_gitlad(child, repo)
@@ -711,7 +688,7 @@ T["intent to add"]["gs followed by regular staging works"] = function()
   helpers.wait_short(child, 200)
 
   -- Verify git state changed to intent-to-add
-  status = git(child, repo, "status --porcelain")
+  status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find(" A new.txt"), "After gs, git should show intent-to-add ( A)")
 
   -- Close gitlad and reopen to get fresh state
@@ -731,7 +708,7 @@ T["intent to add"]["gs followed by regular staging works"] = function()
   helpers.wait_short(child, 150)
 
   -- Verify file is now fully staged
-  status = git(child, repo, "status --porcelain")
+  status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("A  new.txt"), "Git should show file as fully staged (A)")
 end
 
@@ -740,13 +717,13 @@ T["intent to add"]["gs on untracked directory shows individual files in unstaged
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked directory with multiple files
-  create_file(child, repo, "newdir/file1.txt", "content1")
-  create_file(child, repo, "newdir/file2.txt", "content2")
+  helpers.create_file(child, repo, "newdir/file1.txt", "content1")
+  helpers.create_file(child, repo, "newdir/file2.txt", "content2")
 
   open_gitlad(child, repo)
 
@@ -779,7 +756,7 @@ T["intent to add"]["gs on untracked directory shows individual files in unstaged
   assert_truthy(file2_line > unstaged_section, "file2 should be in unstaged section")
 
   -- Verify git state: files should be intent-to-add (.A in porcelain v2, " A" in porcelain v1)
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find(" A newdir/file1.txt"), "file1 should be intent-to-add")
   assert_truthy(status:find(" A newdir/file2.txt"), "file2 should be intent-to-add")
 end
@@ -789,16 +766,16 @@ T["intent to add"]["u on intent-to-add file moves it back to untracked"] = funct
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked file and mark as intent-to-add via git
-  create_file(child, repo, "new.txt", "content")
-  git(child, repo, "add -N new.txt")
+  helpers.create_file(child, repo, "new.txt", "content")
+  helpers.git(child, repo, "add -N new.txt")
 
   -- Verify intent-to-add state
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find(" A new.txt"), "File should start as intent-to-add")
 
   open_gitlad(child, repo)
@@ -823,7 +800,7 @@ T["intent to add"]["u on intent-to-add file moves it back to untracked"] = funct
   assert_truthy(file_line > untracked_section, "new.txt should be in untracked section")
 
   -- Verify git state
-  status = git(child, repo, "status --porcelain")
+  status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("%?%? new.txt"), "File should be back to untracked")
 end
 
@@ -832,17 +809,17 @@ T["intent to add"]["u on last intent-to-add file in directory collapses to direc
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked directory with files and mark as intent-to-add via git
-  create_file(child, repo, "newdir/file1.txt", "content1")
-  create_file(child, repo, "newdir/file2.txt", "content2")
-  git(child, repo, "add -N newdir/")
+  helpers.create_file(child, repo, "newdir/file1.txt", "content1")
+  helpers.create_file(child, repo, "newdir/file2.txt", "content2")
+  helpers.git(child, repo, "add -N newdir/")
 
   -- Verify intent-to-add state
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find(" A newdir/file1.txt"), "file1 should be intent-to-add")
   assert_truthy(status:find(" A newdir/file2.txt"), "file2 should be intent-to-add")
 
@@ -882,7 +859,7 @@ T["intent to add"]["u on last intent-to-add file in directory collapses to direc
   assert_truthy(dir_line > untracked_section, "newdir/ should be in untracked section")
 
   -- Verify git state
-  status = git(child, repo, "status --porcelain")
+  status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("%?%? newdir/"), "Directory should show as untracked")
 end
 
@@ -913,14 +890,14 @@ T["directory staging"]["s on untracked directory stages all files inside"] = fun
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked directory with multiple files
-  create_file(child, repo, "newdir/file1.txt", "content1")
-  create_file(child, repo, "newdir/file2.txt", "content2")
-  create_file(child, repo, "newdir/sub/file3.txt", "content3")
+  helpers.create_file(child, repo, "newdir/file1.txt", "content1")
+  helpers.create_file(child, repo, "newdir/file2.txt", "content2")
+  helpers.create_file(child, repo, "newdir/sub/file3.txt", "content3")
 
   open_gitlad(child, repo)
 
@@ -956,7 +933,7 @@ T["directory staging"]["s on untracked directory stages all files inside"] = fun
   assert_truthy(file3_line > staged_section, "file3 should be in staged section")
 
   -- Verify git state
-  local status = git(child, repo, "status --porcelain")
+  local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find("A  newdir/file1.txt"), "file1 should be staged")
   assert_truthy(status:find("A  newdir/file2.txt"), "file2 should be staged")
   assert_truthy(status:find("A  newdir/sub/file3.txt"), "file3 should be staged")
@@ -967,14 +944,14 @@ T["directory staging"]["staged section shows file count after staging directory"
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked directory with 3 files
-  create_file(child, repo, "mydir/a.txt", "a")
-  create_file(child, repo, "mydir/b.txt", "b")
-  create_file(child, repo, "mydir/c.txt", "c")
+  helpers.create_file(child, repo, "mydir/a.txt", "a")
+  helpers.create_file(child, repo, "mydir/b.txt", "b")
+  helpers.create_file(child, repo, "mydir/c.txt", "c")
 
   open_gitlad(child, repo)
 
@@ -1000,13 +977,13 @@ T["directory staging"]["unstaging all files collapses back to directory"] = func
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked directory with multiple files
-  create_file(child, repo, "testdir/file1.txt", "content1")
-  create_file(child, repo, "testdir/file2.txt", "content2")
+  helpers.create_file(child, repo, "testdir/file1.txt", "content1")
+  helpers.create_file(child, repo, "testdir/file2.txt", "content2")
 
   open_gitlad(child, repo)
 
@@ -1051,13 +1028,13 @@ T["directory staging"]["unstaging individual files collapses when all untracked"
   local repo = helpers.create_test_repo(child)
 
   -- Create initial commit
-  create_file(child, repo, "init.txt", "initial")
-  git(child, repo, "add .")
-  git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
   -- Create untracked directory
-  create_file(child, repo, "mydir/a.txt", "a")
-  create_file(child, repo, "mydir/b.txt", "b")
+  helpers.create_file(child, repo, "mydir/a.txt", "a")
+  helpers.create_file(child, repo, "mydir/b.txt", "b")
 
   open_gitlad(child, repo)
 

@@ -3,31 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local expect = MiniTest.expect
 
--- Helper to create a file in the repo
-local function create_file(child, repo, filename, content)
-  child.lua(string.format(
-    [[
-    local path = %q .. "/" .. %q
-    local f = io.open(path, "w")
-    f:write(%q)
-    f:close()
-  ]],
-    repo,
-    filename,
-    content
-  ))
-end
-
--- Helper to run a git command
-local function git(child, repo, args)
-  return child.lua_get(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " " .. args))
-end
-
--- Helper to cleanup repo
-local function cleanup_repo(child, repo)
-  child.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -117,9 +92,9 @@ T["commit_popup_instant"]["commit popup has instant fixup action"] = function()
   local repo = helpers.create_test_repo(child)
 
   -- Create a file and commit it
-  create_file(child, repo, "file.txt", "initial content")
-  git(child, repo, "add .")
-  git(child, repo, "commit -m 'Initial commit'")
+  helpers.create_file(child, repo, "file.txt", "initial content")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
 
   -- Change to repo and open status
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
@@ -151,7 +126,7 @@ T["commit_popup_instant"]["commit popup has instant fixup action"] = function()
   expect.equality(found_instant_fixup, true, "Should have Instant fixup action")
   expect.equality(found_instant_squash, true, "Should have Instant squash action")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["rebase_popup"] = MiniTest.new_set()
@@ -186,7 +161,7 @@ T["rebase_popup"]["has interactive action"] = function()
 
   expect.equality(found_interactive, true, "Should have interactively action")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit_at_point"] = MiniTest.new_set()
@@ -196,21 +171,21 @@ local function setup_repo_for_instant_op(child)
   local repo = helpers.create_test_repo(child)
 
   -- Create multiple commits so we have unpushed commits to target
-  create_file(child, repo, "file1.txt", "content1")
-  git(child, repo, "add .")
-  git(child, repo, "commit -m 'First commit'")
+  helpers.create_file(child, repo, "file1.txt", "content1")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'First commit'")
 
-  create_file(child, repo, "file2.txt", "content2")
-  git(child, repo, "add .")
-  git(child, repo, "commit -m 'Second commit'")
+  helpers.create_file(child, repo, "file2.txt", "content2")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'Second commit'")
 
-  create_file(child, repo, "file3.txt", "content3")
-  git(child, repo, "add .")
-  git(child, repo, "commit -m 'Third commit'")
+  helpers.create_file(child, repo, "file3.txt", "content3")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'Third commit'")
 
   -- Stage changes for the instant fixup/squash
-  create_file(child, repo, "fixup_file.txt", "fixup content")
-  git(child, repo, "add .")
+  helpers.create_file(child, repo, "fixup_file.txt", "fixup content")
+  helpers.git(child, repo, "add .")
 
   return repo
 end
@@ -261,7 +236,7 @@ T["commit_at_point"]["instant fixup uses commit at point in status view"] = func
     "Instant fixup should execute directly without commit selector"
   )
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit_at_point"]["instant fixup uses commit at point in log view"] = function()
@@ -307,7 +282,7 @@ T["commit_at_point"]["instant fixup uses commit at point in log view"] = functio
     "Instant fixup should execute directly from log view"
   )
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit_at_point"]["instant squash uses commit at point in status view"] = function()
@@ -347,7 +322,7 @@ T["commit_at_point"]["instant squash uses commit at point in status view"] = fun
     "Instant squash should execute directly without commit selector"
   )
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 T["commit_at_point"]["instant fixup falls back to prompt when no commit at point"] = function()
@@ -408,7 +383,7 @@ T["commit_at_point"]["instant fixup falls back to prompt when no commit at point
   -- Close status buffer
   child.type_keys("q")
 
-  cleanup_repo(child, repo)
+  helpers.cleanup_repo(child, repo)
 end
 
 return T
