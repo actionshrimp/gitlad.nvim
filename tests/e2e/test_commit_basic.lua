@@ -404,8 +404,8 @@ T["commit editor"]["creates commit with C-c C-c"] = function()
   -- Commit with C-c C-c
   child.type_keys("<C-c><C-c>")
 
-  -- Wait for buffer to return to status
-  helpers.wait_for_buffer(child, "gitlad://status")
+  -- Wait for buffer to return to status (longer timeout for slow CI)
+  helpers.wait_for_buffer(child, "gitlad://status", 5000)
 
   -- Verify we returned to status buffer
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])

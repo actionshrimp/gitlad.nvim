@@ -165,16 +165,21 @@ end
 ---@param timeout? number Timeout in milliseconds (default 1000)
 function M.wait_for_buffer(child, pattern, timeout)
   timeout = timeout or 1000
-  child.lua(string.format(
-    [[
-    vim.wait(%d, function()
-      local bufname = vim.api.nvim_buf_get_name(0)
-      return bufname:match(%q) ~= nil
-    end, 10)
-  ]],
+  local success = child.lua_get(string.format(
+    [[(function()
+      local ok = vim.wait(%d, function()
+        local bufname = vim.api.nvim_buf_get_name(0)
+        return bufname:match(%q) ~= nil
+      end, 10)
+      return ok
+    end)()]],
     timeout,
     pattern
   ))
+  if not success then
+    local actual = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
+    error(string.format("wait_for_buffer timed out after %dms waiting for %q, got %q", timeout, pattern, actual))
+  end
 end
 
 --- Wait until the current buffer contains specific text
