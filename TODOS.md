@@ -14,6 +14,7 @@
 - [x] something is a bit off when staging an entirely new (previously untracked) directory - we just see the dir staged and not the individual files, which show up as hunks for some reason. we _do_ expect to see just the directory name in the 'untracked' section, but when staged it should expand to the individual files
 - [x] display of renamed files could be better, using the /common/path/to/{suba/a.txt -> subb/b.txt} style
 - [x] git rebase continue fails if there are conflicts and you need to confirm the updated commit message (with Conflicts: section) - not implemented
+- [x] worktree 'sibling' strat - can we make it default to `../branch-name` rather than `_branch-name`? what does magit do?
 - [ ] still a slight issue with our new 'intent to add' feature and the staging of a new directory ;(
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] improve look and feel of '$' / command history (from screenshot)
