@@ -488,6 +488,68 @@ T["refs view"]["has yank keymap y"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["refs view"]["shows help text prompting ? keymap"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Branches")
+
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Should show "Press ? for help" rather than inline key listing
+  expect.equality(content:match("Press %? for help") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["? opens help popup with refs keybindings"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Branches")
+
+  -- Press ? to open help
+  child.type_keys("?")
+  helpers.wait_short(child, 200)
+
+  -- Should have a floating window
+  local win_count = child.lua_get("vim.fn.winnr('$')")
+  eq(win_count > 1, true)
+
+  -- Help popup should contain refs-relevant sections
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  expect.equality(content:match("Transient commands") ~= nil, true)
+  expect.equality(content:match("Actions") ~= nil, true)
+  expect.equality(content:match("Navigation") ~= nil, true)
+  expect.equality(content:match("Delete ref") ~= nil, true)
+  expect.equality(content:match("Yank ref name") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 T["refs view"]["shows header with base ref"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)

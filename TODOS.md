@@ -21,6 +21,7 @@
 - [x] can we render ansi terminal colour codes nicely in the hook popup output?
 - [x] why is 'origin' listed as a ref under the origin remote in our version?
 - [x] overall visual improvements to refs view - see screenshots of magit's (polished, colourful, more detail about remote's details) vs ours
+- [x] remove the help text at the bottom of the refs view, and just say 'press ? for help' like in the status view. but show the keys which are relevant to the refs view in there
 - [ ] from refs view, I'd also like to standardise the diff popup to behave the same as other views. however it should use the context under the point to help the user build a range expression, with a full initial suggestion. essentially the flow should be:
     - type `d r`, get a popup with a default range suggested based on the context (use magit's examples here)
     - in that same popup, allow the user to also type in an arbitrary range if they know what they're doing

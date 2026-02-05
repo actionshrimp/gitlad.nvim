@@ -144,6 +144,11 @@ function RefsBuffer:_setup_keymaps()
     self:close()
   end, "Close refs")
 
+  -- Help
+  keymap.set(bufnr, "n", "?", function()
+    self:_show_help()
+  end, "Show help")
+
   -- Cherry-pick popup (for cherry commits)
   keymap.set(bufnr, "n", "A", function()
     local cherrypick_popup = require("gitlad.popups.cherrypick")
@@ -387,6 +392,101 @@ function RefsBuffer:_yank_ref()
   vim.fn.setreg("+", ref.name)
   vim.fn.setreg('"', ref.name)
   vim.notify("[gitlad] Yanked: " .. ref.name, vim.log.levels.INFO)
+end
+
+--- Show help popup with refs-relevant keybindings
+function RefsBuffer:_show_help()
+  local HelpView = require("gitlad.popups.help").HelpView
+  local repo_state = self.repo_state
+
+  local sections = {
+    {
+      name = "Transient commands",
+      columns = 3,
+      items = {
+        {
+          key = "b",
+          desc = "Branch",
+          action = function()
+            require("gitlad.popups.branch").open(repo_state)
+          end,
+        },
+        {
+          key = "c",
+          desc = "Commit",
+          action = function()
+            require("gitlad.popups.commit").open(repo_state)
+          end,
+        },
+        {
+          key = "d",
+          desc = "Diff",
+          action = function()
+            require("gitlad.popups.diff").open(repo_state, {})
+          end,
+        },
+        {
+          key = "r",
+          desc = "Rebase",
+          action = function()
+            require("gitlad.popups.rebase").open(repo_state)
+          end,
+        },
+        {
+          key = "A",
+          desc = "Cherry-pick",
+          action = function()
+            require("gitlad.popups.cherrypick").open(repo_state)
+          end,
+        },
+        {
+          key = "X",
+          desc = "Reset",
+          action = function()
+            require("gitlad.popups.reset").open(repo_state)
+          end,
+        },
+      },
+    },
+    {
+      name = "Actions",
+      columns = 3,
+      items = {
+        { key = "x", desc = "Delete ref" },
+        { key = "y", desc = "Yank ref name" },
+        { key = "<Tab>", desc = "Toggle expand" },
+        { key = "<CR>", desc = "Toggle expand" },
+      },
+    },
+    {
+      name = "Navigation",
+      columns = 3,
+      items = {
+        { key = "gj", desc = "Next ref" },
+        { key = "gk", desc = "Previous ref" },
+        { key = "<M-n>", desc = "Next section" },
+        { key = "<M-p>", desc = "Previous section" },
+      },
+    },
+    {
+      name = "Essential commands",
+      columns = 2,
+      items = {
+        {
+          key = "gr",
+          desc = "Refresh",
+          action = function()
+            self:refresh()
+          end,
+        },
+        { key = "q", desc = "Close buffer" },
+        { key = "?", desc = "This help" },
+      },
+    },
+  }
+
+  local help_view = HelpView.new(sections)
+  help_view:show()
 end
 
 --- Delete a single ref
@@ -737,7 +837,7 @@ function RefsBuffer:render()
 
   -- Help line
   table.insert(lines, "")
-  table.insert(lines, "Press TAB expand, x delete, y yank, gr refresh, q close")
+  table.insert(lines, "Press ? for help")
 
   -- Update buffer
   vim.bo[self.bufnr].modifiable = true
