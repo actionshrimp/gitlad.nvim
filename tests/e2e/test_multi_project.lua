@@ -10,18 +10,6 @@ local function cleanup_test_repo(child_nvim, repo)
   child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
 end
 
--- Helper to create a file in the test repo
--- Helper to run git command in repo
--- Helper to change directory
-local function cd(child_nvim, dir)
-  child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
-end
-
--- Helper to wait
-local function wait(child_nvim, ms)
-  child_nvim.lua(string.format([[vim.wait(%d, function() return false end)]], ms))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -53,9 +41,9 @@ T["multi-project"]["can open status for two different repos without E95 error"] 
   helpers.git(child, repo_b, "commit -m 'Initial commit B'")
 
   -- Open status for repo A
-  cd(child, repo_a)
+  helpers.cd(child, repo_a)
   child.cmd("Gitlad")
-  wait(child, 300)
+  helpers.wait_for_status(child)
 
   local buf_a = child.lua_get("vim.api.nvim_get_current_buf()")
   local name_a = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -65,9 +53,9 @@ T["multi-project"]["can open status for two different repos without E95 error"] 
   eq(ft_a, "gitlad")
 
   -- Open status for repo B (should NOT error with E95)
-  cd(child, repo_b)
+  helpers.cd(child, repo_b)
   child.cmd("Gitlad")
-  wait(child, 300)
+  helpers.wait_for_status(child)
 
   local buf_b = child.lua_get("vim.api.nvim_get_current_buf()")
   local name_b = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -96,11 +84,11 @@ T["multi-project"]["reopening same repo focuses existing window"] = function()
   helpers.git(child, repo, "add test.txt")
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Open status
   child.cmd("Gitlad")
-  wait(child, 300)
+  helpers.wait_for_status(child)
 
   local status_win = child.lua_get("vim.api.nvim_get_current_win()")
   local status_buf = child.lua_get("vim.api.nvim_get_current_buf()")
@@ -108,14 +96,14 @@ T["multi-project"]["reopening same repo focuses existing window"] = function()
   -- Open a different buffer in a new split
   child.cmd("vsplit")
   child.cmd("enew")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   local new_win = child.lua_get("vim.api.nvim_get_current_win()")
   eq(new_win ~= status_win, true)
 
   -- Run :Gitlad again - should switch to existing status window
   child.cmd("Gitlad")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   local current_win = child.lua_get("vim.api.nvim_get_current_win()")
   local current_buf = child.lua_get("vim.api.nvim_get_current_buf()")
@@ -144,9 +132,11 @@ T["multi-project"]["each repo gets independent status buffer"] = function()
   helpers.create_file(child, repo_b, "unstaged_b.txt", "unstaged b")
 
   -- Open repo A's status
-  cd(child, repo_a)
+  helpers.cd(child, repo_a)
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
+  -- Wait for specific content to ensure status is fully rendered
+  helpers.wait_for_buffer_content(child, "unstaged_a.txt")
 
   -- Get buffer content for repo A
   local lines_a = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -157,9 +147,11 @@ T["multi-project"]["each repo gets independent status buffer"] = function()
 
   -- Open repo B's status (in new window)
   child.cmd("vsplit")
-  cd(child, repo_b)
+  helpers.cd(child, repo_b)
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
+  -- Wait for specific content to ensure status is fully rendered
+  helpers.wait_for_buffer_content(child, "unstaged_b.txt")
 
   -- Get buffer content for repo B
   local lines_b = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -191,18 +183,18 @@ T["multi-project"]["q key closes correct window when multiple status buffers ope
   helpers.git(child, repo_b, "commit -m 'Commit B'")
 
   -- Open status for repo A
-  cd(child, repo_a)
+  helpers.cd(child, repo_a)
   child.cmd("Gitlad")
-  wait(child, 300)
+  helpers.wait_for_status(child)
 
   local win_a = child.lua_get("vim.api.nvim_get_current_win()")
   local buf_a = child.lua_get("vim.api.nvim_get_current_buf()")
 
   -- Create split and open status for repo B
   child.cmd("vsplit")
-  cd(child, repo_b)
+  helpers.cd(child, repo_b)
   child.cmd("Gitlad")
-  wait(child, 300)
+  helpers.wait_for_status(child)
 
   local win_b = child.lua_get("vim.api.nvim_get_current_win()")
   local buf_b = child.lua_get("vim.api.nvim_get_current_buf()")
@@ -213,7 +205,7 @@ T["multi-project"]["q key closes correct window when multiple status buffers ope
 
   -- Go back to window A (repo A's status)
   child.lua(string.format("vim.api.nvim_set_current_win(%d)", win_a))
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Verify we're in window A with buffer A
   eq(child.lua_get("vim.api.nvim_get_current_win()"), win_a)
@@ -221,7 +213,7 @@ T["multi-project"]["q key closes correct window when multiple status buffers ope
 
   -- Press 'q' to close status in window A
   child.type_keys("q")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Window A should now show a different buffer (not status A)
   local new_buf_in_win_a = child.lua_get(string.format("vim.api.nvim_win_get_buf(%d)", win_a))

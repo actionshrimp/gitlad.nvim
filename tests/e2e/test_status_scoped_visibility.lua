@@ -41,17 +41,11 @@ local function find_line_with(lines, pattern)
   return nil, nil
 end
 
--- Helper to wait for async operations
-local function wait(child, ms)
-  ms = ms or 100
-  child.lua(string.format("vim.wait(%d, function() return false end)", ms))
-end
-
 -- Helper to open gitlad in a repo
 local function open_gitlad(child, repo)
   child.cmd("cd " .. repo)
   child.cmd("Gitlad")
-  wait(child, 200)
+  helpers.wait_for_status(child)
 end
 
 -- =============================================================================
@@ -97,7 +91,7 @@ T["scoped visibility on file"]["4 on file line expands only that file"] = functi
 
   -- Press 4 to fully expand (scoped to this file only)
   child.type_keys("4")
-  wait(child, 300)
+  helpers.wait_short(child, 100)
 
   -- Verify only the first file is expanded
   child.lua([[
@@ -141,13 +135,13 @@ T["scoped visibility on file"]["1 on file collapses parent section and moves cur
   local file1_line = find_line_with(lines, "file1.txt")
   child.cmd(tostring(file1_line))
   child.type_keys("<Tab>") -- Expand file1
-  wait(child, 200)
+  helpers.wait_short(child)
 
   lines = get_buffer_lines(child)
   local file2_line = find_line_with(lines, "file2.txt")
   child.cmd(tostring(file2_line))
   child.type_keys("<Tab>") -- Expand file2
-  wait(child, 200)
+  helpers.wait_short(child)
 
   -- Navigate back to file1 and press 1
   -- Since level 1 would hide the file (section collapsed), it should collapse the section
@@ -155,7 +149,7 @@ T["scoped visibility on file"]["1 on file collapses parent section and moves cur
   file1_line = find_line_with(lines, "file1.txt")
   child.cmd(tostring(file1_line))
   child.type_keys("1")
-  wait(child, 200)
+  helpers.wait_short(child)
 
   -- Verify the Unstaged section is collapsed (files should not be visible)
   child.lua([[
@@ -182,7 +176,7 @@ T["scoped visibility on file"]["1 on file collapses parent section and moves cur
 
   -- Verify we can easily reopen with Tab
   child.type_keys("<Tab>")
-  wait(child, 200)
+  helpers.wait_short(child)
 
   lines = get_buffer_lines(child)
   file1_visible = find_line_with(lines, "file1.txt")
@@ -208,7 +202,7 @@ T["scoped visibility on file"]["3 on file shows headers only for that file"] = f
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("3")
-  wait(child, 300)
+  helpers.wait_short(child, 100)
 
   -- Verify headers mode
   child.lua([[
@@ -258,7 +252,7 @@ T["scoped visibility on section"]["4 on section header expands all files in sect
 
   -- Press 4 to fully expand all files in section
   child.type_keys("4")
-  wait(child, 300)
+  helpers.wait_short(child, 100)
 
   -- Verify both files are expanded
   child.lua([[
@@ -302,20 +296,20 @@ T["scoped visibility on section"]["1 on section header collapses all files in se
   local file1_line = find_line_with(lines, "file1.txt")
   child.cmd(tostring(file1_line))
   child.type_keys("<Tab>")
-  wait(child, 200)
+  helpers.wait_short(child)
 
   lines = get_buffer_lines(child)
   local file2_line = find_line_with(lines, "file2.txt")
   child.cmd(tostring(file2_line))
   child.type_keys("<Tab>")
-  wait(child, 200)
+  helpers.wait_short(child)
 
   -- Navigate to section header and press 1
   lines = get_buffer_lines(child)
   local section_line = find_line_with(lines, "Unstaged")
   child.cmd(tostring(section_line))
   child.type_keys("1")
-  wait(child, 200)
+  helpers.wait_short(child)
 
   -- Verify both files are collapsed
   child.lua([[
@@ -351,11 +345,11 @@ T["global visibility"]["1/2/3/4 on header applies globally"] = function()
 
   -- Position cursor on the Head: line (global context)
   child.cmd("1") -- Go to first line
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Press 4 to expand globally
   child.type_keys("4")
-  wait(child, 300)
+  helpers.wait_short(child, 100)
 
   -- Verify file is expanded and visibility level changed
   child.lua([[

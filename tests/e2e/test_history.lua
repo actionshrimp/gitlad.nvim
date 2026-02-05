@@ -10,18 +10,6 @@ local function cleanup_test_repo(child_nvim, repo)
   child_nvim.lua(string.format([[vim.fn.delete(%q, "rf")]], repo))
 end
 
--- Helper to create a file in the test repo
--- Helper to run git command in repo
--- Helper to change directory
-local function cd(child_nvim, dir)
-  child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
-end
-
--- Helper to wait
-local function wait(child_nvim, ms)
-  child_nvim.lua(string.format("vim.wait(%d, function() end)", ms))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -42,7 +30,7 @@ T["history view"] = MiniTest.new_set()
 
 T["history view"]["opens from status buffer with $ key"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create initial commit so status works
   helpers.create_file(child, repo, "init.txt", "init")
@@ -51,7 +39,7 @@ T["history view"]["opens from status buffer with $ key"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Verify status buffer is open
   local ft = child.lua_get("vim.bo.filetype")
@@ -59,7 +47,7 @@ T["history view"]["opens from status buffer with $ key"] = function()
 
   -- Press $ to open history
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
 
   -- Should have history window open
   local win_count = child.lua_get("vim.fn.winnr('$')")
@@ -74,7 +62,7 @@ end
 
 T["history view"]["displays git command history entries"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create initial commit
   helpers.create_file(child, repo, "init.txt", "init")
@@ -83,11 +71,13 @@ T["history view"]["displays git command history entries"] = function()
 
   -- Open status buffer (this triggers git status command via plugin)
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Open history view
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
+  -- Wait for content to be rendered
+  helpers.wait_for_buffer_content(child, "Git Command History")
 
   -- Get buffer content
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -117,7 +107,7 @@ end
 
 T["history view"]["shows command count in header"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create commit
   helpers.create_file(child, repo, "init.txt", "init")
@@ -126,11 +116,12 @@ T["history view"]["shows command count in header"] = function()
 
   -- Open status (triggers at least one git command)
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Open history
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
+  helpers.wait_for_buffer_content(child, "commands")
 
   -- Get lines
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -150,7 +141,7 @@ end
 
 T["history view"]["expands entry with <Tab>"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create commit
   helpers.create_file(child, repo, "init.txt", "init")
@@ -159,22 +150,23 @@ T["history view"]["expands entry with <Tab>"] = function()
 
   -- Open status
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Open history
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
+  helpers.wait_for_buffer_content(child, "git status")
 
   -- Get initial line count
   local initial_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
   -- Move to first entry (past header lines)
   child.type_keys("5j")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Press Tab to expand
   child.type_keys("<Tab>")
-  wait(child, 100)
+  helpers.wait_for_buffer_content(child, "cwd:")
 
   -- Line count should increase (expanded entry has more lines)
   local expanded_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -196,7 +188,7 @@ end
 
 T["history view"]["collapses entry with <Tab> again"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create commit
   helpers.create_file(child, repo, "init.txt", "init")
@@ -205,25 +197,26 @@ T["history view"]["collapses entry with <Tab> again"] = function()
 
   -- Open status
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Open history
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
+  helpers.wait_for_buffer_content(child, "git status")
 
   -- Move to first entry
   child.type_keys("5j")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Expand
   child.type_keys("<Tab>")
-  wait(child, 100)
+  helpers.wait_for_buffer_content(child, "cwd:")
 
   local expanded_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
   -- Collapse
   child.type_keys("<Tab>")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   local collapsed_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
@@ -235,7 +228,7 @@ end
 
 T["history view"]["expands entry with <CR>"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create commit
   helpers.create_file(child, repo, "init.txt", "init")
@@ -244,22 +237,23 @@ T["history view"]["expands entry with <CR>"] = function()
 
   -- Open status
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Open history
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
+  helpers.wait_for_buffer_content(child, "git status")
 
   -- Get initial line count
   local initial_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
   -- Move to first entry
   child.type_keys("5j")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Press Enter to expand
   child.type_keys("<CR>")
-  wait(child, 100)
+  helpers.wait_for_buffer_content(child, "cwd:")
 
   -- Line count should increase
   local expanded_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -270,7 +264,7 @@ end
 
 T["history view"]["closes with q key"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create commit
   helpers.create_file(child, repo, "init.txt", "init")
@@ -279,11 +273,11 @@ T["history view"]["closes with q key"] = function()
 
   -- Open status
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Open history
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
 
   -- Verify history is open
   local history_open = child.lua_get("vim.fn.winnr('$')")
@@ -291,7 +285,7 @@ T["history view"]["closes with q key"] = function()
 
   -- Press q to close
   child.type_keys("q")
-  wait(child, 100)
+  helpers.wait_for_win_count(child, 1)
 
   -- Should only have one window now
   local win_count = child.lua_get("vim.fn.winnr('$')")
@@ -302,7 +296,7 @@ end
 
 T["history view"]["closes with $ key (toggle behavior)"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create commit
   helpers.create_file(child, repo, "init.txt", "init")
@@ -311,17 +305,17 @@ T["history view"]["closes with $ key (toggle behavior)"] = function()
 
   -- Open status
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Open history
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
 
   eq(child.lua_get("vim.fn.winnr('$')"), 2)
 
   -- Press $ again to close
   child.type_keys("$")
-  wait(child, 100)
+  helpers.wait_for_win_count(child, 1)
 
   eq(child.lua_get("vim.fn.winnr('$')"), 1)
 
@@ -330,7 +324,7 @@ end
 
 T["history view"]["shows success indicator for successful commands"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create commit (successful commands)
   helpers.create_file(child, repo, "init.txt", "init")
@@ -339,11 +333,12 @@ T["history view"]["shows success indicator for successful commands"] = function(
 
   -- Open status (successful git status)
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Open history
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
+  helpers.wait_for_buffer_content(child, "git status")
 
   -- Get lines
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -363,7 +358,7 @@ end
 
 T["history view"]["shows duration in milliseconds"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create commit
   helpers.create_file(child, repo, "init.txt", "init")
@@ -372,11 +367,12 @@ T["history view"]["shows duration in milliseconds"] = function()
 
   -- Open status
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Open history
   child.type_keys("$")
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
+  helpers.wait_for_buffer_content(child, "git status")
 
   -- Get lines
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -400,7 +396,7 @@ end
 
 T["history view"]["empty history shows helpful message"] = function()
   local repo = helpers.create_test_repo(child)
-  cd(child, repo)
+  helpers.cd(child, repo)
 
   -- Create commit manually without going through plugin
   helpers.create_file(child, repo, "init.txt", "init")
@@ -412,7 +408,8 @@ T["history view"]["empty history shows helpful message"] = function()
 
   -- Open history view directly (not through status)
   child.lua([[require("gitlad.ui.views.history").open()]])
-  wait(child, 200)
+  helpers.wait_for_filetype(child, "gitlad-history")
+  helpers.wait_for_buffer_content(child, "No commands recorded")
 
   -- Get lines
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")

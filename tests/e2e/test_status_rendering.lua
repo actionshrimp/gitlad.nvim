@@ -43,17 +43,11 @@ local function find_line_with(lines, pattern)
   return nil, nil
 end
 
--- Helper to wait for async operations
-local function wait(child, ms)
-  ms = ms or 100
-  child.lua(string.format("vim.wait(%d, function() return false end)", ms))
-end
-
 -- Helper to open gitlad in a repo
 local function open_gitlad(child, repo)
   child.cmd("cd " .. repo)
   child.cmd("Gitlad")
-  wait(child, 200) -- Wait for async status fetch
+  helpers.wait_for_status(child)
 end
 
 -- Helper to create a test repo with upstream tracking
@@ -529,7 +523,7 @@ T["gitlad command"]["triggers refresh when re-running with status already open"]
   -- Without calling :Gitlad again, the status buffer wouldn't know about the new file
   -- Now run :Gitlad again to force refresh
   child.cmd("Gitlad")
-  wait(child, 300) -- Wait for async refresh
+  helpers.wait_for_buffer_content(child, "new_file.txt")
 
   -- After re-running :Gitlad, the new file should appear
   lines = get_buffer_lines(child)

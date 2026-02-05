@@ -180,7 +180,8 @@ T["commit editor"]["has help comments"] = function()
   child.type_keys("c")
 
   helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
-  helpers.wait_short(child, 200) -- Wait for content to be populated
+  -- Wait for content to be populated (async operation)
+  helpers.wait_for_buffer_content(child, "C-c C-c to commit", 2000)
 
   local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
 

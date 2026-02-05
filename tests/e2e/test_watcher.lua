@@ -17,11 +17,6 @@ local function cd(child_nvim, dir)
   child_nvim.lua(string.format([[vim.cmd("cd %s")]], dir))
 end
 
--- Helper to wait
-local function wait(child_nvim, ms)
-  child_nvim.lua(string.format("vim.wait(%d, function() end)", ms))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -126,7 +121,7 @@ T["stale indicator"]["spinner shows idle by default"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Get first line (status indicator)
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)")
@@ -152,7 +147,7 @@ T["stale indicator"]["shows stale message when set_stale is called"] = function(
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Manually trigger stale through the spinner
   child.lua([[
@@ -165,7 +160,7 @@ T["stale indicator"]["shows stale message when set_stale is called"] = function(
       buf:_update_status_line()
     end
   ]])
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Get first line (status indicator)
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)")
@@ -192,7 +187,7 @@ T["stale indicator"]["clears when spinner clear_stale is called"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Manually set stale
   child.lua([[
@@ -205,7 +200,7 @@ T["stale indicator"]["clears when spinner clear_stale is called"] = function()
       buf:_update_status_line()
     end
   ]])
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Verify stale is set
   local lines_before = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)")
@@ -222,7 +217,7 @@ T["stale indicator"]["clears when spinner clear_stale is called"] = function()
       buf:_update_status_line()
     end
   ]])
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Should show "Idle" again
   local lines_after = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)")
@@ -352,7 +347,7 @@ T["watcher integration"]["creates watcher when enabled"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Check if watcher was created
   child.lua([[
@@ -382,7 +377,7 @@ T["watcher integration"]["does not create watcher when disabled"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Check if watcher was NOT created
   child.lua([[
@@ -412,7 +407,7 @@ T["watcher integration"]["watcher is running after open"] = function()
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Check if watcher is running
   child.lua([[
@@ -442,7 +437,7 @@ T["watcher integration"]["creates watcher in indicator mode by default"] = funct
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Check watcher settings
   child.lua([[
@@ -475,7 +470,7 @@ T["watcher integration"]["creates watcher with auto_refresh when configured"] = 
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Check watcher settings and that auto_refresh debouncer was created
   child.lua([[
@@ -513,7 +508,7 @@ T["watcher integration"]["creates watcher with both features enabled"] = functio
 
   -- Open status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Check both debouncers were created
   child.lua([[
@@ -551,21 +546,21 @@ T["git command cooldown"]["git commands set last_operation_time"] = function()
 
   -- Open status buffer to initialize repo_state
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Record initial last_operation_time
   child.lua([[_G.test_initial_time = require("gitlad.state").get().last_operation_time]])
   local initial_time = child.lua_get("_G.test_initial_time")
 
   -- Wait a bit to ensure time difference
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Run a git command through gitlad's CLI module
   child.lua([[
     local cli = require("gitlad.git.cli")
     cli.run_async({ "status" }, { cwd = vim.fn.getcwd() }, function() end)
   ]])
-  wait(child, 200)
+  helpers.wait_short(child)
 
   -- Check that last_operation_time was updated
   child.lua([[_G.test_new_time = require("gitlad.state").get().last_operation_time]])
@@ -590,14 +585,14 @@ T["git command cooldown"]["watcher is in cooldown after git command"] = function
 
   -- Open status buffer to initialize repo_state and watcher
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Run a git command through gitlad's CLI module
   child.lua([[
     local cli = require("gitlad.git.cli")
     cli.run_async({ "status" }, { cwd = vim.fn.getcwd() }, function() end)
   ]])
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Check that watcher is in cooldown
   child.lua([[
@@ -640,7 +635,7 @@ T["worktree watcher"]["uses correct git_dir for worktree"] = function()
 
   -- Open status buffer in the worktree
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Check that the git_dir points to the main repo's .git/worktrees/<name>/ directory
   child.lua([[
@@ -681,7 +676,7 @@ T["worktree watcher"]["watcher watches correct directory for worktree"] = functi
 
   -- Open status buffer in the worktree
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Check that the watcher is watching the correct git_dir
   child.lua([[

@@ -3,11 +3,6 @@ local MiniTest = require("mini.test")
 local helpers = require("tests.helpers")
 local eq = MiniTest.expect.equality
 
--- Helper to wait
-local function wait(child, ms)
-  child.lua(string.format("vim.wait(%d, function() end)", ms))
-end
-
 local T = MiniTest.new_set({
   hooks = {
     pre_case = function()
@@ -42,11 +37,11 @@ T["revert popup"]["opens from status buffer with _ key"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Press _ to open revert popup
   child.type_keys("_")
-  wait(child, 200)
+  helpers.wait_for_popup(child)
 
   -- Should have a popup window
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -78,10 +73,10 @@ T["revert popup"]["has expected switches and actions"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   child.type_keys("_")
-  wait(child, 200)
+  helpers.wait_for_popup(child)
 
   local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
 
@@ -248,21 +243,22 @@ T["revert from log"]["_ key opens revert popup from log view"] = function()
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
-  -- Open log view
+  -- Open log popup
   child.type_keys("l")
-  wait(child, 200)
-  child.type_keys("l") -- press l again to open log
-  wait(child, 500)
+  helpers.wait_for_popup(child)
+  -- Press l again to open log view
+  child.type_keys("l")
+  helpers.wait_for_filetype(child, "gitlad-log")
 
   -- Move to a commit line
   child.type_keys("5j")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Press _ to open revert popup
   child.type_keys("_")
-  wait(child, 200)
+  helpers.wait_for_popup(child)
 
   -- Should have revert popup
   local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])

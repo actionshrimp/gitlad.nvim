@@ -251,4 +251,50 @@ function M.cd(child, dir)
   child.lua(string.format([[vim.cmd("cd %s")]], dir))
 end
 
+--- Wait until the current buffer has a specific filetype
+---@param child table MiniTest child process
+---@param filetype string Expected filetype
+---@param timeout? number Timeout in milliseconds (default 1000)
+function M.wait_for_filetype(child, filetype, timeout)
+  timeout = timeout or 1000
+  local success = child.lua_get(string.format(
+    [[(function()
+      local ok = vim.wait(%d, function()
+        return vim.bo.filetype == %q
+      end, 10)
+      return ok
+    end)()]],
+    timeout,
+    filetype
+  ))
+  if not success then
+    local actual = child.lua_get([[vim.bo.filetype]])
+    error(
+      string.format(
+        "wait_for_filetype timed out after %dms waiting for %q, got %q",
+        timeout,
+        filetype,
+        actual
+      )
+    )
+  end
+end
+
+--- Wait until window count reaches expected value
+---@param child table MiniTest child process
+---@param count number Expected window count
+---@param timeout? number Timeout in milliseconds (default 500)
+function M.wait_for_win_count(child, count, timeout)
+  timeout = timeout or 500
+  child.lua(string.format(
+    [[
+    vim.wait(%d, function()
+      return vim.fn.winnr('$') == %d
+    end, 10)
+  ]],
+    timeout,
+    count
+  ))
+end
+
 return M
