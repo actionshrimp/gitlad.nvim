@@ -41,17 +41,11 @@ local function find_line_with(lines, pattern)
   return nil, nil
 end
 
--- Helper to wait for async operations
-local function wait(child, ms)
-  ms = ms or 100
-  child.lua(string.format("vim.wait(%d, function() return false end)", ms))
-end
-
 -- Helper to open gitlad in a repo
 local function open_gitlad(child, repo)
   child.cmd("cd " .. repo)
   child.cmd("Gitlad")
-  wait(child, 200)
+  helpers.wait_for_status(child)
 end
 
 -- Helper to check if keymap exists
@@ -169,7 +163,7 @@ T["visibility levels"]["<S-Tab> toggles all sections"] = function()
   helpers.git(child, repo, "stash push -m 'test stash'")
 
   open_gitlad(child, repo)
-  wait(child, 200)
+  helpers.wait_short(child)
 
   -- Initially no collapsible sections should be collapsed
   child.lua([[
@@ -184,7 +178,7 @@ T["visibility levels"]["<S-Tab> toggles all sections"] = function()
 
   -- Press <S-Tab> to collapse all collapsible sections
   child.type_keys("<S-Tab>")
-  wait(child, 200)
+  helpers.wait_short(child)
 
   -- Check that sections are now collapsed
   child.lua([[
@@ -201,7 +195,7 @@ T["visibility levels"]["<S-Tab> toggles all sections"] = function()
 
   -- Press <S-Tab> again to expand all
   child.type_keys("<S-Tab>")
-  wait(child, 200)
+  helpers.wait_short(child)
 
   -- Check that sections are now expanded
   child.lua([[
@@ -231,11 +225,11 @@ T["visibility levels"]["1 sets level 1 (headers only)"] = function()
 
   -- Move to header line for global visibility behavior (not scoped to file)
   child.type_keys("gg")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Press 1 to set level 1
   child.type_keys("1")
-  wait(child, 300)
+  helpers.wait_short(child, 100)
 
   child.lua([[
     local status = require("gitlad.ui.views.status")
@@ -254,13 +248,13 @@ T["visibility levels"]["2 sets level 2 (items visible)"] = function()
 
   -- Move to header line for global visibility behavior
   child.type_keys("gg")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- First set level 1, then level 2
   child.type_keys("1")
-  wait(child, 200)
+  helpers.wait_short(child)
   child.type_keys("2")
-  wait(child, 300)
+  helpers.wait_short(child, 100)
 
   child.lua([[
     local status = require("gitlad.ui.views.status")
@@ -297,11 +291,11 @@ T["visibility levels"]["3 shows diff headers only"] = function()
 
   -- Move to header line for global visibility behavior
   child.type_keys("gg")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Press 3 to show diff headers
   child.type_keys("3")
-  wait(child, 500) -- Wait for async diff fetching
+  helpers.wait_short(child, 100) -- Wait for async diff fetching
 
   child.lua([[
     local status = require("gitlad.ui.views.status")
@@ -349,11 +343,11 @@ T["visibility levels"]["4 expands everything including hunk content"] = function
 
   -- Move to header line for global visibility behavior
   child.type_keys("gg")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Press 4 to expand everything
   child.type_keys("4")
-  wait(child, 500)
+  helpers.wait_short(child, 100)
 
   child.lua([[
     local status = require("gitlad.ui.views.status")

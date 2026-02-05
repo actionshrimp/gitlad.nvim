@@ -488,11 +488,10 @@ T["push section"]["t action shows no remotes message when no remotes configured"
 
   -- Press t to push all tags - should show "No remotes configured" message
   child.type_keys("t")
-  helpers.wait_short(child, 200)
 
-  -- Check notification for no remotes
-  local messages = child.lua_get([[vim.fn.execute("messages")]])
-  eq(messages:match("No remotes configured") ~= nil, true)
+  -- Wait for the "No remotes configured" message to appear
+  local found = helpers.wait_for_message(child, "No remotes configured")
+  eq(found, true)
 
   helpers.cleanup_repo(child, repo)
 end

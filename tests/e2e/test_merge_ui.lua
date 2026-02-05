@@ -303,7 +303,7 @@ T["branch selection"]["prompts with vim.ui.select when no context branch"] = fun
   local select_items = child.lua_get([[_G.select_items]])
   -- Should contain the feature branch
   local found_feature = false
-  if select_items then
+  if select_items and type(select_items) == "table" then
     for _, item in ipairs(select_items) do
       if item == "feature" then
         found_feature = true
@@ -353,7 +353,7 @@ T["branch selection"]["excludes current branch from selection list"] = function(
 
   -- Should NOT contain main (current branch)
   local found_main = false
-  if select_items then
+  if select_items and type(select_items) == "table" then
     for _, item in ipairs(select_items) do
       if item == "main" then
         found_main = true

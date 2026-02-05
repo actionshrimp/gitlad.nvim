@@ -43,17 +43,11 @@ local function find_line_with(lines, pattern)
   return nil, nil
 end
 
--- Helper to wait for async operations
-local function wait(child, ms)
-  ms = ms or 100
-  child.lua(string.format("vim.wait(%d, function() return false end)", ms))
-end
-
 -- Helper to open gitlad in a repo
 local function open_gitlad(child, repo)
   child.cmd("cd " .. repo)
   child.cmd("Gitlad")
-  wait(child, 200) -- Wait for async status fetch
+  helpers.wait_for_status(child)
 end
 
 -- =============================================================================
@@ -195,7 +189,7 @@ T["navigation"]["gj navigates to next file entry"] = function()
 
   -- Press gj to navigate to first file
   child.type_keys("gj")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   local lines = get_buffer_lines(child)
   local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
@@ -266,14 +260,14 @@ T["navigation"]["gg works to jump to top of buffer"] = function()
 
   -- Move to the bottom
   child.type_keys("G")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   local cursor_after_G = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
   assert_truthy(cursor_after_G > 1, "G should move to end of buffer")
 
   -- Now press gg to go to top
   child.type_keys("gg")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   local cursor_after_gg = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
   eq(cursor_after_gg, 1, "gg should move to line 1")
@@ -302,7 +296,7 @@ T["cr on commit"]["<CR> on commit in log view triggers diff"] = function()
 
   -- Open log view (l then l)
   child.type_keys("ll")
-  wait(child, 500)
+  helpers.wait_for_filetype(child, "gitlad-log")
 
   -- Verify we're in log buffer
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -310,7 +304,7 @@ T["cr on commit"]["<CR> on commit in log view triggers diff"] = function()
 
   -- Navigate to a commit
   child.type_keys("gj")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Press <CR> on commit - should trigger diff
   -- Since diffview may not be installed in test env, we capture any notification
@@ -324,7 +318,7 @@ T["cr on commit"]["<CR> on commit in log view triggers diff"] = function()
   ]])
 
   child.type_keys("<CR>")
-  wait(child, 300)
+  helpers.wait_short(child)
 
   -- Either diffview opens (test passes), or we get a notification about diffview not being installed
   -- In either case, no error should occur - the key should be bound
@@ -345,7 +339,7 @@ T["cr on commit"]["<CR> keymap is set on log buffer"] = function()
 
   -- Open log view
   child.type_keys("ll")
-  wait(child, 500)
+  helpers.wait_for_filetype(child, "gitlad-log")
 
   -- Check that <CR> keymap exists
   child.lua([[
@@ -394,7 +388,7 @@ T["navigation"]["reopening status buffer positions cursor at first item"] = func
 
   -- Go to end of buffer using G (standard vim motion)
   child.type_keys("G")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   local scrolled_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
   assert_truthy(
@@ -404,11 +398,11 @@ T["navigation"]["reopening status buffer positions cursor at first item"] = func
 
   -- Close status buffer
   child.type_keys("q")
-  wait(child, 100)
+  helpers.wait_short(child)
 
   -- Reopen status buffer
   child.cmd("Gitlad")
-  wait(child, 500)
+  helpers.wait_for_status(child)
 
   -- Cursor should be back at first item (same position as initial open)
   local reopened_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")

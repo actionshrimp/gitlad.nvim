@@ -151,7 +151,7 @@ T["commit editor"]["opens when pressing c in commit popup"] = function()
   -- Press c again to open commit editor
   child.type_keys("c")
 
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
 
   -- Verify we're in a commit editor buffer
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
@@ -179,8 +179,9 @@ T["commit editor"]["has help comments"] = function()
   helpers.wait_for_popup(child)
   child.type_keys("c")
 
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
-  helpers.wait_short(child, 200) -- Wait for content to be populated
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
+  -- Wait for content to be populated (async operation)
+  helpers.wait_for_buffer_content(child, "C-c C-c to commit", 2000)
 
   local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
 
@@ -211,7 +212,7 @@ T["commit editor"]["aborts with C-c C-k"] = function()
   helpers.wait_for_popup(child)
   child.type_keys("c")
 
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
 
   -- Abort with ZQ (more reliable than C-c C-k on slow CI)
   child.type_keys("ZQ")
@@ -254,7 +255,7 @@ T["commit editor"]["can close status with q after abort"] = function()
 
   -- Press c to open commit editor (popup closes, editor opens in split above status)
   child.type_keys("c")
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
 
   -- Should have 2 windows now (editor split + status)
   local editor_win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -314,7 +315,7 @@ T["commit editor"]["rapid q after abort does not error"] = function()
   child.type_keys("c")
   helpers.wait_for_popup(child)
   child.type_keys("c")
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
 
   -- Clear messages before abort/close sequence
   child.lua([[vim.cmd("messages clear")]])
@@ -353,7 +354,7 @@ T["commit editor"]["q works after abort without error"] = function()
   child.type_keys("c")
   helpers.wait_for_popup(child)
   child.type_keys("c")
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
 
   -- Clear all messages
   child.lua([[vim.cmd("messages clear")]])
@@ -395,7 +396,7 @@ T["commit editor"]["creates commit with C-c C-c"] = function()
   helpers.wait_for_popup(child)
   child.type_keys("c")
 
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
 
   -- Wait for the buffer content to be loaded (async operation)
   -- The commit editor loads content asynchronously, so we need to wait for
@@ -454,8 +455,8 @@ T["commit editor"]["shows staged files summary"] = function()
   child.type_keys("c")
   helpers.wait_for_popup(child)
   child.type_keys("c")
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
-  helpers.wait_short(child, 200) -- Wait for content to be populated
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
+  helpers.wait_for_buffer_content(child, "Changes to be committed", 5000)
 
   -- Get buffer content
   local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
@@ -502,7 +503,7 @@ T["commit editor"]["opens in split above status"] = function()
   child.type_keys("c")
   helpers.wait_for_popup(child)
   child.type_keys("c")
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
 
   -- Should have 2 windows now
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
@@ -586,7 +587,7 @@ T["commit validation"]["allows commit with -a flag when nothing staged"] = funct
 
   -- Try to commit
   child.type_keys("c")
-  helpers.wait_for_buffer(child, "COMMIT_EDITMSG")
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 3000)
 
   -- Should have opened commit editor
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])

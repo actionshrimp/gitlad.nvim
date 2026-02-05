@@ -43,11 +43,15 @@ local function find_line_with(lines, pattern)
   return nil, nil
 end
 
--- Helper to open gitlad in a repo
-local function open_gitlad(child, repo)
+-- Helper to open gitlad in a repo, optionally waiting for specific content
+local function open_gitlad(child, repo, expected_content)
   child.cmd("cd " .. repo)
   child.cmd("Gitlad")
-  helpers.wait_for_status(child)
+  if expected_content then
+    helpers.wait_for_status_content(child, expected_content)
+  else
+    helpers.wait_for_status(child)
+  end
 end
 
 -- =============================================================================
@@ -68,17 +72,17 @@ T["diff expansion"]["TAB expands diff for modified file"] = function()
   -- Modify the file
   helpers.create_file(child, repo, "file.txt", "line1\nline2 modified\nline3\n")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Navigate to file and expand (single TAB for 2-state toggle)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Check that diff lines are shown
-  lines = get_buffer_lines(child)
+  local lines = get_buffer_lines(child)
   local has_diff_header = find_line_with(lines, "@@")
   local has_minus_line = find_line_with(lines, "-line2")
   local has_plus_line = find_line_with(lines, "+line2 modified")
@@ -100,23 +104,23 @@ T["diff expansion"]["TAB collapses expanded diff"] = function()
   -- Modify the file
   helpers.create_file(child, repo, "file.txt", "modified\n")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Navigate to file and expand (2-state toggle: collapsed <-> expanded)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- First TAB: fully expanded
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Verify diff shown
-  lines = get_buffer_lines(child)
+  local lines = get_buffer_lines(child)
   local has_diff = find_line_with(lines, "@@")
   assert_truthy(has_diff, "Should show @@ header after first TAB")
 
   -- Second TAB: collapse
   child.type_keys("<Tab>")
-  helpers.wait_short(child)
+  helpers.wait_for_diff_collapsed(child)
 
   -- Verify collapsed
   lines = get_buffer_lines(child)
@@ -136,17 +140,18 @@ T["diff expansion"]["shows content for untracked file"] = function()
   -- Create untracked file
   helpers.create_file(child, repo, "new.txt", "line1\nline2\nline3\n")
 
-  open_gitlad(child, repo)
+  -- Wait for status with new.txt visible
+  open_gitlad(child, repo, "new.txt")
 
   -- Navigate to file and expand (single TAB for 2-state toggle)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "new.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "new.txt")
+  assert_truthy(file_line, "Should find new.txt")
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  helpers.wait_short(child, 100)
+  -- Wait for file content to appear (untracked files show content, not @@ headers)
+  helpers.wait_for_buffer_content(child, "line1")
 
   -- Check that file content is shown
-  lines = get_buffer_lines(child)
+  local lines = get_buffer_lines(child)
   local has_line1 = find_line_with(lines, "line1")
   local has_line2 = find_line_with(lines, "line2")
 
@@ -175,26 +180,25 @@ T["hunk staging"]["s on diff line stages single hunk"] = function()
     "line1 modified\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10 modified\n"
   helpers.create_file(child, repo, "file.txt", modified)
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Expand the diff (single TAB for 2-state toggle)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Find the first hunk's diff line and stage it
-  lines = get_buffer_lines(child)
-  local first_hunk_line = find_line_with(lines, "+line1 modified")
+  local first_hunk_line = helpers.goto_line_with(child, "+line1 modified")
   assert_truthy(first_hunk_line, "Should find first hunk line")
 
-  child.cmd(tostring(first_hunk_line))
   child.type_keys("s")
-  helpers.wait_short(child, 150)
 
-  -- Verify: file should now appear in both staged and unstaged
-  -- (first hunk staged, second hunk still unstaged)
+  -- Wait for buffer to show Staged section (hunk staging creates partial staging)
+  helpers.wait_for_status_content(child, "Staged")
+
+  -- Verify git status shows MM (staged + unstaged changes)
   local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(
     status:find("MM file.txt"),
@@ -215,25 +219,25 @@ T["hunk staging"]["u on diff line unstages single hunk"] = function()
   helpers.create_file(child, repo, "file.txt", "modified line\n")
   helpers.git(child, repo, "add file.txt")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Expand the staged diff (single TAB for 2-state toggle)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Find a diff line and unstage
-  lines = get_buffer_lines(child)
-  local diff_line = find_line_with(lines, "+modified")
+  local diff_line = helpers.goto_line_with(child, "+modified")
   assert_truthy(diff_line, "Should find diff line")
 
-  child.cmd(tostring(diff_line))
   child.type_keys("u")
-  helpers.wait_short(child, 150)
 
-  -- Verify file is now unstaged
+  -- Wait for buffer to re-render (file moves back to unstaged only)
+  helpers.wait_for_status_content(child, "Unstaged")
+
+  -- Verify git status
   local status = helpers.git(child, repo, "status --porcelain")
   assert_truthy(status:find(" M file.txt"), "File should show unstaged modified status")
 end
@@ -256,28 +260,27 @@ T["visual selection"]["stages selected lines from hunk"] = function()
   -- Modify multiple lines
   helpers.create_file(child, repo, "file.txt", "line1 changed\nline2 changed\nline3\n")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Expand the diff (single TAB for 2-state toggle)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Find the first changed line
-  lines = get_buffer_lines(child)
-  local first_plus = find_line_with(lines, "+line1 changed")
+  local first_plus = helpers.goto_line_with(child, "+line1 changed")
   assert_truthy(first_plus, "Should find +line1 changed")
 
   -- Visually select just the first line and stage it
-  child.cmd(tostring(first_plus))
   child.type_keys("V", "s")
-  helpers.wait_short(child, 150)
 
-  -- Verify partial staging occurred
+  -- Wait for buffer to show Staged section (partial staging)
+  helpers.wait_for_status_content(child, "Staged")
+
+  -- Verify git status shows MM
   local status = helpers.git(child, repo, "status --porcelain")
-  -- File should have both staged and unstaged changes (MM)
   assert_truthy(status:find("MM file.txt"), "File should have partial staging (MM status)")
 end
 
@@ -294,28 +297,27 @@ T["visual selection"]["unstages selected lines from staged hunk"] = function()
   helpers.create_file(child, repo, "file.txt", "line1 changed\nline2 changed\nline3\n")
   helpers.git(child, repo, "add file.txt")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Expand the staged diff (single TAB for 2-state toggle)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Find the first changed line
-  lines = get_buffer_lines(child)
-  local first_plus = find_line_with(lines, "+line1 changed")
+  local first_plus = helpers.goto_line_with(child, "+line1 changed")
   assert_truthy(first_plus, "Should find +line1 changed")
 
   -- Visually select just the first line and unstage it
-  child.cmd(tostring(first_plus))
   child.type_keys("V", "u")
-  helpers.wait_short(child, 150)
 
-  -- Verify partial unstaging occurred
+  -- Wait for buffer to re-render (partial unstaging)
+  helpers.wait_for_status_content(child, "Unstaged")
+
+  -- Verify git status shows MM
   local status = helpers.git(child, repo, "status --porcelain")
-  -- File should have both staged and unstaged changes (MM)
   assert_truthy(
     status:find("MM file.txt"),
     "File should have partial staging after unstage (MM status)"
@@ -334,32 +336,33 @@ T["visual selection"]["stages multiple selected lines"] = function()
   -- Modify lines b, c, d
   helpers.create_file(child, repo, "file.txt", "a\nB\nC\nD\ne\n")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Expand the diff (single TAB for 2-state toggle)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Find the +B line and select B and C (but not D)
-  lines = get_buffer_lines(child)
-  local plus_b = find_line_with(lines, "+B")
-  local plus_c = find_line_with(lines, "+C")
+  local plus_b = helpers.goto_line_with(child, "+B")
   assert_truthy(plus_b, "Should find +B")
+  local lines = get_buffer_lines(child)
+  local plus_c = find_line_with(lines, "+C")
   assert_truthy(plus_c, "Should find +C")
 
   -- Select from +B to +C and stage
-  child.cmd(tostring(plus_b))
   child.type_keys("V")
   child.cmd(tostring(plus_c))
   child.type_keys("s")
-  helpers.wait_short(child, 150)
 
-  -- Verify partial staging - should have MM status
-  local status = helpers.git(child, repo, "status --porcelain")
-  assert_truthy(status:find("MM file.txt"), "File should have partial staging (MM status)")
+  -- Wait for buffer to show Staged section (partial staging)
+  helpers.wait_for_status_content(child, "Staged")
+
+  -- Verify git status shows MM
+  local status_output = helpers.git(child, repo, "status --porcelain")
+  assert_truthy(status_output:find("MM file.txt"), "File should have partial staging (MM status)")
 
   -- Verify staged diff contains B and C but D is still in working copy
   local staged_diff = helpers.git(child, repo, "diff --cached file.txt")
@@ -392,21 +395,21 @@ T["hunk navigation"]["<CR> on diff line jumps to file at correct line"] = functi
     "line 1\nline 2\nline 3\nline 4\nmodified 5\nmodified 6\nmodified 7\nline 8\nline 9\nline 10\n"
   helpers.create_file(child, repo, "file.txt", modified)
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Cursor should already be on the unstaged file (first item)
   -- Expand the diff (single TAB for 2-state toggle)
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  helpers.wait_short(child, 150)
+  helpers.wait_for_diff_expanded(child)
 
   -- Move down to a diff line (should be on a + line)
   -- Navigate down several lines to get into the diff content
   child.type_keys("jjjj")
-  helpers.wait_short(child)
 
   -- Press <CR> to jump to file
   child.type_keys("<CR>")
-  helpers.wait_short(child, 100)
+  helpers.wait_for_buffer(child, "file.txt")
 
   -- Verify we're now in file.txt
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -444,26 +447,29 @@ T["hunk navigation"]["<CR> on hunk header jumps to hunk start line"] = function(
   end
   helpers.create_file(child, repo, "file.txt", modified)
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Cursor should already be on file (first item)
   -- Expand the file
   child.type_keys("<Tab>")
-  helpers.wait_short(child, 150)
+  helpers.wait_for_diff_expanded(child)
 
   -- Move down once to get to the @@ header line
   child.type_keys("j")
-  helpers.wait_short(child)
 
   -- Get current line content to verify we're on @@ line
   local lines = get_buffer_lines(child)
   local cursor_line = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
   local current_line = lines[cursor_line]
-  assert_truthy(current_line:match("^@@"), "Should be on @@ header line")
+  assert_truthy(
+    current_line:match("^@@") or current_line:match("^%s+@@"),
+    "Should be on @@ header line"
+  )
 
   -- Press <CR> to jump to file
   child.type_keys("<CR>")
-  helpers.wait_short(child, 100)
+  helpers.wait_for_buffer(child, "file.txt")
 
   -- Verify we're in file.txt
   local buf_name = child.lua_get("vim.api.nvim_buf_get_name(0)")
@@ -498,17 +504,17 @@ T["expansion memory"]["re-expanding file restores remembered hunk state"] = func
     "line1 modified\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10 modified\n"
   helpers.create_file(child, repo, "file.txt", modified)
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Navigate to file and expand
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- Expand (fully expanded by default)
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Verify both hunks are visible
-  lines = get_buffer_lines(child)
+  local lines = get_buffer_lines(child)
   local first_hunk = find_line_with(lines, "+line1 modified")
   local second_hunk = find_line_with(lines, "+line10 modified")
   assert_truthy(first_hunk, "First hunk should be visible")
@@ -517,7 +523,7 @@ T["expansion memory"]["re-expanding file restores remembered hunk state"] = func
   -- Collapse the file
   child.cmd(tostring(file_line))
   child.type_keys("<Tab>")
-  helpers.wait_short(child)
+  helpers.wait_for_diff_collapsed(child)
 
   -- Verify collapsed
   lines = get_buffer_lines(child)
@@ -526,7 +532,7 @@ T["expansion memory"]["re-expanding file restores remembered hunk state"] = func
 
   -- Re-expand the file
   child.type_keys("<Tab>")
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Verify both hunks are still visible (remembered state restored)
   lines = get_buffer_lines(child)
@@ -548,17 +554,17 @@ T["expansion memory"]["defaults to fully expanded when no remembered state"] = f
   -- Modify the file
   helpers.create_file(child, repo, "file.txt", "modified\n")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Navigate to file and expand (first time, no remembered state)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- Expand
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Verify fully expanded (diff content visible, not just headers)
-  lines = get_buffer_lines(child)
+  local lines = get_buffer_lines(child)
   local has_diff_header = find_line_with(lines, "@@")
   local has_content = find_line_with(lines, "+modified")
 
@@ -613,26 +619,36 @@ T["hunk discard"]["x on diff line discards single hunk"] = function()
     "line1 modified\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10 modified\n"
   helpers.create_file(child, repo, "file.txt", modified)
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Mock vim.ui.select to auto-confirm
   mock_ui_select_yes(child)
 
   -- Expand the diff (single TAB for 2-state toggle)
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>") -- TAB: fully expanded (2-state toggle)
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Find the first hunk's diff line and discard it
-  lines = get_buffer_lines(child)
-  local first_hunk_line = find_line_with(lines, "+line1 modified")
+  local first_hunk_line = helpers.goto_line_with(child, "+line1 modified")
   assert_truthy(first_hunk_line, "Should find first hunk line")
 
-  child.cmd(tostring(first_hunk_line))
   child.type_keys("x")
-  helpers.wait_short(child, 150)
+
+  -- Wait for discard to complete by checking file content
+  child.lua(string.format(
+    [[
+    vim.wait(20000, function()
+      local path = %q .. "/file.txt"
+      local lines = vim.fn.readfile(path)
+      local content = table.concat(lines, "\n") .. "\n"
+      return not content:find("line1 modified", 1, true)
+    end, 50)
+  ]],
+    repo
+  ))
 
   restore_ui_select(child)
 
@@ -653,18 +669,30 @@ T["hunk discard"]["x on file discards whole file when not on hunk"] = function()
   helpers.git(child, repo, 'commit -m "Initial"')
   helpers.create_file(child, repo, "file.txt", "modified\n")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Mock vim.ui.select to auto-confirm
   mock_ui_select_yes(child)
 
   -- Don't expand - stay on file line
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
 
   child.type_keys("x")
-  helpers.wait_short(child, 150)
+
+  -- Wait for discard to complete by checking file content
+  child.lua(string.format(
+    [[
+    vim.wait(20000, function()
+      local path = %q .. "/file.txt"
+      local lines = vim.fn.readfile(path)
+      local content = table.concat(lines, "\n") .. "\n"
+      return content == "original\n"
+    end, 50)
+  ]],
+    repo
+  ))
 
   restore_ui_select(child)
 
@@ -685,27 +713,37 @@ T["hunk discard"]["visual selection discards single line from hunk"] = function(
   -- Add multiple new lines that will be in same hunk
   helpers.create_file(child, repo, "file.txt", "line1\nnew1\nnew2\nline2\nline3\n")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Mock vim.ui.select to auto-confirm
   mock_ui_select_yes(child)
 
   -- Expand the diff
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
   child.type_keys("<Tab>")
-  helpers.wait_short(child, 100)
+  helpers.wait_for_diff_expanded(child)
 
   -- Find the first new line
-  lines = get_buffer_lines(child)
-  local new1_line = find_line_with(lines, "+new1")
+  local new1_line = helpers.goto_line_with(child, "+new1")
   assert_truthy(new1_line, "Should find +new1")
 
   -- Visual select just new1 and discard it
-  child.cmd(tostring(new1_line))
   child.type_keys("V", "x")
-  helpers.wait_short(child, 150)
+
+  -- Wait for discard to complete by checking file content
+  child.lua(string.format(
+    [[
+    vim.wait(20000, function()
+      local path = %q .. "/file.txt"
+      local lines = vim.fn.readfile(path)
+      local content = table.concat(lines, "\n") .. "\n"
+      return not content:find("new1", 1, true)
+    end, 50)
+  ]],
+    repo
+  ))
 
   restore_ui_select(child)
 
@@ -726,24 +764,20 @@ T["hunk discard"]["cannot discard staged changes"] = function()
   helpers.create_file(child, repo, "file.txt", "modified\n")
   helpers.git(child, repo, "add file.txt")
 
-  open_gitlad(child, repo)
+  -- Wait for status with file.txt visible
+  open_gitlad(child, repo, "file.txt")
 
   -- Find the staged file
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "file.txt")
-  child.cmd(tostring(file_line))
+  local file_line = helpers.goto_line_with(child, "file.txt")
+  assert_truthy(file_line, "Should find file.txt")
 
   -- Expand and try to discard
   child.type_keys("<Tab>")
-  helpers.wait_short(child, 100)
-  lines = get_buffer_lines(child)
-  local diff_line = find_line_with(lines, "+modified")
-  if diff_line then
-    child.cmd(tostring(diff_line))
-  end
+  helpers.wait_for_diff_expanded(child)
+  helpers.goto_line_with(child, "+modified")
 
   child.type_keys("x")
-  helpers.wait_short(child, 100)
+  helpers.wait_short(child, 500)
 
   -- File should still be staged (discard blocked)
   local status = helpers.git(child, repo, "status --porcelain")
@@ -771,39 +805,36 @@ T["visual selection untracked"]["stages selected lines from untracked file"] = f
   -- Create an untracked file with multiple lines
   helpers.create_file(child, repo, "new.txt", "line1\nline2\nline3\nline4\nline5\n")
 
-  open_gitlad(child, repo)
+  -- Wait for status with new.txt visible
+  open_gitlad(child, repo, "new.txt")
 
   -- Navigate to the untracked file and expand it
-  local lines = get_buffer_lines(child)
-  local file_line = find_line_with(lines, "new.txt")
+  local file_line = helpers.goto_line_with(child, "new.txt")
   assert_truthy(file_line, "Should find new.txt")
-  child.cmd(tostring(file_line))
 
   -- Expand to see the diff
   child.type_keys("<Tab>")
-  helpers.wait_short(child, 100)
+  -- Wait for file content (untracked files show content, not @@ headers)
+  helpers.wait_for_buffer_content(child, "+line1")
 
   -- Find lines to select (we'll select line1 and line2 but not line3-5)
-  lines = get_buffer_lines(child)
-  local plus_line1 = find_line_with(lines, "+line1")
-  local plus_line2 = find_line_with(lines, "+line2")
+  local plus_line1 = helpers.goto_line_with(child, "+line1")
   assert_truthy(plus_line1, "Should find +line1")
+  local lines = get_buffer_lines(child)
+  local plus_line2 = find_line_with(lines, "+line2")
   assert_truthy(plus_line2, "Should find +line2")
 
   -- Visual select lines 1-2 and stage them
-  child.cmd(tostring(plus_line1))
   child.type_keys("V")
   child.cmd(tostring(plus_line2))
   child.type_keys("s")
-  helpers.wait_short(child, 200) -- Extra wait for intent-to-add + apply patch
 
-  -- Verify partial staging occurred:
-  -- - git add -N was run first
-  -- - Then partial patch was applied
-  -- File should have both staged (line1, line2) and unstaged (line3, line4, line5) changes
-  local status = helpers.git(child, repo, "status --porcelain")
-  -- Should be AM (Added in index with modifications in worktree)
-  assert_truthy(status:find("AM new.txt"), "File should have partial staging (AM status)")
+  -- Wait for buffer to show Staged section (partial staging of untracked file)
+  helpers.wait_for_status_content(child, "Staged")
+
+  -- Verify git status shows AM
+  local status_output = helpers.git(child, repo, "status --porcelain")
+  assert_truthy(status_output:find("AM new.txt"), "File should have partial staging (AM status)")
 
   -- Verify staged diff contains line1 and line2
   local staged_diff = helpers.git(child, repo, "diff --cached new.txt")
