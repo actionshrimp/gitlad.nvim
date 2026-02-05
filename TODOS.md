@@ -19,12 +19,18 @@
 - [x] are our worktree popup keys the same as magit evil collection?
 - [x] still a slight issue with our new 'intent to add' feature and the staging of a new directory ;(
 - [x] can we render ansi terminal colour codes nicely in the hook popup output?
+- [x] why is 'origin' listed as a ref under the origin remote in our version?
+
+- [ ] overall visual improvements - see screenshots of magit's (polished, colourful, more detail about remote's details) vs ours
+- [ ] from refs view, I'd also like to standardise the diff popup to behave the same as other views. however it should use the context under the point to help the user build a range expression, with a full initial suggestion. essentially the flow should be:
+    - type `d r`, get a popup with a default range suggested based on the context (use magit's examples here)
+    - in that same popup, allow the user to also type in an arbitrary range if they know what they're doing
+    - add a second suggestion 'Build range', which if selected starts a 3-popup that guides the user through building a range: 1) base ref from refs picker (with arbitrary input supported too), 2) choice between `..` and `...`, 3) other ref from refs picker (with arbitrary input supported too).
+    - This should be the most flexible but help the user build ranges more easily if needed
 - [ ] setting upstream to a local branch doesnt work properly
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] improve look and feel of '$' / command history (from screenshot)
 - [ ] hook output window should only appear if hooks are actually configured. Before implementing, consider a holistic approach: detect configured hooks and show progress/output for all git operations that may trigger them (commit, push, etc.). This may warrant a dedicated phase in PLAN.md.
 - [ ] some kind of display of queued git operations so you know git is still working underneath for slow operations?
 - [ ] when running `SPC p t` from status buffer i get an error as neovim doesnt think it's a real project directory
-- [ ] why is 'origin' listed as a ref under the origin remote
 - [ ] unstage new files from unstaged back to untracked doesnt work with visual selection
-- [ ] from refs view, trying to diff my branch against develop with `...` doesnt work. 

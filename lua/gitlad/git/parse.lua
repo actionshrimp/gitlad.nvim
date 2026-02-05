@@ -676,6 +676,11 @@ function M.parse_for_each_ref(lines)
       line:match("^([^|]*)|||([^|]*)|||([^|]*)|||(.*)|||([^|]*)$")
 
     if name and full_name then
+      -- Skip remote HEAD refs (e.g., refs/remotes/origin/HEAD)
+      if full_name:match("^refs/remotes/[^/]+/HEAD$") then
+        goto continue
+      end
+
       ---@type RefInfo
       local ref = {
         name = name,
@@ -699,6 +704,7 @@ function M.parse_for_each_ref(lines)
       end
 
       table.insert(refs, ref)
+      ::continue::
     end
   end
 

@@ -580,6 +580,24 @@ T["parse_for_each_ref"]["handles mixed ref types"] = function()
   eq(result[3].type, "tag")
 end
 
+T["parse_for_each_ref"]["filters out remote HEAD refs"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_for_each_ref({
+    "origin|||abc1234|||refs/remotes/origin/HEAD|||Initial commit|||",
+    "origin/main|||abc1234|||refs/remotes/origin/main|||Initial commit|||",
+    "origin/develop|||def5678|||refs/remotes/origin/develop|||Add feature|||",
+    "upstream|||ghi9012|||refs/remotes/upstream/HEAD|||Upstream commit|||",
+    "upstream/main|||ghi9012|||refs/remotes/upstream/main|||Upstream commit|||",
+  })
+
+  -- Remote HEAD refs should be filtered out, leaving only actual branches
+  eq(#result, 3)
+  eq(result[1].name, "origin/main")
+  eq(result[2].name, "origin/develop")
+  eq(result[3].name, "upstream/main")
+end
+
 T["parse_for_each_ref"]["handles empty input"] = function()
   local parse = require("gitlad.git.parse")
 
