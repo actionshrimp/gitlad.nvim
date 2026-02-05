@@ -943,14 +943,14 @@ function RefsBuffer:_render_ref(lines, ref, base_indent, name_col_width, upstrea
   local padded_name = display_name .. string.rep(" ", math.max(0, name_col_width - #display_name))
   table.insert(parts, padded_name)
 
-  -- Upstream tracking ref (only for local branches, only if any branch has upstream)
+  -- Upstream tracking ref (only for local branches, no right-padding - flows into subject)
   local display_upstream
   if ref.type == "local" and upstream_col_width > 0 then
     local upstream = ref.upstream or ""
     display_upstream = truncate(upstream, upstream_col_width)
-    local padded_upstream = display_upstream
-      .. string.rep(" ", math.max(0, upstream_col_width - #display_upstream))
-    table.insert(parts, padded_upstream)
+    if #display_upstream > 0 then
+      table.insert(parts, display_upstream)
+    end
   end
 
   -- Subject
