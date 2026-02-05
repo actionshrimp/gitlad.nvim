@@ -516,8 +516,8 @@ T["parse_for_each_ref"]["parses local branches"] = function()
   local parse = require("gitlad.git.parse")
 
   local result = parse.parse_for_each_ref({
-    "main|||abc1234|||refs/heads/main|||Initial commit|||*",
-    "develop|||def5678|||refs/heads/develop|||Add feature|||",
+    "main|||abc1234|||refs/heads/main|||Initial commit|||*|||origin/main",
+    "develop|||def5678|||refs/heads/develop|||Add feature||||||",
   })
 
   eq(#result, 2)
@@ -527,17 +527,19 @@ T["parse_for_each_ref"]["parses local branches"] = function()
   eq(result[1].subject, "Initial commit")
   eq(result[1].type, "local")
   eq(result[1].is_head, true)
+  eq(result[1].upstream, "origin/main")
   eq(result[2].name, "develop")
   eq(result[2].is_head, false)
   eq(result[2].type, "local")
+  eq(result[2].upstream, nil)
 end
 
 T["parse_for_each_ref"]["parses remote branches"] = function()
   local parse = require("gitlad.git.parse")
 
   local result = parse.parse_for_each_ref({
-    "origin/main|||abc1234|||refs/remotes/origin/main|||Initial commit|||",
-    "upstream/main|||def5678|||refs/remotes/upstream/main|||Upstream commit|||",
+    "origin/main|||abc1234|||refs/remotes/origin/main|||Initial commit||||||",
+    "upstream/main|||def5678|||refs/remotes/upstream/main|||Upstream commit||||||",
   })
 
   eq(#result, 2)
@@ -553,8 +555,8 @@ T["parse_for_each_ref"]["parses tags"] = function()
   local parse = require("gitlad.git.parse")
 
   local result = parse.parse_for_each_ref({
-    "v1.0.0|||abc1234|||refs/tags/v1.0.0|||Release version 1.0.0|||",
-    "v0.9.0|||def5678|||refs/tags/v0.9.0|||Release version 0.9.0|||",
+    "v1.0.0|||abc1234|||refs/tags/v1.0.0|||Release version 1.0.0||||||",
+    "v0.9.0|||def5678|||refs/tags/v0.9.0|||Release version 0.9.0||||||",
   })
 
   eq(#result, 2)
@@ -569,15 +571,33 @@ T["parse_for_each_ref"]["handles mixed ref types"] = function()
   local parse = require("gitlad.git.parse")
 
   local result = parse.parse_for_each_ref({
-    "main|||abc1234|||refs/heads/main|||Commit on main|||*",
-    "origin/main|||abc1234|||refs/remotes/origin/main|||Commit on main|||",
-    "v1.0.0|||def5678|||refs/tags/v1.0.0|||Tag message|||",
+    "main|||abc1234|||refs/heads/main|||Commit on main|||*|||origin/main",
+    "origin/main|||abc1234|||refs/remotes/origin/main|||Commit on main||||||",
+    "v1.0.0|||def5678|||refs/tags/v1.0.0|||Tag message||||||",
   })
 
   eq(#result, 3)
   eq(result[1].type, "local")
   eq(result[2].type, "remote")
   eq(result[3].type, "tag")
+end
+
+T["parse_for_each_ref"]["filters out remote HEAD refs"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_for_each_ref({
+    "origin|||abc1234|||refs/remotes/origin/HEAD|||Initial commit||||||",
+    "origin/main|||abc1234|||refs/remotes/origin/main|||Initial commit||||||",
+    "origin/develop|||def5678|||refs/remotes/origin/develop|||Add feature||||||",
+    "upstream|||ghi9012|||refs/remotes/upstream/HEAD|||Upstream commit||||||",
+    "upstream/main|||ghi9012|||refs/remotes/upstream/main|||Upstream commit||||||",
+  })
+
+  -- Remote HEAD refs should be filtered out, leaving only actual branches
+  eq(#result, 3)
+  eq(result[1].name, "origin/main")
+  eq(result[2].name, "origin/develop")
+  eq(result[3].name, "upstream/main")
 end
 
 T["parse_for_each_ref"]["handles empty input"] = function()
@@ -592,13 +612,14 @@ T["parse_for_each_ref"]["handles branch names with slashes"] = function()
   local parse = require("gitlad.git.parse")
 
   local result = parse.parse_for_each_ref({
-    "feature/add-login|||abc1234|||refs/heads/feature/add-login|||Add login feature|||",
-    "origin/feature/add-login|||abc1234|||refs/remotes/origin/feature/add-login|||Add login|||",
+    "feature/add-login|||abc1234|||refs/heads/feature/add-login|||Add login feature||||||origin/feature/add-login",
+    "origin/feature/add-login|||abc1234|||refs/remotes/origin/feature/add-login|||Add login||||||",
   })
 
   eq(#result, 2)
   eq(result[1].name, "feature/add-login")
   eq(result[1].type, "local")
+  eq(result[1].upstream, "origin/feature/add-login")
   eq(result[2].name, "origin/feature/add-login")
   eq(result[2].type, "remote")
   eq(result[2].remote, "origin")
@@ -609,12 +630,31 @@ T["parse_for_each_ref"]["get_refs_format_string returns expected format"] = func
 
   local format = parse.get_refs_format_string()
 
-  -- Should contain placeholders for refname, objectname, etc.
+  -- Should contain placeholders for refname, objectname, upstream, etc.
   expect.equality(format:match("refname:short") ~= nil, true)
   expect.equality(format:match("objectname:short") ~= nil, true)
   expect.equality(format:match("refname") ~= nil, true)
   expect.equality(format:match("subject") ~= nil, true)
   expect.equality(format:match("HEAD") ~= nil, true)
+  expect.equality(format:match("upstream:short") ~= nil, true)
+end
+
+T["parse_for_each_ref"]["parses upstream tracking info"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local result = parse.parse_for_each_ref({
+    "main|||abc1234|||refs/heads/main|||Initial commit|||*|||origin/main",
+    "develop|||def5678|||refs/heads/develop|||Add feature||||||",
+    "feature|||ghi9012|||refs/heads/feature|||WIP||||||upstream/feature",
+  })
+
+  eq(#result, 3)
+  -- main tracks origin/main
+  eq(result[1].upstream, "origin/main")
+  -- develop has no upstream
+  eq(result[2].upstream, nil)
+  -- feature tracks upstream/feature
+  eq(result[3].upstream, "upstream/feature")
 end
 
 -- =============================================================================

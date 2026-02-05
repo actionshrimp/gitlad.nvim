@@ -168,13 +168,13 @@ T["refs view"]["displays local branches"] = function()
   -- Open refs view
   child.type_keys("yry")
   helpers.wait_for_buffer(child, "gitlad://refs")
-  helpers.wait_for_buffer_content(child, "Local")
+  helpers.wait_for_buffer_content(child, "Branches")
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
   local content = table.concat(lines, "\n")
 
-  -- Should show Local section
-  expect.equality(content:match("Local") ~= nil, true)
+  -- Should show Branches section
+  expect.equality(content:match("Branches") ~= nil, true)
   -- Should show branch names
   expect.equality(content:match("master") ~= nil or content:match("main") ~= nil, true)
   expect.equality(content:match("feature%-branch") ~= nil, true)
@@ -212,7 +212,7 @@ T["refs view"]["displays tags"] = function()
   cleanup_test_repo(child, repo)
 end
 
-T["refs view"]["shows current branch with * marker"] = function()
+T["refs view"]["shows current branch with @ marker"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
@@ -229,14 +229,14 @@ T["refs view"]["shows current branch with * marker"] = function()
   -- Open refs view
   child.type_keys("yry")
   helpers.wait_for_buffer(child, "gitlad://refs")
-  helpers.wait_for_buffer_content(child, "Local")
+  helpers.wait_for_buffer_content(child, "Branches")
 
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
-  -- Find a line with * marker
+  -- Find a line with @ marker (magit evil-collection style)
   local found_head_marker = false
   for _, line in ipairs(lines) do
-    if line:match("^%*") or line:match("^%s+%*") then
+    if line:match("^@") or line:match("^%s+@") then
       found_head_marker = true
       break
     end
@@ -323,7 +323,7 @@ T["refs view"]["buffer is not modifiable"] = function()
   -- Open refs view
   child.type_keys("yry")
   helpers.wait_for_buffer(child, "gitlad://refs")
-  helpers.wait_for_buffer_content(child, "Local")
+  helpers.wait_for_buffer_content(child, "Branches")
 
   -- Check that buffer is not modifiable
   local modifiable = child.lua_get("vim.bo.modifiable")
@@ -488,6 +488,68 @@ T["refs view"]["has yank keymap y"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["refs view"]["shows help text prompting ? keymap"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Branches")
+
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Should show "Press ? for help" rather than inline key listing
+  expect.equality(content:match("Press %? for help") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["? opens help popup with refs keybindings"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Branches")
+
+  -- Press ? to open help
+  child.type_keys("?")
+  helpers.wait_short(child, 200)
+
+  -- Should have a floating window
+  local win_count = child.lua_get("vim.fn.winnr('$')")
+  eq(win_count > 1, true)
+
+  -- Help popup should contain refs-relevant sections
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  expect.equality(content:match("Transient commands") ~= nil, true)
+  expect.equality(content:match("Actions") ~= nil, true)
+  expect.equality(content:match("Navigation") ~= nil, true)
+  expect.equality(content:match("Delete ref") ~= nil, true)
+  expect.equality(content:match("Yank ref name") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 T["refs view"]["shows header with base ref"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
@@ -648,6 +710,76 @@ T["refs view"]["diff popup on cherry commit shows commit context"] = function()
   eq(content:match("Show commit") ~= nil, true)
 
   cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["shows upstream tracking info for local branches"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create a bare remote and push to it
+  local bare_repo = repo .. "-bare"
+  child.lua(string.format([[vim.fn.system(%q)]], "git clone --bare " .. repo .. " " .. bare_repo))
+  child.lua(
+    string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " remote add origin " .. bare_repo)
+  )
+  child.lua(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " push -u origin main"))
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Branches")
+
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Should show upstream tracking info (origin/main) next to local branch
+  expect.equality(content:match("origin/main") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+  child.lua(string.format([[vim.fn.delete(%q, "rf")]], bare_repo))
+end
+
+T["refs view"]["shows remote URL in section header"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create a bare remote and push to it
+  local bare_repo = repo .. "-bare"
+  child.lua(string.format([[vim.fn.system(%q)]], "git clone --bare " .. repo .. " " .. bare_repo))
+  child.lua(
+    string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " remote add origin " .. bare_repo)
+  )
+  child.lua(string.format([[vim.fn.system(%q)]], "git -C " .. repo .. " push -u origin main"))
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Remote origin")
+
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Should show "Remote origin (url) (N)" format
+  expect.equality(content:match("Remote origin") ~= nil, true)
+  -- The URL should contain the bare repo path
+  expect.equality(content:match("%-bare") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+  child.lua(string.format([[vim.fn.delete(%q, "rf")]], bare_repo))
 end
 
 T["refs view"]["diff popup on ref shows context-aware range action"] = function()
