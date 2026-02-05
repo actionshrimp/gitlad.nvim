@@ -91,7 +91,10 @@ T["scoped visibility on file"]["4 on file line expands only that file"] = functi
 
   -- Press 4 to fully expand (scoped to this file only)
   child.type_keys("4")
-  helpers.wait_short(child, 100)
+
+  -- Wait for the file expansion state to update
+  local expanded = helpers.wait_for_expansion_state(child, "unstaged:" .. line_info_path, true)
+  assert_truthy(expanded, "File should be expanded after pressing 4")
 
   -- Verify only the first file is expanded
   child.lua([[
@@ -135,13 +138,13 @@ T["scoped visibility on file"]["1 on file collapses parent section and moves cur
   local file1_line = find_line_with(lines, "file1.txt")
   child.cmd(tostring(file1_line))
   child.type_keys("<Tab>") -- Expand file1
-  helpers.wait_short(child)
+  helpers.wait_for_diff_expanded(child)
 
   lines = get_buffer_lines(child)
   local file2_line = find_line_with(lines, "file2.txt")
   child.cmd(tostring(file2_line))
   child.type_keys("<Tab>") -- Expand file2
-  helpers.wait_short(child)
+  helpers.wait_for_diff_expanded(child)
 
   -- Navigate back to file1 and press 1
   -- Since level 1 would hide the file (section collapsed), it should collapse the section
@@ -149,7 +152,15 @@ T["scoped visibility on file"]["1 on file collapses parent section and moves cur
   file1_line = find_line_with(lines, "file1.txt")
   child.cmd(tostring(file1_line))
   child.type_keys("1")
-  helpers.wait_short(child)
+
+  -- Wait for section to be collapsed
+  child.lua([[
+    vim.wait(5000, function()
+      local status = require("gitlad.ui.views.status")
+      local buffer = status.get_buffer()
+      return buffer.collapsed_sections["unstaged"] == true
+    end, 10)
+  ]])
 
   -- Verify the Unstaged section is collapsed (files should not be visible)
   child.lua([[
@@ -176,7 +187,7 @@ T["scoped visibility on file"]["1 on file collapses parent section and moves cur
 
   -- Verify we can easily reopen with Tab
   child.type_keys("<Tab>")
-  helpers.wait_short(child)
+  helpers.wait_for_buffer_content(child, "file1.txt")
 
   lines = get_buffer_lines(child)
   file1_visible = find_line_with(lines, "file1.txt")
@@ -202,7 +213,9 @@ T["scoped visibility on file"]["3 on file shows headers only for that file"] = f
   local file_line = find_line_with(lines, "file.txt")
   child.cmd(tostring(file_line))
   child.type_keys("3")
-  helpers.wait_short(child, 100)
+
+  -- Wait for headers mode - @@ header should appear
+  helpers.wait_for_buffer_content(child, "@@")
 
   -- Verify headers mode
   child.lua([[
@@ -252,22 +265,17 @@ T["scoped visibility on section"]["4 on section header expands all files in sect
 
   -- Press 4 to fully expand all files in section
   child.type_keys("4")
-  helpers.wait_short(child, 100)
 
-  -- Verify both files are expanded
-  child.lua([[
-    local status = require("gitlad.ui.views.status")
-    local buffer = status.get_buffer()
-    _G.test_file1_state = buffer.expanded_files["unstaged:file1.txt"]
-    _G.test_file2_state = buffer.expanded_files["unstaged:file2.txt"]
-  ]])
-  local file1_state = child.lua_get("_G.test_file1_state")
-  local file2_state = child.lua_get("_G.test_file2_state")
+  -- Wait for both files to be expanded
+  local file1_expanded = helpers.wait_for_expansion_state(child, "unstaged:file1.txt", true)
+  local file2_expanded = helpers.wait_for_expansion_state(child, "unstaged:file2.txt", true)
 
-  eq(file1_state, true, "file1.txt should be fully expanded")
-  eq(file2_state, true, "file2.txt should be fully expanded")
+  eq(file1_expanded, true, "file1.txt should be fully expanded")
+  eq(file2_expanded, true, "file2.txt should be fully expanded")
 
   -- Verify both diffs are visible
+  helpers.wait_for_buffer_content(child, "+modified1")
+  helpers.wait_for_buffer_content(child, "+modified2")
   lines = get_buffer_lines(child)
   local has_file1_diff = find_line_with(lines, "+modified1")
   local has_file2_diff = find_line_with(lines, "+modified2")
@@ -294,35 +302,27 @@ T["scoped visibility on section"]["1 on section header collapses all files in se
   -- Expand both files first
   local lines = get_buffer_lines(child)
   local file1_line = find_line_with(lines, "file1.txt")
+  assert_truthy(file1_line, "Should find file1.txt")
   child.cmd(tostring(file1_line))
   child.type_keys("<Tab>")
-  helpers.wait_short(child)
+  helpers.wait_for_diff_expanded(child)
 
   lines = get_buffer_lines(child)
   local file2_line = find_line_with(lines, "file2.txt")
+  assert_truthy(file2_line, "Should find file2.txt")
   child.cmd(tostring(file2_line))
   child.type_keys("<Tab>")
-  helpers.wait_short(child)
+  helpers.wait_for_diff_expanded(child)
 
   -- Navigate to section header and press 1
   lines = get_buffer_lines(child)
   local section_line = find_line_with(lines, "Unstaged")
+  assert_truthy(section_line, "Should find Unstaged section")
   child.cmd(tostring(section_line))
   child.type_keys("1")
-  helpers.wait_short(child)
 
-  -- Verify both files are collapsed
-  child.lua([[
-    local status = require("gitlad.ui.views.status")
-    local buffer = status.get_buffer()
-    _G.test_file1_state = buffer.expanded_files["unstaged:file1.txt"]
-    _G.test_file2_state = buffer.expanded_files["unstaged:file2.txt"]
-  ]])
-  local file1_state = child.lua_get("_G.test_file1_state")
-  local file2_state = child.lua_get("_G.test_file2_state")
-
-  eq(file1_state, false, "file1.txt should be collapsed")
-  eq(file2_state, false, "file2.txt should be collapsed")
+  -- Wait for diffs to be collapsed (no @@ headers visible)
+  helpers.wait_for_diff_collapsed(child)
 end
 
 -- =============================================================================
@@ -345,11 +345,12 @@ T["global visibility"]["1/2/3/4 on header applies globally"] = function()
 
   -- Position cursor on the Head: line (global context)
   child.cmd("1") -- Go to first line
-  helpers.wait_short(child)
 
   -- Press 4 to expand globally
   child.type_keys("4")
-  helpers.wait_short(child, 100)
+
+  -- Wait for the expansion state to update
+  helpers.wait_for_expansion_state(child, "unstaged:file.txt", true)
 
   -- Verify file is expanded and visibility level changed
   child.lua([[

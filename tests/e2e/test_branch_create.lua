@@ -501,7 +501,7 @@ T["branch operations"]["spin-off works with push remote only (no upstream)"] = f
 
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
-  helpers.wait_short(child, 1000)
+  helpers.wait_for_status(child, 3000)
 
   -- Get the status to verify push_remote is set
   child.lua([[
