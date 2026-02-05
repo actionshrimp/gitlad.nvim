@@ -18,6 +18,7 @@
 - [x] when confirming an edit after a rebase conflict, we should go back to the status window and not the empty buffer
 - [x] are our worktree popup keys the same as magit evil collection?
 - [x] still a slight issue with our new 'intent to add' feature and the staging of a new directory ;(
+- [x] can we render ansi terminal colour codes nicely in the hook popup output?
 - [ ] setting upstream to a local branch doesnt work properly
 - [ ] for a moved file, only show the actual file changes in the diff
 - [ ] improve look and feel of '$' / command history (from screenshot)
@@ -25,3 +26,5 @@
 - [ ] some kind of display of queued git operations so you know git is still working underneath for slow operations?
 - [ ] when running `SPC p t` from status buffer i get an error as neovim doesnt think it's a real project directory
 - [ ] why is 'origin' listed as a ref under the origin remote
+- [ ] unstage new files from unstaged back to untracked doesnt work with visual selection
+- [ ] from refs view, trying to diff my branch against develop with `...` doesnt work. 
