@@ -26,3 +26,5 @@
 - [ ] some kind of display of queued git operations so you know git is still working underneath for slow operations?
 - [ ] when running `SPC p t` from status buffer i get an error as neovim doesnt think it's a real project directory
 - [ ] why is 'origin' listed as a ref under the origin remote
+- [ ] unstage new files from unstaged back to untracked doesnt work with visual selection
+- [ ] from refs view, trying to diff my branch against develop with `...` doesnt work. 
