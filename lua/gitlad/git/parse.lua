@@ -409,6 +409,7 @@ end
 ---@field type "local"|"remote"|"tag" Ref type
 ---@field remote? string Remote name for remote branches
 ---@field is_head boolean Whether this is the current HEAD
+---@field upstream? string Upstream tracking ref (e.g., "origin/main")
 ---@field ahead? number Commits ahead of base ref (for local branches)
 ---@field behind? number Commits behind base ref (for local branches)
 
@@ -651,7 +652,7 @@ local REFS_FORMAT_SEP = "|||"
 --- Get the git for-each-ref format string for parse_for_each_ref
 ---@return string
 function M.get_refs_format_string()
-  -- Format: refname:short|||objectname:short|||refname|||subject|||HEAD
+  -- Format: refname:short|||objectname:short|||refname|||subject|||HEAD|||upstream:short
   return "%(refname:short)"
     .. REFS_FORMAT_SEP
     .. "%(objectname:short)"
@@ -661,19 +662,21 @@ function M.get_refs_format_string()
     .. "%(subject)"
     .. REFS_FORMAT_SEP
     .. "%(HEAD)"
+    .. REFS_FORMAT_SEP
+    .. "%(upstream:short)"
 end
 
 --- Parse git for-each-ref output
---- Format: refname:short|||objectname:short|||refname|||subject|||HEAD
+--- Format: refname:short|||objectname:short|||refname|||subject|||HEAD|||upstream:short
 ---@param lines string[] Output lines from git for-each-ref
 ---@return RefInfo[]
 function M.parse_for_each_ref(lines)
   local refs = {}
 
   for _, line in ipairs(lines) do
-    -- Format: "name|||hash|||full_name|||subject|||head_marker"
-    local name, hash, full_name, subject, head_marker =
-      line:match("^([^|]*)|||([^|]*)|||([^|]*)|||(.*)|||([^|]*)$")
+    -- Format: "name|||hash|||full_name|||subject|||head_marker|||upstream"
+    local name, hash, full_name, subject, head_marker, upstream =
+      line:match("^([^|]*)|||([^|]*)|||([^|]*)|||(.-)|||([^|]*)|||([^|]*)$")
 
     if name and full_name then
       -- Skip remote HEAD refs (e.g., refs/remotes/origin/HEAD)
@@ -689,6 +692,7 @@ function M.parse_for_each_ref(lines)
         subject = subject or "",
         type = "local",
         is_head = head_marker == "*",
+        upstream = (upstream and upstream ~= "") and upstream or nil,
       }
 
       -- Determine ref type from full_name
