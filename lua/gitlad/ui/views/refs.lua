@@ -21,6 +21,7 @@ local ns_signs = vim.api.nvim_create_namespace("gitlad_refs_signs")
 ---@field cherry? CherryCommit The cherry commit (for type="cherry")
 ---@field parent_ref? string Parent ref name for cherry commits
 ---@field section? string Section name (for type="section")
+---@field positions? table Position data for highlighting
 
 ---@class RefsSignInfo
 ---@field expanded boolean Whether the ref is expanded
@@ -33,6 +34,7 @@ local ns_signs = vim.api.nvim_create_namespace("gitlad_refs_signs")
 ---@field local_branches RefInfo[] Local branches
 ---@field remote_branches table<string, RefInfo[]> Remote branches grouped by remote
 ---@field tags RefInfo[] Tags
+---@field remote_urls table<string, string> Map of remote name to fetch URL
 ---@field line_map table<number, RefLineInfo> Map of line numbers to info
 ---@field section_lines table<number, string> Map of section header lines
 ---@field expanded_refs table<string, boolean> Map of ref name to expanded state
@@ -60,6 +62,7 @@ local function get_or_create_buffer(repo_state)
   self.local_branches = {}
   self.remote_branches = {}
   self.tags = {}
+  self.remote_urls = {}
   self.line_map = {}
   self.section_lines = {}
   self.expanded_refs = {}
@@ -569,19 +572,24 @@ end
 function RefsBuffer:refresh()
   vim.notify("[gitlad] Refreshing refs...", vim.log.levels.INFO)
 
-  git.refs({ cwd = self.repo_state.repo_root }, function(refs, err)
-    vim.schedule(function()
-      if err then
-        vim.notify("[gitlad] Failed to get refs: " .. err, vim.log.levels.ERROR)
-        return
-      end
+  local cwd = self.repo_state.repo_root
+  local pending = 2 -- refs + remotes
+  local refs_result = nil
+  local remotes_result = nil
 
-      -- Organize refs by type
+  local function try_render()
+    pending = pending - 1
+    if pending > 0 then
+      return
+    end
+
+    -- Process refs
+    if refs_result then
       self.local_branches = {}
       self.remote_branches = {}
       self.tags = {}
 
-      for _, ref in ipairs(refs or {}) do
+      for _, ref in ipairs(refs_result) do
         if ref.type == "local" then
           table.insert(self.local_branches, ref)
         elseif ref.type == "remote" then
@@ -594,16 +602,44 @@ function RefsBuffer:refresh()
           table.insert(self.tags, ref)
         end
       end
+    end
 
-      -- Clear expansion state and cherry cache on refresh
-      self.expanded_refs = {}
-      self.cherry_cache = {}
+    -- Process remotes
+    self.remote_urls = {}
+    if remotes_result then
+      for _, remote in ipairs(remotes_result) do
+        self.remote_urls[remote.name] = remote.fetch_url
+      end
+    end
 
-      -- Render immediately so user sees content
-      self:render()
+    -- Clear expansion state and cherry cache on refresh
+    self.expanded_refs = {}
+    self.cherry_cache = {}
 
-      -- Pre-fetch cherry data for local branches (fast operation)
-      self:_prefetch_local_cherries()
+    -- Render immediately so user sees content
+    self:render()
+
+    -- Pre-fetch cherry data for local branches (fast operation)
+    self:_prefetch_local_cherries()
+  end
+
+  git.refs({ cwd = cwd }, function(refs, err)
+    vim.schedule(function()
+      if err then
+        vim.notify("[gitlad] Failed to get refs: " .. err, vim.log.levels.ERROR)
+      else
+        refs_result = refs or {}
+      end
+      try_render()
+    end)
+  end)
+
+  git.remotes({ cwd = cwd }, function(remotes, err)
+    vim.schedule(function()
+      if not err then
+        remotes_result = remotes or {}
+      end
+      try_render()
     end)
   end)
 end
@@ -652,7 +688,7 @@ function RefsBuffer:render()
 
   -- Local branches section
   if #self.local_branches > 0 then
-    table.insert(lines, "Local (" .. #self.local_branches .. ")")
+    table.insert(lines, "Branches (" .. #self.local_branches .. ")")
     self.section_lines[#lines] = "local"
     self.line_map[#lines] = { type = "section", section = "local" }
 
@@ -669,7 +705,14 @@ function RefsBuffer:render()
   if #remotes > 0 then
     for _, remote in ipairs(remotes) do
       local remote_refs = self.remote_branches[remote]
-      table.insert(lines, remote .. " (" .. #remote_refs .. ")")
+      local url = self.remote_urls[remote]
+      local header
+      if url then
+        header = "Remote " .. remote .. " (" .. url .. ") (" .. #remote_refs .. ")"
+      else
+        header = "Remote " .. remote .. " (" .. #remote_refs .. ")"
+      end
+      table.insert(lines, header)
       self.section_lines[#lines] = "remote:" .. remote
       self.line_map[#lines] = { type = "section", section = "remote:" .. remote }
 
@@ -717,12 +760,12 @@ function RefsBuffer:_render_ref(lines, ref, base_indent)
   base_indent = base_indent or 0
   local indent = string.rep("  ", base_indent)
 
-  -- Build ref line: [*] [counts] name subject
+  -- Build ref line: [@] name [upstream] subject
   local parts = {}
 
   -- HEAD marker
   if ref.is_head then
-    table.insert(parts, "*")
+    table.insert(parts, "@")
   else
     table.insert(parts, " ")
   end
@@ -733,9 +776,17 @@ function RefsBuffer:_render_ref(lines, ref, base_indent)
     -- Show without remote prefix for cleaner display
     name = ref.name:gsub("^" .. ref.remote .. "/", "")
   end
-  local name_width = 30
+  local name_width = 16
   local padded_name = name .. string.rep(" ", math.max(0, name_width - #name))
   table.insert(parts, padded_name)
+
+  -- Upstream tracking ref (only for local branches)
+  if ref.type == "local" then
+    local upstream = ref.upstream or ""
+    local upstream_width = 17
+    local padded_upstream = upstream .. string.rep(" ", math.max(0, upstream_width - #upstream))
+    table.insert(parts, padded_upstream)
+  end
 
   -- Subject
   local subject = ref.subject or ""
@@ -747,9 +798,32 @@ function RefsBuffer:_render_ref(lines, ref, base_indent)
   local line = indent .. table.concat(parts, " ")
   table.insert(lines, line)
 
-  -- Track line info
+  -- Track line info with positions for highlighting
   local line_num = #lines
-  self.line_map[line_num] = { type = "ref", ref = ref }
+  local line_text = line
+
+  -- Calculate positions for highlighting
+  local positions = {}
+  local marker_start = #indent
+  positions.marker = { start = marker_start, finish = marker_start + 1 }
+
+  -- Name position (after marker + space)
+  local name_start = marker_start + 2
+  positions.name = { start = name_start, finish = name_start + #name }
+
+  -- Upstream position (for local branches)
+  if ref.type == "local" and ref.upstream and ref.upstream ~= "" then
+    local upstream_start = name_start + name_width + 1
+    positions.upstream = { start = upstream_start, finish = upstream_start + #ref.upstream }
+  end
+
+  -- Subject position
+  local subject_start = #line_text - #subject
+  if #subject > 0 then
+    positions.subject = { start = subject_start, finish = subject_start + #subject }
+  end
+
+  self.line_map[line_num] = { type = "ref", ref = ref, positions = positions }
 
   -- Track sign for expandable refs (only show if expanded or has cached cherries)
   local is_expanded = self.expanded_refs[ref.name]
@@ -782,16 +856,89 @@ function RefsBuffer:_apply_highlights()
   -- Highlight section headers and refs
   for line_num, info in pairs(self.line_map) do
     if info.type == "section" then
-      hl.set_line(self.bufnr, ns, line_num - 1, "GitladSectionHeader")
-    elseif info.type == "ref" then
-      local ref = info.ref
-      if ref.is_head then
-        -- Highlight HEAD marker
+      -- Check for remote section with inline highlights
+      local section = info.section or ""
+      if section:match("^remote:") then
         local line_text = vim.api.nvim_buf_get_lines(self.bufnr, line_num - 1, line_num, false)[1]
           or ""
-        local star_pos = line_text:find("%*")
-        if star_pos then
-          hl.set(self.bufnr, ns, line_num - 1, star_pos - 1, star_pos, "GitladCommitHash")
+        -- "Remote origin (url) (N)" - highlight parts inline
+        local remote_name = section:match("^remote:(.+)$")
+        if remote_name then
+          -- Highlight "Remote " in section header style
+          hl.set(self.bufnr, ns, line_num - 1, 0, 7, "GitladSectionHeader")
+          -- Highlight remote name in green
+          local name_start = 7
+          local name_end = name_start + #remote_name
+          hl.set(self.bufnr, ns, line_num - 1, name_start, name_end, "GitladRefRemote")
+          -- Highlight URL if present
+          local url = self.remote_urls[remote_name]
+          if url then
+            local url_start = line_text:find(url, 1, true)
+            if url_start then
+              hl.set(
+                self.bufnr,
+                ns,
+                line_num - 1,
+                url_start - 1,
+                url_start - 1 + #url,
+                "GitladRemote"
+              )
+            end
+          end
+          -- Highlight the count at the end
+          local count_start, count_end = line_text:find("%(%d+%)$")
+          if count_start then
+            hl.set(self.bufnr, ns, line_num - 1, count_start - 1, count_end, "GitladSectionHeader")
+          end
+        end
+      else
+        hl.set_line(self.bufnr, ns, line_num - 1, "GitladSectionHeader")
+      end
+    elseif info.type == "ref" then
+      local ref = info.ref
+      local pos = info.positions
+
+      if pos then
+        -- Highlight HEAD marker
+        if ref.is_head then
+          hl.set(self.bufnr, ns, line_num - 1, pos.marker.start, pos.marker.finish, "GitladRefHead")
+        end
+
+        -- Highlight branch/tag name
+        local name_hl
+        if ref.type == "local" then
+          name_hl = "GitladRefLocal"
+        elseif ref.type == "remote" then
+          name_hl = "GitladRefRemote"
+        elseif ref.type == "tag" then
+          name_hl = "GitladRefTag"
+        end
+        if name_hl then
+          hl.set(self.bufnr, ns, line_num - 1, pos.name.start, pos.name.finish, name_hl)
+        end
+
+        -- Highlight upstream tracking ref
+        if pos.upstream then
+          hl.set(
+            self.bufnr,
+            ns,
+            line_num - 1,
+            pos.upstream.start,
+            pos.upstream.finish,
+            "GitladRefRemote"
+          )
+        end
+
+        -- Highlight subject
+        if pos.subject then
+          hl.set(
+            self.bufnr,
+            ns,
+            line_num - 1,
+            pos.subject.start,
+            pos.subject.finish,
+            "GitladCommitMsg"
+          )
         end
       end
     elseif info.type == "cherry" then

@@ -20,8 +20,7 @@
 - [x] still a slight issue with our new 'intent to add' feature and the staging of a new directory ;(
 - [x] can we render ansi terminal colour codes nicely in the hook popup output?
 - [x] why is 'origin' listed as a ref under the origin remote in our version?
-
-- [ ] overall visual improvements - see screenshots of magit's (polished, colourful, more detail about remote's details) vs ours
+- [x] overall visual improvements to refs view - see screenshots of magit's (polished, colourful, more detail about remote's details) vs ours
 - [ ] from refs view, I'd also like to standardise the diff popup to behave the same as other views. however it should use the context under the point to help the user build a range expression, with a full initial suggestion. essentially the flow should be:
     - type `d r`, get a popup with a default range suggested based on the context (use magit's examples here)
     - in that same popup, allow the user to also type in an arbitrary range if they know what they're doing
@@ -34,3 +33,4 @@
 - [ ] some kind of display of queued git operations so you know git is still working underneath for slow operations?
 - [ ] when running `SPC p t` from status buffer i get an error as neovim doesnt think it's a real project directory
 - [ ] unstage new files from unstaged back to untracked doesnt work with visual selection
+- [ ] we should highlight long-form flag arguments in popups when selected, rather than showing a * at the start
