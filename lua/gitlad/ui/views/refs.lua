@@ -771,6 +771,65 @@ function RefsBuffer:_prefetch_local_cherries()
   end
 end
 
+-- Maximum column widths before truncation
+local MAX_NAME_WIDTH = 30
+local MAX_UPSTREAM_WIDTH = 30
+
+--- Get the display name for a ref (strips remote prefix for remote branches)
+---@param ref RefInfo
+---@return string
+local function ref_display_name(ref)
+  if ref.type == "remote" and ref.remote then
+    return ref.name:gsub("^" .. vim.pesc(ref.remote) .. "/", "")
+  end
+  return ref.name
+end
+
+--- Truncate a string with ellipsis if it exceeds max width
+---@param str string
+---@param max_width number
+---@return string
+local function truncate(str, max_width)
+  if #str <= max_width then
+    return str
+  end
+  return str:sub(1, max_width - 3) .. "..."
+end
+
+--- Compute column widths from all refs being rendered
+---@param local_branches RefInfo[]
+---@param remote_branches table<string, RefInfo[]>
+---@param tags RefInfo[]
+---@return number name_width, number upstream_width
+local function compute_column_widths(local_branches, remote_branches, tags)
+  local max_name = 0
+  local max_upstream = 0
+
+  -- Scan all refs for max widths
+  for _, ref in ipairs(local_branches) do
+    max_name = math.max(max_name, #ref_display_name(ref))
+    if ref.upstream then
+      max_upstream = math.max(max_upstream, #ref.upstream)
+    end
+  end
+
+  for _, remote_refs in pairs(remote_branches) do
+    for _, ref in ipairs(remote_refs) do
+      max_name = math.max(max_name, #ref_display_name(ref))
+    end
+  end
+
+  for _, ref in ipairs(tags) do
+    max_name = math.max(max_name, #ref_display_name(ref))
+  end
+
+  -- Cap at maximums and ensure minimum
+  local name_width = math.max(math.min(max_name, MAX_NAME_WIDTH), 4)
+  local upstream_width = math.max(math.min(max_upstream, MAX_UPSTREAM_WIDTH), 0)
+
+  return name_width, upstream_width
+end
+
 --- Render the refs buffer
 function RefsBuffer:render()
   if not vim.api.nvim_buf_is_valid(self.bufnr) then
@@ -781,6 +840,10 @@ function RefsBuffer:render()
   self.line_map = {}
   self.section_lines = {}
   self.sign_lines = {}
+
+  -- Compute dynamic column widths from data
+  local name_width, upstream_width =
+    compute_column_widths(self.local_branches, self.remote_branches, self.tags)
 
   -- Header
   table.insert(lines, "References (at " .. self.base_ref .. ")")
@@ -793,7 +856,7 @@ function RefsBuffer:render()
     self.line_map[#lines] = { type = "section", section = "local" }
 
     for _, ref in ipairs(self.local_branches) do
-      self:_render_ref(lines, ref)
+      self:_render_ref(lines, ref, nil, name_width, upstream_width)
     end
     table.insert(lines, "")
   end
@@ -817,7 +880,7 @@ function RefsBuffer:render()
       self.line_map[#lines] = { type = "section", section = "remote:" .. remote }
 
       for _, ref in ipairs(remote_refs) do
-        self:_render_ref(lines, ref)
+        self:_render_ref(lines, ref, nil, name_width, upstream_width)
       end
       table.insert(lines, "")
     end
@@ -830,7 +893,7 @@ function RefsBuffer:render()
     self.line_map[#lines] = { type = "section", section = "tags" }
 
     for _, ref in ipairs(self.tags) do
-      self:_render_ref(lines, ref)
+      self:_render_ref(lines, ref, nil, name_width, upstream_width)
     end
     table.insert(lines, "")
   end
@@ -856,8 +919,12 @@ end
 ---@param lines string[] Buffer lines to append to
 ---@param ref RefInfo The ref to render
 ---@param base_indent? number Base indentation level (default 0)
-function RefsBuffer:_render_ref(lines, ref, base_indent)
+---@param name_col_width? number Column width for name
+---@param upstream_col_width? number Column width for upstream
+function RefsBuffer:_render_ref(lines, ref, base_indent, name_col_width, upstream_col_width)
   base_indent = base_indent or 0
+  name_col_width = name_col_width or 16
+  upstream_col_width = upstream_col_width or 0
   local indent = string.rep("  ", base_indent)
 
   -- Build ref line: [@] name [upstream] subject
@@ -870,21 +937,19 @@ function RefsBuffer:_render_ref(lines, ref, base_indent)
     table.insert(parts, " ")
   end
 
-  -- Name (padded)
-  local name = ref.name
-  if ref.type == "remote" and ref.remote then
-    -- Show without remote prefix for cleaner display
-    name = ref.name:gsub("^" .. ref.remote .. "/", "")
-  end
-  local name_width = 16
-  local padded_name = name .. string.rep(" ", math.max(0, name_width - #name))
+  -- Name (truncated if needed, then padded to column width)
+  local name = ref_display_name(ref)
+  local display_name = truncate(name, name_col_width)
+  local padded_name = display_name .. string.rep(" ", math.max(0, name_col_width - #display_name))
   table.insert(parts, padded_name)
 
-  -- Upstream tracking ref (only for local branches)
-  if ref.type == "local" then
+  -- Upstream tracking ref (only for local branches, only if any branch has upstream)
+  local display_upstream
+  if ref.type == "local" and upstream_col_width > 0 then
     local upstream = ref.upstream or ""
-    local upstream_width = 17
-    local padded_upstream = upstream .. string.rep(" ", math.max(0, upstream_width - #upstream))
+    display_upstream = truncate(upstream, upstream_col_width)
+    local padded_upstream = display_upstream
+      .. string.rep(" ", math.max(0, upstream_col_width - #display_upstream))
     table.insert(parts, padded_upstream)
   end
 
@@ -900,7 +965,6 @@ function RefsBuffer:_render_ref(lines, ref, base_indent)
 
   -- Track line info with positions for highlighting
   local line_num = #lines
-  local line_text = line
 
   -- Calculate positions for highlighting
   local positions = {}
@@ -909,16 +973,16 @@ function RefsBuffer:_render_ref(lines, ref, base_indent)
 
   -- Name position (after marker + space)
   local name_start = marker_start + 2
-  positions.name = { start = name_start, finish = name_start + #name }
+  positions.name = { start = name_start, finish = name_start + #display_name }
 
   -- Upstream position (for local branches)
-  if ref.type == "local" and ref.upstream and ref.upstream ~= "" then
-    local upstream_start = name_start + name_width + 1
-    positions.upstream = { start = upstream_start, finish = upstream_start + #ref.upstream }
+  if ref.type == "local" and display_upstream and #display_upstream > 0 then
+    local upstream_start = name_start + name_col_width + 1
+    positions.upstream = { start = upstream_start, finish = upstream_start + #display_upstream }
   end
 
   -- Subject position
-  local subject_start = #line_text - #subject
+  local subject_start = #line - #subject
   if #subject > 0 then
     positions.subject = { start = subject_start, finish = subject_start + #subject }
   end
