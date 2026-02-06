@@ -119,8 +119,14 @@ local highlight_groups = {
   GitladHistorySuccess = { link = "DiagnosticOk" },
   GitladHistoryFailure = { link = "DiagnosticError" },
   GitladHistoryTime = { link = "Comment" },
-  GitladHistoryCommand = { link = "Function" },
-  GitladHistoryDuration = { link = "Number" },
+  GitladHistoryCommand = { link = "Title" },
+  GitladHistoryDuration = { link = "Comment" },
+  GitladHistoryLabel = { link = "Comment" },
+  GitladHistoryPath = { link = "Directory" },
+  GitladHistoryExitSuccess = { link = "DiagnosticOk" },
+  GitladHistoryExitFailure = { link = "DiagnosticError" },
+  GitladHistoryStdout = { link = "Normal" },
+  GitladHistoryStderr = { link = "WarningMsg" },
 
   -- Popup
   GitladPopupHeading = { link = "Title" },

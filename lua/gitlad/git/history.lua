@@ -137,11 +137,12 @@ function M.format_entry(entry)
   local time_str = os.date("%H:%M:%S", entry.timestamp)
   local status_icon = entry.exit_code == 0 and "✓" or "✗"
   local duration_str = string.format("%.0fms", entry.duration_ms)
+  local cmd_str = #entry.args > 0 and table.concat(entry.args, " ") or entry.cmd
 
   -- Header line
   table.insert(
     lines,
-    string.format("%s [%s] git %s (%s)", status_icon, time_str, entry.cmd, duration_str)
+    string.format("%s [%s] git %s (%s)", status_icon, time_str, cmd_str, duration_str)
   )
 
   return lines
@@ -155,11 +156,12 @@ function M.format_entry_full(entry)
   local time_str = os.date("%H:%M:%S", entry.timestamp)
   local status_icon = entry.exit_code == 0 and "✓" or "✗"
   local duration_str = string.format("%.0fms", entry.duration_ms)
+  local cmd_str = #entry.args > 0 and table.concat(entry.args, " ") or entry.cmd
 
   -- Header
   table.insert(
     lines,
-    string.format("%s [%s] git %s (%s)", status_icon, time_str, entry.cmd, duration_str)
+    string.format("%s [%s] git %s (%s)", status_icon, time_str, cmd_str, duration_str)
   )
   table.insert(lines, string.format("  cwd: %s", entry.cwd))
   table.insert(lines, string.format("  exit: %d", entry.exit_code))

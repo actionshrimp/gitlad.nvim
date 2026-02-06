@@ -77,20 +77,13 @@ T["history view"]["displays git command history entries"] = function()
   child.type_keys("$")
   helpers.wait_for_filetype(child, "gitlad-history")
   -- Wait for content to be rendered
-  helpers.wait_for_buffer_content(child, "Git Command History")
+  helpers.wait_for_buffer_content(child, "git status")
 
   -- Get buffer content
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
-  -- Should have header
-  local has_header = false
-  for _, line in ipairs(lines) do
-    if line:match("Git Command History") then
-      has_header = true
-      break
-    end
-  end
-  eq(has_header, true)
+  -- First line should be a command entry (no header)
+  expect.equality(lines[1]:match("[✓✗]") ~= nil, true)
 
   -- Should show git status command (from opening Gitlad)
   local has_status_cmd = false
@@ -101,40 +94,6 @@ T["history view"]["displays git command history entries"] = function()
     end
   end
   eq(has_status_cmd, true)
-
-  cleanup_test_repo(child, repo)
-end
-
-T["history view"]["shows command count in header"] = function()
-  local repo = helpers.create_test_repo(child)
-  helpers.cd(child, repo)
-
-  -- Create commit
-  helpers.create_file(child, repo, "init.txt", "init")
-  helpers.git(child, repo, "add init.txt")
-  helpers.git(child, repo, "commit -m 'Initial commit'")
-
-  -- Open status (triggers at least one git command)
-  child.cmd("Gitlad")
-  helpers.wait_for_status(child)
-
-  -- Open history
-  child.type_keys("$")
-  helpers.wait_for_filetype(child, "gitlad-history")
-  helpers.wait_for_buffer_content(child, "commands")
-
-  -- Get lines
-  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
-
-  -- Should show count in format "(N commands)"
-  local has_count = false
-  for _, line in ipairs(lines) do
-    if line:match("%(%d+ commands?%)") then
-      has_count = true
-      break
-    end
-  end
-  eq(has_count, true)
 
   cleanup_test_repo(child, repo)
 end
@@ -160,10 +119,7 @@ T["history view"]["expands entry with <Tab>"] = function()
   -- Get initial line count
   local initial_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
-  -- Move to first entry (past header lines)
-  child.type_keys("5j")
-  helpers.wait_short(child)
-
+  -- Cursor is already on first entry (no header)
   -- Press Tab to expand
   child.type_keys("<Tab>")
   helpers.wait_for_buffer_content(child, "cwd:")
@@ -204,10 +160,7 @@ T["history view"]["collapses entry with <Tab> again"] = function()
   helpers.wait_for_filetype(child, "gitlad-history")
   helpers.wait_for_buffer_content(child, "git status")
 
-  -- Move to first entry
-  child.type_keys("5j")
-  helpers.wait_short(child)
-
+  -- Cursor is already on first entry (no header)
   -- Expand
   child.type_keys("<Tab>")
   helpers.wait_for_buffer_content(child, "cwd:")
@@ -247,10 +200,7 @@ T["history view"]["expands entry with <CR>"] = function()
   -- Get initial line count
   local initial_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
-  -- Move to first entry
-  child.type_keys("5j")
-  helpers.wait_short(child)
-
+  -- Cursor is already on first entry (no header)
   -- Press Enter to expand
   child.type_keys("<CR>")
   helpers.wait_for_buffer_content(child, "cwd:")
@@ -414,15 +364,8 @@ T["history view"]["empty history shows helpful message"] = function()
   -- Get lines
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
 
-  -- Should show "No commands recorded" message
-  local has_empty_msg = false
-  for _, line in ipairs(lines) do
-    if line:match("No commands recorded") then
-      has_empty_msg = true
-      break
-    end
-  end
-  eq(has_empty_msg, true)
+  -- Should show "No commands recorded" message on first line
+  eq(lines[1]:match("No commands recorded") ~= nil, true)
 
   cleanup_test_repo(child, repo)
 end
