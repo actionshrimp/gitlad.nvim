@@ -181,6 +181,10 @@ function RefsBuffer:_setup_keymaps()
       if ref then
         context.ref = ref.name
         context.base_ref = self.base_ref
+        context.ref_upstream = ref.upstream
+        -- Pass the current (HEAD) branch's upstream for the U action
+        local status = self.repo_state.status
+        context.current_upstream = status and status.upstream or nil
       end
     end
 

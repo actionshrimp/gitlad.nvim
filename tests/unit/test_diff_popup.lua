@@ -241,35 +241,10 @@ T["ref context"]["adds ref-specific actions when ref present"] = function()
   local popup = require("gitlad.ui.popup")
 
   -- Build popup with ref-specific actions (simulating context.ref being present)
-  -- When ref is present: r becomes context-aware, b is the quick diff action
+  -- r = range with default, b = build range guided, U = upstream diff
+  -- U uses current_upstream (origin/main) not the ref's own upstream
   local ref = "feature-branch"
-  local base = "HEAD"
-  local data = popup
-    .builder()
-    :name("Diff")
-    :group_heading("Diffing")
-    :action("d", "Diff (dwim)", function() end)
-    :action("s", "Diff staged", function() end)
-    :action("u", "Diff unstaged", function() end)
-    :action("w", "Diff worktree", function() end)
-    :action("r", "Diff " .. ref .. " against...", function() end) -- context-aware r
-    :action("b", "Diff " .. ref .. ".." .. base, function() end) -- quick action
-    :build()
-
-  -- 1 heading + 6 actions = 7
-  eq(#data.actions, 7)
-  -- r is now context-aware
-  eq(data.actions[6].key, "r")
-  eq(data.actions[6].description, "Diff feature-branch against...")
-  -- b is the quick diff using context's base_ref
-  eq(data.actions[7].key, "b")
-  eq(data.actions[7].description, "Diff feature-branch..HEAD")
-end
-
-T["ref context"]["r action shows generic range prompt without ref context"] = function()
-  local popup = require("gitlad.ui.popup")
-
-  -- Build popup without ref context - r should be generic "Diff range..."
+  local current_upstream = "origin/main"
   local data = popup
     .builder()
     :name("Diff")
@@ -279,12 +254,142 @@ T["ref context"]["r action shows generic range prompt without ref context"] = fu
     :action("u", "Diff unstaged", function() end)
     :action("w", "Diff worktree", function() end)
     :action("r", "Diff range...", function() end)
+    :action("b", "Build range...", function() end)
+    :action("U", "Diff " .. current_upstream .. "..." .. ref, function() end)
     :build()
 
-  -- 1 heading + 5 actions = 6
-  eq(#data.actions, 6)
+  -- 1 heading + 7 actions = 8
+  eq(#data.actions, 8)
   eq(data.actions[6].key, "r")
   eq(data.actions[6].description, "Diff range...")
+  -- b is the guided build range flow
+  eq(data.actions[7].key, "b")
+  eq(data.actions[7].description, "Build range...")
+  -- U diffs against current branch's upstream (origin/main...feature-branch)
+  eq(data.actions[8].key, "U")
+  eq(data.actions[8].description, "Diff origin/main...feature-branch")
+end
+
+T["ref context"]["shows build range action without ref context"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  -- Build popup without ref context - b should still be "Build range..."
+  local data = popup
+    .builder()
+    :name("Diff")
+    :group_heading("Diffing")
+    :action("d", "Diff (dwim)", function() end)
+    :action("s", "Diff staged", function() end)
+    :action("u", "Diff unstaged", function() end)
+    :action("w", "Diff worktree", function() end)
+    :action("r", "Diff range...", function() end)
+    :action("b", "Build range...", function() end)
+    :build()
+
+  -- 1 heading + 6 actions = 7
+  eq(#data.actions, 7)
+  eq(data.actions[6].key, "r")
+  eq(data.actions[6].description, "Diff range...")
+  eq(data.actions[7].key, "b")
+  eq(data.actions[7].description, "Build range...")
+end
+
+T["ref context"]["upstream action shows generic label when no upstream configured"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  -- When ref has no upstream, label is generic
+  local data = popup
+    .builder()
+    :name("Diff")
+    :group_heading("Diffing")
+    :action("d", "Diff (dwim)", function() end)
+    :action("r", "Diff range...", function() end)
+    :action("b", "Build range...", function() end)
+    :action("U", "Diff against upstream", function() end)
+    :build()
+
+  eq(data.actions[5].key, "U")
+  eq(data.actions[5].description, "Diff against upstream")
+end
+
+-- =============================================================================
+-- _compute_default_range tests
+-- =============================================================================
+
+T["compute default range"] = MiniTest.new_set()
+
+T["compute default range"]["returns nil when no ref in context"] = function()
+  local diff = require("gitlad.popups.diff")
+  local result = diff._compute_default_range("main", "origin/main", {})
+  eq(result, nil)
+end
+
+T["compute default range"]["returns nil when context has no ref (status view)"] = function()
+  local diff = require("gitlad.popups.diff")
+  local result = diff._compute_default_range("main", "origin/main", {
+    file_path = "src/foo.lua",
+    section = "unstaged",
+  })
+  eq(result, nil)
+end
+
+T["compute default range"]["returns base_ref...ref for different branch"] = function()
+  local diff = require("gitlad.popups.diff")
+  local result = diff._compute_default_range("main", "origin/main", {
+    ref = "feature-branch",
+    base_ref = "HEAD",
+  })
+  eq(result, "HEAD...feature-branch")
+end
+
+T["compute default range"]["returns upstream...ref when on HEAD branch"] = function()
+  local diff = require("gitlad.popups.diff")
+  -- When ref == base_ref, we're on the HEAD branch
+  local result = diff._compute_default_range("main", "origin/main", {
+    ref = "main",
+    base_ref = "main",
+  })
+  eq(result, "origin/main...main")
+end
+
+T["compute default range"]["returns nil when on HEAD branch with no upstream"] = function()
+  local diff = require("gitlad.popups.diff")
+  local result = diff._compute_default_range("main", nil, {
+    ref = "main",
+    base_ref = "main",
+  })
+  eq(result, nil)
+end
+
+T["compute default range"]["uses three-dot for branch divergence comparison"] = function()
+  local diff = require("gitlad.popups.diff")
+  local result = diff._compute_default_range("main", nil, {
+    ref = "feature-branch",
+    base_ref = "HEAD",
+  })
+  -- Should use three-dot (changes since divergence)
+  expect.equality(result:match("%.%.%.") ~= nil, true)
+  eq(result, "HEAD...feature-branch")
+end
+
+T["compute default range"]["handles ref without base_ref"] = function()
+  local diff = require("gitlad.popups.diff")
+  -- ref present but no base_ref and no upstream
+  local result = diff._compute_default_range("main", nil, {
+    ref = "feature-branch",
+  })
+  eq(result, nil)
+end
+
+T["compute default range"]["handles ref without base_ref but with upstream"] = function()
+  local diff = require("gitlad.popups.diff")
+  -- ref present, no base_ref but upstream exists
+  local result = diff._compute_default_range("main", "origin/main", {
+    ref = "feature-branch",
+  })
+  -- No base_ref means base_ref is nil, ref != base_ref path won't match
+  -- Falls through to upstream check
+  eq(result, "origin/main...feature-branch")
 end
 
 return T
