@@ -638,11 +638,13 @@ T["hunk discard"]["x on diff line discards single hunk"] = function()
   child.type_keys("x")
 
   -- Wait for discard to complete by checking file content
+  -- Use pcall around readfile because the file may briefly not exist during git checkout
   child.lua(string.format(
     [[
     vim.wait(20000, function()
       local path = %q .. "/file.txt"
-      local lines = vim.fn.readfile(path)
+      local ok, lines = pcall(vim.fn.readfile, path)
+      if not ok then return false end
       local content = table.concat(lines, "\n") .. "\n"
       return not content:find("line1 modified", 1, true)
     end, 50)
@@ -682,11 +684,13 @@ T["hunk discard"]["x on file discards whole file when not on hunk"] = function()
   child.type_keys("x")
 
   -- Wait for discard to complete by checking file content
+  -- Use pcall around readfile because the file may briefly not exist during git checkout
   child.lua(string.format(
     [[
     vim.wait(20000, function()
       local path = %q .. "/file.txt"
-      local lines = vim.fn.readfile(path)
+      local ok, lines = pcall(vim.fn.readfile, path)
+      if not ok then return false end
       local content = table.concat(lines, "\n") .. "\n"
       return content == "original\n"
     end, 50)
@@ -733,11 +737,13 @@ T["hunk discard"]["visual selection discards single line from hunk"] = function(
   child.type_keys("V", "x")
 
   -- Wait for discard to complete by checking file content
+  -- Use pcall around readfile because the file may briefly not exist during git checkout
   child.lua(string.format(
     [[
     vim.wait(20000, function()
       local path = %q .. "/file.txt"
-      local lines = vim.fn.readfile(path)
+      local ok, lines = pcall(vim.fn.readfile, path)
+      if not ok then return false end
       local content = table.concat(lines, "\n") .. "\n"
       return not content:find("new1", 1, true)
     end, 50)
