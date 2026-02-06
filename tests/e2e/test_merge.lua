@@ -193,59 +193,30 @@ T["merge popup"]["ff-only and no-ff are mutually exclusive"] = function()
   child.type_keys("m")
   helpers.wait_for_popup(child)
 
-  -- Get popup buffer
-  child.lua([[
-    popup_buf = vim.api.nvim_get_current_buf()
-  ]])
-
-  -- Helper to check switch states
-  local function get_switch_states()
-    child.lua([[
-      popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
-    ]])
-    local lines = child.lua_get([[popup_lines]])
-
-    local ff_enabled = false
-    local no_ff_enabled = false
-    for _, line in ipairs(lines) do
-      if line:match("%*%-f.*ff%-only") then
-        ff_enabled = true
-      end
-      if line:match("%*%-n.*no%-ff") then
-        no_ff_enabled = true
-      end
-    end
-    return ff_enabled, no_ff_enabled
-  end
-
   -- Initially neither should be enabled
-  local ff1, noff1 = get_switch_states()
-  eq(ff1, false)
-  eq(noff1, false)
+  eq(helpers.popup_switch_enabled(child, "%-f.*ff%-only"), false)
+  eq(helpers.popup_switch_enabled(child, "%-n.*no%-ff"), false)
 
   -- Enable ff-only
   child.type_keys("-f")
   helpers.wait_short(child)
 
-  local ff2, noff2 = get_switch_states()
-  eq(ff2, true)
-  eq(noff2, false)
+  eq(helpers.popup_switch_enabled(child, "%-f.*ff%-only"), true)
+  eq(helpers.popup_switch_enabled(child, "%-n.*no%-ff"), false)
 
   -- Enable no-ff - should disable ff-only
   child.type_keys("-n")
   helpers.wait_short(child)
 
-  local ff3, noff3 = get_switch_states()
-  eq(ff3, false) -- ff-only should be disabled
-  eq(noff3, true) -- no-ff should be enabled
+  eq(helpers.popup_switch_enabled(child, "%-f.*ff%-only"), false) -- ff-only should be disabled
+  eq(helpers.popup_switch_enabled(child, "%-n.*no%-ff"), true) -- no-ff should be enabled
 
   -- Enable ff-only again - should disable no-ff
   child.type_keys("-f")
   helpers.wait_short(child)
 
-  local ff4, noff4 = get_switch_states()
-  eq(ff4, true) -- ff-only should be enabled
-  eq(noff4, false) -- no-ff should be disabled
+  eq(helpers.popup_switch_enabled(child, "%-f.*ff%-only"), true) -- ff-only should be enabled
+  eq(helpers.popup_switch_enabled(child, "%-n.*no%-ff"), false) -- no-ff should be disabled
 
   child.type_keys("q")
   helpers.cleanup_repo(child, repo)

@@ -144,20 +144,8 @@ T["rebase popup"]["autostash is enabled by default"] = function()
   child.type_keys("r")
   helpers.wait_for_popup(child)
 
-  -- Check that autostash is enabled (has * marker)
-  child.lua([[
-    popup_buf = vim.api.nvim_get_current_buf()
-    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
-  ]])
-  local lines = child.lua_get([[popup_lines]])
-
-  local autostash_enabled = false
-  for _, line in ipairs(lines) do
-    if line:match("%*%-A.*[Aa]utostash") then
-      autostash_enabled = true
-    end
-  end
-  eq(autostash_enabled, true)
+  -- Check that autostash is enabled (highlighted)
+  eq(helpers.popup_switch_enabled(child, "%-A.*[Aa]utostash"), true)
 
   child.type_keys("q")
   helpers.cleanup_repo(child, repo)
@@ -180,49 +168,14 @@ T["rebase popup"]["switch toggling with -A"] = function()
   helpers.wait_for_popup(child)
 
   -- Check initial state - autostash should be enabled
-  child.lua([[
-    popup_buf = vim.api.nvim_get_current_buf()
-    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
-  ]])
-  local lines_before = child.lua_get([[popup_lines]])
-
-  local autostash_enabled_before = false
-  for _, line in ipairs(lines_before) do
-    if line:match("%*%-A.*[Aa]utostash") then
-      autostash_enabled_before = true
-    end
-  end
-  eq(autostash_enabled_before, true)
+  eq(helpers.popup_switch_enabled(child, "%-A.*[Aa]utostash"), true)
 
   -- Toggle autostash switch off
   child.type_keys("-A")
+  helpers.wait_short(child)
 
-  -- Wait for popup to update (check that the * marker is gone)
-  child.lua([[
-    vim.wait(1000, function()
-      popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
-      for _, line in ipairs(popup_lines) do
-        if line:match("^%s+%-A.*[Aa]utostash") and not line:match("%*%-A") then
-          return true
-        end
-      end
-      return false
-    end, 20)
-  ]])
-
-  -- Check that switch is now disabled (no * marker)
-  child.lua([[
-    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
-  ]])
-  local lines_after = child.lua_get([[popup_lines]])
-
-  local autostash_enabled_after = false
-  for _, line in ipairs(lines_after) do
-    if line:match("%*%-A.*[Aa]utostash") then
-      autostash_enabled_after = true
-    end
-  end
-  eq(autostash_enabled_after, false)
+  -- Check that switch is now disabled
+  eq(helpers.popup_switch_enabled(child, "%-A.*[Aa]utostash"), false)
 
   child.type_keys("q")
   helpers.cleanup_repo(child, repo)

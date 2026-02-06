@@ -732,12 +732,10 @@ function M.apply_popup_highlights(
       )
     end
 
-    -- Switch line: " *-a description (--flag)" or "  -a description"
-    if line:match("^%s[%*%s]%-") then
-      -- Check if enabled (has *)
-      if line:match("^%s%*%-") then
-        hl_module.set(bufnr, ns_popup, line_idx, 1, 2, "GitladPopupSwitchEnabled")
-      end
+    -- Switch line: "  -a description (--flag)"
+    local switch_key = line:match("^%s%s%-(%S)")
+    if switch_key and switch_keys[switch_key] ~= nil then
+      local is_enabled = switch_keys[switch_key]
       -- Highlight the -key part
       local key_start = line:find("%-")
       if key_start then
@@ -750,10 +748,14 @@ function M.apply_popup_highlights(
           "GitladPopupSwitchKey"
         )
       end
-      -- Highlight the (--flag) part at the end
-      local cli_start = line:find("%(%-%-")
+      -- Highlight the flag text inside parens (not the parens themselves)
+      local cli_start = line:find("%(%-")
       if cli_start then
-        hl_module.set(bufnr, ns_popup, line_idx, cli_start - 1, #line, "GitladPopupValue")
+        local cli_end = line:find("%)", cli_start)
+        if cli_end then
+          local hl_group = is_enabled and "GitladPopupSwitchEnabled" or "Comment"
+          hl_module.set(bufnr, ns_popup, line_idx, cli_start, cli_end - 1, hl_group)
+        end
       end
 
       -- Option line: "  =a description (--opt=value)"
