@@ -139,11 +139,19 @@ function M.editor(target, client_address)
   --- Callback to signal the headless client to exit
   ---@param success boolean Whether the edit was successful
   local function on_close(success)
-    if success then
-      rpc_client:send_cmd_async("qall")
-    else
-      rpc_client:send_cmd_async("cq")
-    end
+    -- Use synchronous RPC (rpcrequest) to ensure the quit command is delivered
+    -- and processed before we disconnect. With async rpcnotify, chanclose() can
+    -- race and close the channel before the message is flushed, leaving the
+    -- headless nvim hanging (and git waiting for the editor to exit forever).
+    -- The headless nvim exits on qall/cq, which may cause the rpcrequest to
+    -- error (broken channel), but that's expected and harmless.
+    pcall(function()
+      if success then
+        rpc_client:send_cmd("qall")
+      else
+        rpc_client:send_cmd("cq")
+      end
+    end)
     rpc_client:disconnect()
   end
 
