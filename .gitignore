@@ -18,6 +18,7 @@ luarocks/
 .vscode/
 *.code-workspace
 
+.claude
 .claude/
 
 # direnv (contains account-specific config)
