@@ -120,29 +120,47 @@ T["worktree status section"]["shows current worktree with marker"] = function()
   -- Wait for status to load
   helpers.wait_for_status(child)
 
-  -- Get status lines
+  -- Get status lines and find the current worktree line
   local lines = get_status_lines(child)
 
-  -- Find the current worktree line (should have * marker)
-  -- Format: "  * branch  path" or "    branch  path" (with L for locked)
-  local found_current_marker = false
+  -- Find the line number of the current worktree (the main branch in this repo)
+  local current_wt_line = nil
   local in_worktrees_section = false
-  for _, line in ipairs(lines) do
+  for i, line in ipairs(lines) do
     if line:match("^Worktrees") then
       in_worktrees_section = true
     elseif in_worktrees_section then
       if line == "" then
         break
       end
-      -- Current worktree line has "* " near the start (after leading spaces)
-      if line:match("%* ") then
-        found_current_marker = true
+      -- The main branch worktree is the current one (we cd'd into it)
+      if line:match("^main%s") or line:match("^master%s") then
+        current_wt_line = i
         break
       end
     end
   end
 
-  eq(found_current_marker, true)
+  -- Verify the current worktree has a "*" sign in the gutter (via extmark)
+  child.lua(string.format(
+    [[
+    local ns = vim.api.nvim_get_namespaces()["gitlad_signs"]
+    _G._test_found_sign = false
+    if ns then
+      local marks = vim.api.nvim_buf_get_extmarks(0, ns, {%d, 0}, {%d, 0}, { details = true })
+      for _, mark in ipairs(marks) do
+        if mark[4] and mark[4].sign_text and vim.trim(mark[4].sign_text) == "*" then
+          _G._test_found_sign = true
+        end
+      end
+    end
+  ]],
+    current_wt_line - 1,
+    current_wt_line - 1
+  ))
+  local found_current_sign = child.lua_get("_G._test_found_sign")
+
+  eq(found_current_sign, true)
 
   -- Cleanup
   helpers.git(child, repo, string.format("worktree remove %s", worktree_path))
@@ -188,7 +206,7 @@ T["worktree status section"]["can be collapsed and expanded"] = function()
     if line:match("^Worktrees") then
       in_worktrees_section = true
     elseif in_worktrees_section then
-      if line == "" or line:match("^%w") then
+      if line == "" then
         break
       end
       worktree_lines_before = worktree_lines_before + 1
@@ -207,7 +225,7 @@ T["worktree status section"]["can be collapsed and expanded"] = function()
     if line:match("^Worktrees") then
       in_worktrees_section = true
     elseif in_worktrees_section then
-      if line == "" or line:match("^%w") then
+      if line == "" then
         break
       end
       worktree_lines_after = worktree_lines_after + 1
@@ -229,7 +247,7 @@ T["worktree status section"]["can be collapsed and expanded"] = function()
     if line:match("^Worktrees") then
       in_worktrees_section = true
     elseif in_worktrees_section then
-      if line == "" or line:match("^%w") then
+      if line == "" then
         break
       end
       worktree_lines_expanded = worktree_lines_expanded + 1

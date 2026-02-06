@@ -1,4 +1,4 @@
-.PHONY: test test-unit test-e2e test-e2e-sequential test-file deps lint dev test-repo dev-repo setup-gh
+.PHONY: test test-stress test-unit test-e2e test-e2e-sequential test-file deps lint dev test-repo dev-repo setup-gh
 
 # Run plugin in development mode
 dev:
@@ -18,6 +18,14 @@ dev-repo: test-repo
 
 # Run all tests (unit sequential + e2e parallel)
 test: test-unit test-e2e
+
+# Run full suite 3 times with high parallelism (for catching flaky tests)
+test-stress: deps
+	@for i in 1 2 3; do \
+		echo "=== Stress run $$i (JOBS=32) ==="; \
+		$(MAKE) test JOBS=32 || exit 1; \
+	done
+	@echo "All stress runs passed!"
 
 # Run only unit tests
 test-unit: deps

@@ -144,6 +144,7 @@ local function copy_status(status)
     recent_commits = vim.deepcopy(status.recent_commits or {}),
     stashes = vim.deepcopy(status.stashes or {}),
     submodules = vim.deepcopy(status.submodules or {}),
+    worktrees = vim.deepcopy(status.worktrees or {}),
     -- Sequencer state fields
     cherry_pick_in_progress = status.cherry_pick_in_progress,
     revert_in_progress = status.revert_in_progress,

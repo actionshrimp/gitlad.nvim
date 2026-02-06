@@ -245,20 +245,25 @@ local function render_worktrees(ctx, opts)
     -- Normalize repo_root path for comparison (remove trailing slash)
     local current_repo_root = self.repo_state.repo_root:gsub("/$", "")
 
+    -- Compute max branch name length for tabular alignment
+    local max_branch_len = 0
     for _, worktree in ipairs(status.worktrees) do
-      -- Format: [*] branch  ~/path  (current marked with *, locked marked with L)
-      local prefix = "  "
-      -- Normalize worktree path for comparison (remove trailing slash)
-      local wt_path = worktree.path:gsub("/$", "")
-      if wt_path == current_repo_root then
-        prefix = "* " -- Current worktree
-      elseif worktree.locked then
-        prefix = "L " -- Locked worktree
+      local branch_info = worktree.branch or "(detached)"
+      max_branch_len = math.max(max_branch_len, #branch_info)
+    end
+
+    for _, worktree in ipairs(status.worktrees) do
+      local branch_info = worktree.branch or "(detached)"
+      -- Compute relative path (cwd-relative first, fallback to home-relative)
+      local short_path = vim.fn.fnamemodify(worktree.path, ":.")
+      if short_path:sub(1, 1) == "/" then
+        short_path = vim.fn.fnamemodify(worktree.path, ":~")
+      end
+      if short_path:sub(-1) ~= "/" then
+        short_path = short_path .. "/"
       end
 
-      local branch_info = worktree.branch or "(detached)"
-      local short_path = vim.fn.fnamemodify(worktree.path, ":~")
-      local line_text = string.format("  %s%s  %s", prefix, branch_info, short_path)
+      local line_text = string.format("%-" .. max_branch_len .. "s  %s", branch_info, short_path)
 
       table.insert(ctx.lines, line_text)
       self.line_map[#ctx.lines] = {
@@ -266,6 +271,14 @@ local function render_worktrees(ctx, opts)
         worktree = worktree,
         section = "worktrees",
       }
+
+      -- Place current/locked indicators in the sign column (gutter)
+      local wt_path = worktree.path:gsub("/$", "")
+      if wt_path == current_repo_root then
+        self.sign_lines[#ctx.lines] = { sign_text = "*", sign_hl = "GitladWorktreeCurrent" }
+      elseif worktree.locked then
+        self.sign_lines[#ctx.lines] = { sign_text = "L", sign_hl = "GitladWorktreeLocked" }
+      end
     end
   end
   table.insert(ctx.lines, "")
