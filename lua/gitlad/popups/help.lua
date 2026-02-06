@@ -392,6 +392,20 @@ local function create_sections(status_buffer)
           end,
         },
         {
+          key = "W",
+          desc = "Patch",
+          action = function()
+            require("gitlad.popups.patch").open(repo_state)
+          end,
+        },
+        {
+          key = "w",
+          desc = "Apply patches",
+          action = function()
+            require("gitlad.popups.am").open(repo_state)
+          end,
+        },
+        {
           key = "yr",
           desc = "References",
           action = function()

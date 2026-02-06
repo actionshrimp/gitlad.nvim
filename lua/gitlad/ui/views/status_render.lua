@@ -294,6 +294,13 @@ local function render(self)
       merge_line = merge_line .. " " .. status.merge_head_subject
     end
     table.insert(lines, merge_line)
+  elseif status.am_in_progress then
+    local am_line = "Applying patches"
+    if status.am_current_patch and status.am_last_patch then
+      am_line = am_line .. ": " .. status.am_current_patch .. "/" .. status.am_last_patch
+    end
+    am_line = am_line .. " (resolve conflicts and press 'w' to continue)"
+    table.insert(lines, am_line)
   end
 
   table.insert(lines, "")
