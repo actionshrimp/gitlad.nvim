@@ -37,6 +37,30 @@ T["hl"]["setup creates highlight groups"] = function()
   expect.equality(type(status_bg_hl.bg), "number") -- bg is a color number
 end
 
+T["hl"]["setup creates history highlight groups"] = function()
+  local hl = require("gitlad.ui.hl")
+  hl.setup()
+
+  local groups = {
+    { name = "GitladHistorySuccess", link = "DiagnosticOk" },
+    { name = "GitladHistoryFailure", link = "DiagnosticError" },
+    { name = "GitladHistoryTime", link = "Comment" },
+    { name = "GitladHistoryCommand", link = "Title" },
+    { name = "GitladHistoryDuration", link = "Comment" },
+    { name = "GitladHistoryLabel", link = "Comment" },
+    { name = "GitladHistoryPath", link = "Directory" },
+    { name = "GitladHistoryExitSuccess", link = "DiagnosticOk" },
+    { name = "GitladHistoryExitFailure", link = "DiagnosticError" },
+    { name = "GitladHistoryStdout", link = "Normal" },
+    { name = "GitladHistoryStderr", link = "WarningMsg" },
+  }
+
+  for _, g in ipairs(groups) do
+    local hl_def = vim.api.nvim_get_hl(0, { name = g.name })
+    expect.equality(hl_def.link, g.link)
+  end
+end
+
 T["hl"]["setup can be called multiple times safely"] = function()
   local hl = require("gitlad.ui.hl")
   hl.setup()

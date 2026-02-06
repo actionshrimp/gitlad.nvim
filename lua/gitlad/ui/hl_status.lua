@@ -593,11 +593,16 @@ function M.apply_history_highlights(bufnr, lines, ns_history, hl_module)
   -- Clear previous highlights
   hl_module.clear(bufnr, ns_history)
 
+  local in_section = nil -- Track current expanded section ("stdout" or "stderr")
+
   for i, line in ipairs(lines) do
     local line_idx = i - 1 -- Convert to 0-indexed
 
     -- Entry header: "✓ [HH:MM:SS] git command (Nms)" or "✗ [...]"
-    if line:match("^[✓✗]%s+%[") then
+    -- Note: can't use [✓✗] character class - Lua patterns are byte-based, not UTF-8
+    if line:match("^✓ %[") or line:match("^✗ %[") then
+      in_section = nil
+
       -- Success/failure icon (first character, but UTF-8 so 3 bytes)
       if line:match("^✓") then
         hl_module.set(bufnr, ns_history, line_idx, 0, 3, "GitladHistorySuccess")
@@ -612,43 +617,52 @@ function M.apply_history_highlights(bufnr, lines, ns_history, hl_module)
         hl_module.set(bufnr, ns_history, line_idx, time_start - 1, time_end, "GitladHistoryTime")
       end
 
-      -- Command: "git command"
-      local cmd_start = line:find("git%s")
-      if cmd_start then
-        local cmd_end = line:find("%s%(", cmd_start)
-        if cmd_end then
-          hl_module.set(
-            bufnr,
-            ns_history,
-            line_idx,
-            cmd_start - 1,
-            cmd_end - 1,
-            "GitladHistoryCommand"
-          )
-        end
-      end
+      -- Duration: "(Nms)" - find from end to handle args with parens
+      local dur_start, dur_end = line:find("%(%d+ms%)$")
 
-      -- Duration: "(Nms)"
-      local dur_start = line:find("%(")
-      local dur_end = line:find("%)$")
-      if dur_start and dur_end then
+      -- Command: "git command args..." (everything between ] and duration)
+      local cmd_start = time_end and (time_end + 2) or nil -- skip "] "
+      local cmd_end = dur_start and (dur_start - 2) or nil -- before " ("
+      if cmd_start and cmd_end and cmd_end >= cmd_start then
+        hl_module.set(bufnr, ns_history, line_idx, cmd_start - 1, cmd_end, "GitladHistoryCommand")
+      end
+      if dur_start then
         hl_module.set(bufnr, ns_history, line_idx, dur_start - 1, dur_end, "GitladHistoryDuration")
       end
 
-      -- Label lines in expanded entries: "  cwd:", "  exit:", "  cmd:", "  stdout:", "  stderr:"
-    elseif line:match("^%s%s[a-z]+:") then
+      -- Label lines in expanded entries
+    elseif line:match("^  cwd: ") then
+      in_section = nil
       local label_end = line:find(":")
-      if label_end then
-        hl_module.set(bufnr, ns_history, line_idx, 2, label_end, "Comment")
-      end
+      hl_module.set(bufnr, ns_history, line_idx, 2, label_end, "GitladHistoryLabel")
+      hl_module.set(bufnr, ns_history, line_idx, label_end + 1, #line, "GitladHistoryPath")
+    elseif line:match("^  exit: ") then
+      in_section = nil
+      local label_end = line:find(":")
+      hl_module.set(bufnr, ns_history, line_idx, 2, label_end, "GitladHistoryLabel")
+      local exit_code = line:match("^  exit: (%d+)")
+      local exit_hl = exit_code == "0" and "GitladHistoryExitSuccess" or "GitladHistoryExitFailure"
+      hl_module.set(bufnr, ns_history, line_idx, label_end + 1, #line, exit_hl)
+    elseif line:match("^  cmd: ") then
+      in_section = nil
+      local label_end = line:find(":")
+      hl_module.set(bufnr, ns_history, line_idx, 2, label_end, "GitladHistoryLabel")
+      hl_module.set(bufnr, ns_history, line_idx, label_end + 1, #line, "GitladHistoryCommand")
+    elseif line:match("^  stdout:") then
+      in_section = "stdout"
+      local label_end = line:find(":")
+      hl_module.set(bufnr, ns_history, line_idx, 2, label_end, "GitladHistoryLabel")
+    elseif line:match("^  stderr:") then
+      in_section = "stderr"
+      local label_end = line:find(":")
+      hl_module.set(bufnr, ns_history, line_idx, 2, label_end, "GitladHistoryLabel")
 
-      -- Title line
-    elseif line:match("^Git Command History") then
-      hl_module.set(bufnr, ns_history, line_idx, 0, #line, "Title")
-
-      -- Help line
-    elseif line:match("^Press") then
-      hl_module.set(bufnr, ns_history, line_idx, 0, #line, "GitladHelpText")
+      -- Indented content lines (4 spaces) within stdout/stderr sections
+    elseif line:match("^    ") and in_section then
+      local content_hl = in_section == "stderr" and "GitladHistoryStderr" or "GitladHistoryStdout"
+      hl_module.set(bufnr, ns_history, line_idx, 4, #line, content_hl)
+    else
+      in_section = nil
     end
   end
 end

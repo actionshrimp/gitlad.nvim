@@ -119,13 +119,6 @@ function HistoryBuffer:render()
   local lines = {}
   self.line_map = {}
 
-  -- Header
-  table.insert(lines, "Git Command History")
-  table.insert(lines, string.format("(%d commands)", #self.entries))
-  table.insert(lines, "")
-  table.insert(lines, "Press <CR> or <Tab> to expand, q to close")
-  table.insert(lines, "")
-
   if #self.entries == 0 then
     table.insert(lines, "No commands recorded yet.")
   else

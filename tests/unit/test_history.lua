@@ -114,10 +114,11 @@ T["format_entry"]["formats success entry"] = function()
 
   local lines = history.format_entry(entry)
   eq(#lines, 1)
-  -- Should contain checkmark, time, command, duration
+  -- Should contain checkmark, time, full command with args, duration
   local line = lines[1]
   assert(line:find("✓"), "Should have success checkmark")
   assert(line:find("status"), "Should have command name")
+  assert(line:find("%-%-porcelain"), "Should have command args")
   assert(line:find("123ms"), "Should have duration")
 end
 
@@ -126,6 +127,7 @@ T["format_entry"]["formats failure entry"] = function()
 
   local entry = make_entry({
     cmd = "push",
+    args = { "push", "origin", "main" },
     exit_code = 1,
   })
 
