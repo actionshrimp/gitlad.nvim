@@ -4,6 +4,10 @@
 dev:
 	nvim -u dev/init.lua
 
+link: 
+	rm -f ~/dev/nvim/gitlad.nvim
+	ln -s $(CURDIR) ~/dev/nvim/gitlad.nvim
+
 # Create a test repository for manual testing
 test-repo:
 	@./scripts/create-test-repo.sh
