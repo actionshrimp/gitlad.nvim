@@ -90,7 +90,7 @@ local highlight_groups = {
 
   -- Worktree entries
   GitladWorktreeBranch = { link = "Identifier" },
-  GitladWorktreePath = { link = "Directory" },
+  GitladWorktreePath = { link = "Comment" },
   GitladWorktreeCurrent = { link = "DiagnosticOk" }, -- * indicator for current worktree
   GitladWorktreeLocked = { link = "DiagnosticWarn" }, -- L indicator for locked worktree
 
