@@ -812,4 +812,61 @@ T["directory collapsing"]["does not collapse root-level files"] = function()
   eq(new_status.untracked[2].path, "file2.txt")
 end
 
+-- =============================================================================
+-- remove_file Tests
+-- =============================================================================
+
+T["remove_file"] = MiniTest.new_set()
+
+T["remove_file"]["removes file from unstaged"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    unstaged = {
+      { path = "a.txt", index_status = ".", worktree_status = "M" },
+      { path = "b.txt", index_status = ".", worktree_status = "M" },
+    },
+  })
+
+  local cmd = commands.remove_file("a.txt", "unstaged")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.unstaged, 1)
+  eq(new_status.unstaged[1].path, "b.txt")
+end
+
+T["remove_file"]["removes file from untracked"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    untracked = {
+      { path = "a.txt", index_status = "?", worktree_status = "?" },
+      { path = "b.txt", index_status = "?", worktree_status = "?" },
+    },
+  })
+
+  local cmd = commands.remove_file("a.txt", "untracked")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.untracked, 1)
+  eq(new_status.untracked[1].path, "b.txt")
+end
+
+T["remove_file"]["nonexistent file is no-op"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    unstaged = { { path = "a.txt", index_status = ".", worktree_status = "M" } },
+  })
+
+  local cmd = commands.remove_file("nonexistent.txt", "unstaged")
+  local new_status = reducer.apply(status, cmd)
+
+  eq(#new_status.unstaged, 1)
+  eq(new_status.unstaged[1].path, "a.txt")
+end
+
 return T

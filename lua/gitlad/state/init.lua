@@ -644,19 +644,45 @@ function RepoState:discard(path, section, callback)
       end
     end)
   else
-    -- Discard changes with git checkout
-    git.discard(path, { cwd = self.repo_root }, function(success, err)
-      if not success then
-        errors.notify("Discard", err)
-      else
-        -- Optimistic update: remove from state
-        local cmd = commands.remove_file(path, section)
-        self:apply_command(cmd)
+    -- Check if this is an intent-to-add file (.A) - discard should move back to untracked
+    local is_intent_to_add = false
+    if self.status and self.status.unstaged then
+      for _, entry in ipairs(self.status.unstaged) do
+        if entry.path == path and entry.worktree_status == "A" and entry.index_status == "." then
+          is_intent_to_add = true
+          break
+        end
       end
-      if callback then
-        callback(success)
-      end
-    end)
+    end
+
+    if is_intent_to_add then
+      -- Intent-to-add file: unstage it (move back to untracked)
+      git.unstage(path, { cwd = self.repo_root }, function(success, err)
+        if not success then
+          errors.notify("Discard (intent-to-add)", err)
+        else
+          local cmd = commands.unstage_intent(path)
+          self:apply_command(cmd)
+        end
+        if callback then
+          callback(success)
+        end
+      end)
+    else
+      -- Discard changes with git checkout
+      git.discard(path, { cwd = self.repo_root }, function(success, err)
+        if not success then
+          errors.notify("Discard", err)
+        else
+          -- Optimistic update: remove from state
+          local cmd = commands.remove_file(path, section)
+          self:apply_command(cmd)
+        end
+        if callback then
+          callback(success)
+        end
+      end)
+    end
   end
 end
 
@@ -672,29 +698,83 @@ function RepoState:discard_files(files, callback)
     return
   end
 
-  -- Separate files by section
+  -- Separate files by section, with a third bucket for intent-to-add files
   local untracked_paths = {}
   local unstaged_paths = {}
+  local intent_paths = {}
   local untracked_files = {}
   local unstaged_files = {}
+  local intent_files = {}
 
   for _, file in ipairs(files) do
     if file.section == "untracked" then
       table.insert(untracked_paths, file.path)
       table.insert(untracked_files, file)
     elseif file.section == "unstaged" then
-      table.insert(unstaged_paths, file.path)
-      table.insert(unstaged_files, file)
+      -- Check if this is an intent-to-add (.A) file
+      local is_intent = false
+      if self.status and self.status.unstaged then
+        for _, entry in ipairs(self.status.unstaged) do
+          if
+            entry.path == file.path
+            and entry.worktree_status == "A"
+            and entry.index_status == "."
+          then
+            is_intent = true
+            break
+          end
+        end
+      end
+      if is_intent then
+        table.insert(intent_paths, file.path)
+        table.insert(intent_files, file)
+      else
+        table.insert(unstaged_paths, file.path)
+        table.insert(unstaged_files, file)
+      end
     end
   end
 
-  -- Track completion of both operations
+  -- Track completion of all operations
   local pending = 0
   local any_failed = false
 
-  local function complete_one(success, files_to_update)
+  -- Helper to run intent-to-add unstage (serialized after index-modifying operations)
+  local function run_intent_unstage()
+    if #intent_paths == 0 then
+      if pending == 0 and callback then
+        callback(not any_failed)
+      end
+      return
+    end
+
+    pending = pending + 1
+    git.unstage_files(intent_paths, { cwd = self.repo_root }, function(success, err)
+      if not success then
+        errors.notify("Discard intent-to-add files", err)
+        any_failed = true
+      else
+        -- Optimistic update: apply unstage_intent for each file
+        for _, file in ipairs(intent_files) do
+          local cmd = commands.unstage_intent(file.path)
+          self:apply_command(cmd)
+        end
+      end
+      pending = pending - 1
+      if pending == 0 and callback then
+        callback(not any_failed)
+      end
+    end)
+  end
+
+  -- Count index-modifying git operations (discard uses checkout which modifies index)
+  local index_ops_pending = 0
+  if #unstaged_paths > 0 then
+    index_ops_pending = index_ops_pending + 1
+  end
+
+  local function complete_index_op(success, files_to_update)
     if success then
-      -- Optimistic update: apply command for each file
       for _, file in ipairs(files_to_update) do
         local cmd = commands.remove_file(file.path, file.section)
         self:apply_command(cmd)
@@ -702,33 +782,53 @@ function RepoState:discard_files(files, callback)
     else
       any_failed = true
     end
-
     pending = pending - 1
-    if pending == 0 and callback then
+    index_ops_pending = index_ops_pending - 1
+    -- Once all index-modifying ops are done, run intent unstage
+    if index_ops_pending == 0 then
+      run_intent_unstage()
+    elseif pending == 0 and callback then
       callback(not any_failed)
     end
   end
 
-  -- Delete untracked files
+  -- Delete untracked files (does NOT modify index, can run in parallel)
   if #untracked_paths > 0 then
     pending = pending + 1
     git.delete_untracked_files(untracked_paths, { cwd = self.repo_root }, function(success, err)
       if not success then
         errors.notify("Delete files", err)
       end
-      complete_one(success, untracked_files)
+      -- Untracked deletes don't modify index, handle separately
+      if success then
+        for _, file in ipairs(untracked_files) do
+          local cmd = commands.remove_file(file.path, file.section)
+          self:apply_command(cmd)
+        end
+      else
+        any_failed = true
+      end
+      pending = pending - 1
+      if pending == 0 and #intent_paths == 0 and callback then
+        callback(not any_failed)
+      end
     end)
   end
 
-  -- Discard unstaged changes
+  -- Discard unstaged changes (modifies index, must complete before intent unstage)
   if #unstaged_paths > 0 then
     pending = pending + 1
     git.discard_files(unstaged_paths, { cwd = self.repo_root }, function(success, err)
       if not success then
         errors.notify("Discard files", err)
       end
-      complete_one(success, unstaged_files)
+      complete_index_op(success, unstaged_files)
     end)
+  end
+
+  -- If no index-modifying ops, run intent unstage immediately
+  if index_ops_pending == 0 then
+    run_intent_unstage()
   end
 end
 
