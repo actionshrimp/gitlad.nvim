@@ -526,15 +526,8 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
 
   -- Wait for the commit editor to open (COMMIT_EDITMSG file)
   -- The editor should open because git needs to confirm the conflict resolution message
-  child.lua([[
-    vim.wait(3000, function()
-      local bufname = vim.api.nvim_buf_get_name(0)
-      return bufname:match("COMMIT_EDITMSG") ~= nil
-    end, 50)
-  ]])
-
-  local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
-  eq(bufname:match("COMMIT_EDITMSG") ~= nil, true)
+  -- Uses wait_for_buffer helper which gives a clear error on timeout
+  helpers.wait_for_buffer(child, "COMMIT_EDITMSG", 5000)
 
   -- The commit message should contain conflict information
   child.lua([[
@@ -549,10 +542,20 @@ T["rebase popup"]["continue after resolving conflicts opens commit editor"] = fu
   -- Accept the commit message with ZZ to complete the rebase
   child.type_keys("ZZ")
 
-  -- Wait for rebase to complete (condition-based wait instead of fixed timeout)
+  -- Wait for commit editor to close first (ZZ handler uses vim.schedule, so the
+  -- buffer switch happens asynchronously). This ensures the RPC signal to the
+  -- headless client has been sent before we start waiting for rebase completion.
+  child.lua([[
+    vim.wait(5000, function()
+      local bufname = vim.api.nvim_buf_get_name(0)
+      return bufname:match("COMMIT_EDITMSG") == nil
+    end, 50)
+  ]])
+
+  -- Wait for rebase to complete (git needs to process the editor exit and finish)
   child.lua(string.format(
     [[
-    vim.wait(5000, function()
+    vim.wait(10000, function()
       return not require("gitlad.git").rebase_in_progress({ cwd = %q })
     end, 50)
   ]],
