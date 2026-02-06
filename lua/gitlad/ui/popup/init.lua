@@ -854,10 +854,8 @@ function PopupData:render_lines()
 
     -- Switches
     for _, sw in ipairs(self.switches) do
-      local enabled_marker = sw.enabled and "*" or " "
       local cli_display = string.format("(%s%s)", sw.cli_prefix, sw.cli)
-      local line =
-        string.format(" %s-%s %s %s", enabled_marker, sw.key, sw.description, cli_display)
+      local line = string.format("  -%s %s %s", sw.key, sw.description, cli_display)
       table.insert(lines, line)
     end
 

@@ -139,37 +139,15 @@ T["fetch popup"]["switch toggling with -P"] = function()
   child.type_keys("f")
 
   -- Check initial state - prune should not be enabled
-  child.lua([[
-    popup_buf = vim.api.nvim_get_current_buf()
-    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
-  ]])
-  local lines_before = child.lua_get([[popup_lines]])
-
-  local prune_enabled_before = false
-  for _, line in ipairs(lines_before) do
-    if line:match("%*%-P.*[Pp]rune") then
-      prune_enabled_before = true
-    end
-  end
-  eq(prune_enabled_before, false)
+  helpers.wait_for_popup(child)
+  eq(helpers.popup_switch_enabled(child, "%-P.*[Pp]rune"), false)
 
   -- Toggle prune switch
   child.type_keys("-P")
   helpers.wait_short(child)
 
-  -- Check that switch is now enabled (has * marker)
-  child.lua([[
-    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
-  ]])
-  local lines_after = child.lua_get([[popup_lines]])
-
-  local prune_enabled_after = false
-  for _, line in ipairs(lines_after) do
-    if line:match("%*%-P.*[Pp]rune") then
-      prune_enabled_after = true
-    end
-  end
-  eq(prune_enabled_after, true)
+  -- Check that switch is now enabled (highlighted)
+  eq(helpers.popup_switch_enabled(child, "%-P.*[Pp]rune"), true)
 
   child.type_keys("q")
   helpers.cleanup_repo(child, repo)

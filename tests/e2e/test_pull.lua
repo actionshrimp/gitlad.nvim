@@ -144,37 +144,15 @@ T["pull popup"]["switch toggling with -r"] = function()
   child.type_keys("F")
 
   -- Check initial state - rebase should not be enabled
-  child.lua([[
-    popup_buf = vim.api.nvim_get_current_buf()
-    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
-  ]])
-  local lines_before = child.lua_get([[popup_lines]])
-
-  local rebase_enabled_before = false
-  for _, line in ipairs(lines_before) do
-    if line:match("%*%-r.*rebase") then
-      rebase_enabled_before = true
-    end
-  end
-  eq(rebase_enabled_before, false)
+  helpers.wait_for_popup(child)
+  eq(helpers.popup_switch_enabled(child, "%-r.*rebase"), false)
 
   -- Toggle rebase switch
   child.type_keys("-r")
   helpers.wait_short(child)
 
-  -- Check that switch is now enabled (has * marker)
-  child.lua([[
-    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
-  ]])
-  local lines_after = child.lua_get([[popup_lines]])
-
-  local rebase_enabled_after = false
-  for _, line in ipairs(lines_after) do
-    if line:match("%*%-r.*rebase") then
-      rebase_enabled_after = true
-    end
-  end
-  eq(rebase_enabled_after, true)
+  -- Check that switch is now enabled (highlighted)
+  eq(helpers.popup_switch_enabled(child, "%-r.*rebase"), true)
 
   child.type_keys("q")
   helpers.cleanup_repo(child, repo)

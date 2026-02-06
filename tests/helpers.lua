@@ -242,6 +242,35 @@ function M.wait_short(child, ms)
   child.lua(string.format([[vim.wait(%d, function() return false end)]], ms))
 end
 
+--- Check if a popup switch is enabled by checking for the SwitchEnabled highlight
+--- on the line matching the given pattern
+---@param child table MiniTest child process
+---@param pattern string Lua pattern to match the switch line (e.g. "%-f.*force%-with%-lease")
+---@return boolean
+function M.popup_switch_enabled(child, pattern)
+  return child.lua_get(string.format(
+    [[(function()
+    local buf = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local ns = vim.api.nvim_get_namespaces()["gitlad_popup"]
+    if not ns then return false end
+    for i, line in ipairs(lines) do
+      if line:match(%q) then
+        local marks = vim.api.nvim_buf_get_extmarks(buf, ns, {i-1, 0}, {i-1, -1}, {details=true})
+        for _, mark in ipairs(marks) do
+          if mark[4] and mark[4].hl_group == "GitladPopupSwitchEnabled" then
+            return true
+          end
+        end
+        return false
+      end
+    end
+    return false
+  end)()]],
+    pattern
+  ))
+end
+
 --- Open gitlad status view and wait for it to load
 ---@param child table MiniTest child process
 ---@param repo_path string Repository path
