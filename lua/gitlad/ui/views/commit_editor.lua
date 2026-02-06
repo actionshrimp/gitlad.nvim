@@ -184,21 +184,21 @@ local function close_editor()
     vim.bo[bufnr].modified = false
   end
 
-  -- Defer window/buffer cleanup to avoid issues when called from a keymap on that buffer
-  vim.schedule(function()
-    -- If we opened in a split, close the split window
-    if opened_in_split and winnr and vim.api.nvim_win_is_valid(winnr) then
-      -- Close the split window (this won't close the last window since status is still there)
-      vim.api.nvim_win_close(winnr, true)
-    else
-      -- If we replaced the buffer, switch back to status view
-      if repo_state then
-        local status_view = require("gitlad.ui.views.status")
-        status_view.open(repo_state)
-      end
+  -- Switch away from the editor buffer synchronously so that subsequent
+  -- keypresses land in the correct buffer (avoids race with vim.schedule)
+  if opened_in_split and winnr and vim.api.nvim_win_is_valid(winnr) then
+    -- Close the split window (this won't close the last window since status is still there)
+    vim.api.nvim_win_close(winnr, true)
+  else
+    -- If we replaced the buffer, switch back to status view
+    if repo_state then
+      local status_view = require("gitlad.ui.views.status")
+      status_view.open(repo_state)
     end
+  end
 
-    -- Delete the buffer
+  -- Defer only buffer deletion to avoid issues when called from a keymap on that buffer
+  vim.schedule(function()
     if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
       vim.api.nvim_buf_delete(bufnr, { force = true })
     end
