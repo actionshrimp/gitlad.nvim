@@ -22,6 +22,7 @@ local git_stash = require("gitlad.git.git_stash")
 local git_reflog = require("gitlad.git.git_reflog")
 local git_remotes = require("gitlad.git.git_remotes")
 local git_worktree = require("gitlad.git.git_worktree")
+local git_patch = require("gitlad.git.git_patch")
 
 -- Branch operations
 M.branches = git_branches.branches
@@ -91,6 +92,15 @@ M.worktree_prune = git_worktree.worktree_prune
 
 -- Reflog operations
 M.reflog = git_reflog.reflog
+
+-- Patch operations
+M.format_patch = git_patch.format_patch
+M.apply_patch_file = git_patch.apply_patch_file
+M.am = git_patch.am
+M.am_continue = git_patch.am_continue
+M.am_skip = git_patch.am_skip
+M.am_abort = git_patch.am_abort
+M.get_am_state = git_patch.get_am_state
 
 -- Remote operations
 M.remote_add = git_remotes.remote_add
@@ -467,9 +477,12 @@ end
 ---@field cherry_pick_in_progress boolean
 ---@field revert_in_progress boolean
 ---@field rebase_in_progress boolean
+---@field am_in_progress boolean
+---@field am_current_patch string|nil Current patch number during git am
+---@field am_last_patch string|nil Total patch count during git am
 ---@field sequencer_head_oid string|nil The commit being cherry-picked/reverted
 
---- Check if a cherry-pick, revert, or rebase is in progress
+--- Check if a cherry-pick, revert, rebase, or am is in progress
 ---@param opts? GitCommandOptions
 ---@param callback fun(state: SequencerState)
 function M.get_sequencer_state(opts, callback)
@@ -479,6 +492,9 @@ function M.get_sequencer_state(opts, callback)
       cherry_pick_in_progress = false,
       revert_in_progress = false,
       rebase_in_progress = false,
+      am_in_progress = false,
+      am_current_patch = nil,
+      am_last_patch = nil,
       sequencer_head_oid = nil,
     })
     return
@@ -488,6 +504,9 @@ function M.get_sequencer_state(opts, callback)
     cherry_pick_in_progress = false,
     revert_in_progress = false,
     rebase_in_progress = false,
+    am_in_progress = false,
+    am_current_patch = nil,
+    am_last_patch = nil,
     sequencer_head_oid = nil,
   }
 
@@ -515,11 +534,45 @@ function M.get_sequencer_state(opts, callback)
     return
   end
 
-  -- Check for rebase in progress (rebase-merge or rebase-apply directories)
+  -- Check for rebase-merge (interactive rebase)
   local rebase_merge = git_dir .. "/rebase-merge"
-  local rebase_apply = git_dir .. "/rebase-apply"
-  if vim.fn.isdirectory(rebase_merge) == 1 or vim.fn.isdirectory(rebase_apply) == 1 then
+  if vim.fn.isdirectory(rebase_merge) == 1 then
     state.rebase_in_progress = true
+    callback(state)
+    return
+  end
+
+  -- Check for rebase-apply (rebase or am)
+  -- Distinguish: rebase-apply/applying exists during git am,
+  -- rebase-apply/rebasing exists during git rebase
+  local rebase_apply = git_dir .. "/rebase-apply"
+  if vim.fn.isdirectory(rebase_apply) == 1 then
+    local applying = rebase_apply .. "/applying"
+    if vim.fn.filereadable(applying) == 1 then
+      -- git am in progress
+      state.am_in_progress = true
+
+      -- Read current patch number
+      local next_file = rebase_apply .. "/next"
+      if vim.fn.filereadable(next_file) == 1 then
+        local content = vim.fn.readfile(next_file)
+        if content[1] then
+          state.am_current_patch = vim.trim(content[1])
+        end
+      end
+
+      -- Read total patch count
+      local last_file = rebase_apply .. "/last"
+      if vim.fn.filereadable(last_file) == 1 then
+        local content = vim.fn.readfile(last_file)
+        if content[1] then
+          state.am_last_patch = vim.trim(content[1])
+        end
+      end
+    else
+      -- rebase in progress (non-interactive)
+      state.rebase_in_progress = true
+    end
     callback(state)
     return
   end

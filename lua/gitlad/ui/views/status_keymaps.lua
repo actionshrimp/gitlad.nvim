@@ -472,6 +472,28 @@ local function setup_keymaps(self)
     remote_popup.open(self.repo_state)
   end, "Remote popup")
 
+  -- Patch popup (magit-style: W for format-patch / apply / save)
+  keymap.set(bufnr, "n", "W", function()
+    local patch_popup = require("gitlad.popups.patch")
+    local file = get_current_file(self)
+    local commit = get_current_commit(self)
+    local context = {}
+    if commit then
+      context.commit = commit.hash
+    end
+    if file then
+      context.file_path = file.path
+      context.staged = file.section == "staged"
+    end
+    patch_popup.open(self.repo_state, next(context) and context or nil)
+  end, "Patch popup")
+
+  -- Apply patches popup (magit-style: w for git am)
+  keymap.set(bufnr, "n", "w", function()
+    local am_popup = require("gitlad.popups.am")
+    am_popup.open(self.repo_state)
+  end, "Apply patches popup")
+
   -- Worktree popup (evil-collection-magit style: Z default, % also works)
   local function open_worktree_popup()
     local worktree_popup = require("gitlad.popups.worktree")

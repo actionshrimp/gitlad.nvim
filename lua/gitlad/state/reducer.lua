@@ -149,6 +149,9 @@ local function copy_status(status)
     cherry_pick_in_progress = status.cherry_pick_in_progress,
     revert_in_progress = status.revert_in_progress,
     rebase_in_progress = status.rebase_in_progress,
+    am_in_progress = status.am_in_progress,
+    am_current_patch = status.am_current_patch,
+    am_last_patch = status.am_last_patch,
     sequencer_head_oid = status.sequencer_head_oid,
     sequencer_head_subject = status.sequencer_head_subject,
     -- Merge state fields

@@ -231,6 +231,9 @@ function RepoState:_fetch_extended_status(result, callback)
     result.cherry_pick_in_progress = seq_state.cherry_pick_in_progress
     result.revert_in_progress = seq_state.revert_in_progress
     result.rebase_in_progress = seq_state.rebase_in_progress
+    result.am_in_progress = seq_state.am_in_progress
+    result.am_current_patch = seq_state.am_current_patch
+    result.am_last_patch = seq_state.am_last_patch
     result.sequencer_head_oid = seq_state.sequencer_head_oid
 
     -- If there's a sequencer operation in progress, fetch the commit subject
