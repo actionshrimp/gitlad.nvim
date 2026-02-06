@@ -35,3 +35,5 @@
 - [ ] when running `SPC p t` from status buffer i get an error as neovim doesnt think it's a real project directory
 - [ ] unstage new files from unstaged back to untracked doesnt work with visual selection
 - [ ] we should highlight long-form flag arguments in popups when selected, rather than showing a * at the start
+
+- wassup
