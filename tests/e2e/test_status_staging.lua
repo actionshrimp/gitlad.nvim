@@ -1119,4 +1119,221 @@ T["directory staging"]["unstaging individual files collapses when all untracked"
   eq(find_line_with(lines, "mydir/b.txt"), nil, "Should NOT see mydir/b.txt")
 end
 
+-- =============================================================================
+-- Visual Unstage Intent-to-Add Tests
+-- =============================================================================
+
+T["visual unstage intent-to-add"] = MiniTest.new_set()
+
+T["visual unstage intent-to-add"]["visual u unstages multiple intent-to-add files"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked files and mark as intent-to-add
+  helpers.create_file(child, repo, "new1.txt", "content1")
+  helpers.create_file(child, repo, "new2.txt", "content2")
+  helpers.git(child, repo, "add -N new1.txt new2.txt")
+
+  -- Verify intent-to-add state
+  local status = helpers.git(child, repo, "status --porcelain")
+  assert_truthy(status:find(" A new1.txt"), "new1.txt should be intent-to-add")
+  assert_truthy(status:find(" A new2.txt"), "new2.txt should be intent-to-add")
+
+  open_gitlad(child, repo, "new1.txt")
+
+  -- Find both files and visually select them
+  local lines = get_buffer_lines(child)
+  local line1 = find_line_with(lines, "new1.txt")
+  local line2 = find_line_with(lines, "new2.txt")
+  assert_truthy(line1, "Should find new1.txt")
+  assert_truthy(line2, "Should find new2.txt")
+
+  -- Visual select both lines and press 'u' to unstage
+  child.cmd(tostring(line1))
+  child.type_keys("V")
+  child.cmd(tostring(line2))
+  child.type_keys("u")
+
+  -- Wait for files to move to Untracked section
+  helpers.wait_for_status_content(child, "Untracked")
+
+  -- Verify files moved to untracked
+  lines = get_buffer_lines(child)
+  local untracked_section = find_line_with(lines, "Untracked")
+  assert_truthy(untracked_section, "Should have Untracked section")
+
+  -- Verify git state
+  status = helpers.git(child, repo, "status --porcelain")
+  assert_truthy(status:find("%?%? new1.txt"), "new1.txt should be back to untracked")
+  assert_truthy(status:find("%?%? new2.txt"), "new2.txt should be back to untracked")
+end
+
+-- =============================================================================
+-- Discard Intent-to-Add Tests
+-- =============================================================================
+
+T["discard intent-to-add"] = MiniTest.new_set()
+
+-- Helper to mock vim.ui.select to auto-confirm Yes
+local function mock_ui_select_yes(child)
+  child.lua([[
+    _G.original_ui_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      _G.ui_select_prompt = opts.prompt
+      on_choice("Yes")
+    end
+  ]])
+end
+
+-- Helper to restore vim.ui.select
+local function restore_ui_select(child)
+  child.lua([[
+    if _G.original_ui_select then
+      vim.ui.select = _G.original_ui_select
+    end
+  ]])
+end
+
+T["discard intent-to-add"]["x on intent-to-add file moves it back to untracked"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked file and mark as intent-to-add
+  helpers.create_file(child, repo, "new.txt", "content")
+  helpers.git(child, repo, "add -N new.txt")
+
+  -- Verify intent-to-add state
+  local status = helpers.git(child, repo, "status --porcelain")
+  assert_truthy(status:find(" A new.txt"), "File should start as intent-to-add")
+
+  open_gitlad(child, repo, "new.txt")
+
+  -- Mock vim.ui.select to auto-confirm
+  mock_ui_select_yes(child)
+
+  -- Navigate to the file and press 'x' to discard
+  local file_line = helpers.goto_line_with(child, "new.txt")
+  assert_truthy(file_line, "Should find new.txt")
+  child.type_keys("x")
+
+  -- Wait for file to move to Untracked section
+  helpers.wait_for_status_content(child, "Untracked")
+
+  -- Verify the prompt mentioned intent-to-add
+  local prompt = child.lua_get([[_G.ui_select_prompt]])
+  assert_truthy(
+    prompt:find("intent%-to%-add"),
+    "Prompt should mention intent-to-add, got: " .. prompt
+  )
+
+  -- Verify file moved back to untracked
+  status = helpers.git(child, repo, "status --porcelain")
+  assert_truthy(status:find("%?%? new.txt"), "File should be back to untracked")
+
+  restore_ui_select(child)
+end
+
+T["discard intent-to-add"]["visual x on intent-to-add files moves them back to untracked"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked files and mark as intent-to-add
+  helpers.create_file(child, repo, "new1.txt", "content1")
+  helpers.create_file(child, repo, "new2.txt", "content2")
+  helpers.git(child, repo, "add -N new1.txt new2.txt")
+
+  open_gitlad(child, repo, "new1.txt")
+
+  -- Mock vim.ui.select to auto-confirm
+  mock_ui_select_yes(child)
+
+  -- Find both files and visually select them
+  local lines = get_buffer_lines(child)
+  local line1 = find_line_with(lines, "new1.txt")
+  local line2 = find_line_with(lines, "new2.txt")
+  assert_truthy(line1, "Should find new1.txt")
+  assert_truthy(line2, "Should find new2.txt")
+
+  -- Visual select both lines and press 'x' to discard
+  child.cmd(tostring(line1))
+  child.type_keys("V")
+  child.cmd(tostring(line2))
+  child.type_keys("x")
+
+  -- Wait for files to move to Untracked section
+  helpers.wait_for_status_content(child, "Untracked")
+
+  -- Verify git state
+  local status = helpers.git(child, repo, "status --porcelain")
+  assert_truthy(status:find("%?%? new1.txt"), "new1.txt should be back to untracked")
+  assert_truthy(status:find("%?%? new2.txt"), "new2.txt should be back to untracked")
+
+  restore_ui_select(child)
+end
+
+T["discard intent-to-add"]["visual x on mixed intent-to-add and regular unstaged files"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  -- Create initial commit with a tracked file
+  helpers.create_file(child, repo, "tracked.txt", "original")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Modify the tracked file (regular unstaged change)
+  helpers.create_file(child, repo, "tracked.txt", "modified")
+
+  -- Create an intent-to-add file
+  helpers.create_file(child, repo, "new.txt", "content")
+  helpers.git(child, repo, "add -N new.txt")
+
+  open_gitlad(child, repo, "Unstaged")
+
+  -- Mock vim.ui.select to auto-confirm
+  mock_ui_select_yes(child)
+
+  -- Find both files in the Unstaged section
+  local lines = get_buffer_lines(child)
+  local new_line = find_line_with(lines, "new.txt")
+  local tracked_line = find_line_with(lines, "tracked.txt")
+  assert_truthy(new_line, "Should find new.txt")
+  assert_truthy(tracked_line, "Should find tracked.txt")
+
+  -- Visual select both files and press 'x' to discard
+  local first_line = math.min(new_line, tracked_line)
+  local last_line = math.max(new_line, tracked_line)
+  child.cmd(tostring(first_line))
+  child.type_keys("V")
+  child.cmd(tostring(last_line))
+  child.type_keys("x")
+
+  -- Wait for both operations to complete
+  -- The discard runs checkout first, then unstage_files (serialized to avoid index.lock)
+  helpers.wait_for_git_status(child, repo, "?? new.txt")
+
+  -- Verify git state
+  local status = helpers.git(child, repo, "status --porcelain")
+  -- new.txt should be untracked now (intent-to-add was undone)
+  assert_truthy(status:find("%?%? new.txt"), "new.txt should be back to untracked")
+  -- tracked.txt should no longer show as modified (changes discarded)
+  eq(status:find(" M tracked.txt"), nil, "tracked.txt changes should be discarded")
+
+  restore_ui_select(child)
+end
+
 return T

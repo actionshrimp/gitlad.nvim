@@ -242,17 +242,75 @@ local function unstage_visual(self)
   local start_line, end_line = get_visual_selection_range()
 
   -- Collect all file entries and diff lines in the selection
-  local allowed_sections = { staged = true }
+  -- Allow both staged and unstaged sections (unstaged for intent-to-add .A files)
+  local allowed_sections = { staged = true, unstaged = true }
   local files, first_diff =
     collect_files_in_range(self.line_map, start_line, end_line, allowed_sections)
 
-  -- If we have file entries selected, unstage them all in a single git command
+  -- If we have file entries selected, split into staged vs intent-to-add
   if #files > 0 then
-    local paths = {}
+    local staged_paths = {}
+    local intent_paths = {}
+
     for _, file in ipairs(files) do
-      table.insert(paths, file.path)
+      if file.section == "staged" then
+        table.insert(staged_paths, file.path)
+      elseif file.section == "unstaged" then
+        -- Only handle intent-to-add (.A) files from unstaged section
+        local status = self.repo_state.status
+        for _, entry in ipairs(status.unstaged) do
+          if
+            entry.path == file.path
+            and entry.worktree_status == "A"
+            and entry.index_status == "."
+          then
+            table.insert(intent_paths, file.path)
+            break
+          end
+        end
+      end
     end
-    self.repo_state:unstage_files(paths)
+
+    if #staged_paths == 0 and #intent_paths == 0 then
+      vim.notify("[gitlad] No unstageable files in selection", vim.log.levels.INFO)
+      return
+    end
+
+    -- Track completion of both operations
+    local pending = 0
+    local function complete_one()
+      pending = pending - 1
+    end
+
+    -- Unstage staged files
+    if #staged_paths > 0 then
+      pending = pending + 1
+      self.repo_state:unstage_files(staged_paths, function()
+        complete_one()
+      end)
+    end
+
+    -- Unstage intent-to-add files in a single batch git command
+    if #intent_paths > 0 then
+      pending = pending + 1
+      git.unstage_files(intent_paths, { cwd = self.repo_state.repo_root }, function(success, err)
+        if not success then
+          vim.notify(
+            "[gitlad] Unstage intent-to-add error: " .. (err or "unknown"),
+            vim.log.levels.ERROR
+          )
+        else
+          -- Apply optimistic update for each intent-to-add file
+          local commands = require("gitlad.state.commands")
+          for _, path in ipairs(intent_paths) do
+            local cmd = commands.unstage_intent(path)
+            self.repo_state:apply_command(cmd)
+          end
+        end
+        complete_one()
+      end)
+    end
+
     return
   end
 
@@ -674,9 +732,27 @@ local function discard_current(self)
       end
     end)
   else
-    -- Confirm discard of changes
+    -- Check if this is an intent-to-add file (.A)
+    local is_intent_to_add = false
+    local status = self.repo_state.status
+    if status and status.unstaged then
+      for _, entry in ipairs(status.unstaged) do
+        if entry.path == path and entry.worktree_status == "A" and entry.index_status == "." then
+          is_intent_to_add = true
+          break
+        end
+      end
+    end
+
+    local prompt
+    if is_intent_to_add then
+      prompt = string.format("Move intent-to-add file '%s' back to untracked?", path)
+    else
+      prompt = string.format("Discard changes to '%s'?", path)
+    end
+
     vim.ui.select({ "Yes", "No" }, {
-      prompt = string.format("Discard changes to '%s'?", path),
+      prompt = prompt,
     }, function(choice)
       if choice == "Yes" then
         self.repo_state:discard(path, section)

@@ -96,6 +96,7 @@ output_dir="$2"
 basename=$(basename "$test_file" .lua)
 outfile="$output_dir/${basename}.out"
 timefile="$output_dir/${basename}.time"
+countfile="$output_dir/${basename}.count"
 
 # Record start time
 start_time=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')
@@ -110,17 +111,23 @@ exit_code=$?
 end_time=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')
 duration=$((end_time - start_time))
 
-# Write timing info
+# Extract test count from mini.test output (e.g., "Total number of cases: 29")
+# Strip ANSI escape codes first since mini.test uses bold formatting
+test_count=$(sed 's/\x1b\[[0-9;]*m//g' "$outfile" | grep -o 'Total number of cases:[[:space:]]*[0-9]*' | grep -o '[0-9]*$')
+test_count=${test_count:-0}
+
+# Write timing and count info
 echo "$duration" > "$timefile"
+echo "$test_count" > "$countfile"
 
 # Store exit code
 echo "$exit_code" > "${outfile}.exit"
 
-# Print status line with timing
+# Print status line with timing and test count
 if [ $exit_code -eq 0 ]; then
-    printf "[%5dms] %-40s %s\n" "$duration" "$basename" "PASS"
+    printf "[%5dms] %-40s PASS (%d tests)\n" "$duration" "$basename" "$test_count"
 else
-    printf "[%5dms] %-40s %s\n" "$duration" "$basename" "FAIL"
+    printf "[%5dms] %-40s FAIL (%d tests)\n" "$duration" "$basename" "$test_count"
 fi
 
 exit $exit_code
@@ -141,9 +148,10 @@ EOF
 
     echo ""
 
-    # Count passes and failures, collect timing data
+    # Count passes and failures, collect timing data and test counts
     E2E_PASSED=0
     E2E_FAILED=0
+    E2E_TOTAL_TESTS=0
     FAILED_FILES=()
     declare -a TIMING_DATA
 
@@ -152,9 +160,13 @@ EOF
         basename=$(basename "$exit_file" .out.exit)
         exit_code=$(cat "$exit_file")
         timefile="$OUTPUT_DIR/${basename}.time"
+        countfile="$OUTPUT_DIR/${basename}.count"
         duration=0
+        test_count=0
         [ -f "$timefile" ] && duration=$(cat "$timefile")
+        [ -f "$countfile" ] && test_count=$(cat "$countfile")
 
+        E2E_TOTAL_TESTS=$((E2E_TOTAL_TESTS + test_count))
         TIMING_DATA+=("$duration $basename")
 
         if [ "$exit_code" -eq 0 ]; then
@@ -195,9 +207,9 @@ fi
 # Summary
 echo -e "${BOLD}=== Summary ===${NC}"
 if [ $TOTAL_FAILED -eq 0 ]; then
-    echo -e "${GREEN}All $TOTAL_PASSED test files passed!${NC}"
+    echo -e "${GREEN}All $TOTAL_PASSED test suites passed! ($E2E_TOTAL_TESTS tests total)${NC}"
     exit 0
 else
-    echo -e "${RED}$TOTAL_FAILED test file(s) failed, $TOTAL_PASSED passed${NC}"
+    echo -e "${RED}$TOTAL_FAILED test suite(s) failed, $TOTAL_PASSED passed ($E2E_TOTAL_TESTS tests total)${NC}"
     exit 1
 fi
