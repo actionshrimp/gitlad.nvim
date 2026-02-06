@@ -15,6 +15,8 @@ local popup = require("gitlad.ui.popup")
 ---@field stash? StashEntry Stash under cursor (if any)
 ---@field ref? string Ref name under cursor (from refs buffer)
 ---@field base_ref? string Base ref being compared against (from refs buffer)
+---@field ref_upstream? string Upstream tracking ref for the ref under cursor (e.g., origin/feature)
+---@field current_upstream? string Upstream of the current (HEAD) branch (e.g., origin/main)
 
 --- Check if diffview.nvim is available
 ---@return boolean has_diffview
@@ -88,19 +90,88 @@ function M._diff_stash(repo_state, stash)
   open_diffview({ stash.ref .. "^!" }, "git stash show -p " .. stash.ref)
 end
 
---- Diff range (prompt for refs)
+--- Compute the default range expression based on context.
+--- Uses three-dot (changes since divergence) as the default for branch comparisons.
+---@param current_branch string|nil Current branch name
+---@param upstream string|nil Upstream tracking branch
+---@param context DiffContext Context about cursor position
+---@return string|nil default_range Pre-computed range, or nil if no meaningful default
+function M._compute_default_range(current_branch, upstream, context)
+  if not context.ref then
+    return nil
+  end
+
+  -- On a different branch than HEAD: compare base_ref against ref
+  if context.base_ref and context.base_ref ~= context.ref then
+    return context.base_ref .. "..." .. context.ref
+  end
+
+  -- On HEAD branch: use upstream if available
+  if upstream then
+    return upstream .. "..." .. context.ref
+  end
+
+  -- No meaningful default
+  return nil
+end
+
+--- Diff range (prompt for range expression with contextual default)
 ---@param repo_state RepoState
----@param default_range? string Default range to show in prompt
-function M._diff_range(repo_state, default_range)
-  vim.ui.input(
-    { prompt = "Diff range (e.g., main..HEAD): ", default = default_range or "" },
-    function(input)
-      if not input or input == "" then
-        return
-      end
-      open_diffview({ input }, "git diff " .. input)
+---@param context DiffContext Context about cursor position
+function M._diff_range(repo_state, context)
+  local status = repo_state.status
+  local current_branch = status and status.branch or nil
+  local upstream_val = status and status.upstream or nil
+
+  local default_range = M._compute_default_range(current_branch, upstream_val, context)
+
+  vim.ui.input({
+    prompt = "Diff range (e.g., main..HEAD): ",
+    default = default_range or "",
+    completion = "customlist,v:lua.gitlad_complete_refs",
+  }, function(input)
+    if not input or input == "" then
+      return
     end
-  )
+    open_diffview({ input }, "git diff " .. input)
+  end)
+end
+
+--- Diff ref against the current branch's upstream.
+--- Uses the HEAD branch's upstream tracking ref (e.g., origin/main when on main
+--- tracking origin/main). This shows changes unique to the ref compared to the
+--- remote version of the merge target — the most common comparison.
+---@param repo_state RepoState
+---@param context DiffContext Context about cursor position
+function M._diff_upstream(repo_state, context)
+  if not context.ref then
+    vim.notify("[gitlad] No ref under cursor", vim.log.levels.WARN)
+    return
+  end
+
+  -- Prefer the current (HEAD) branch's upstream — this is typically origin/main,
+  -- which is what users want when comparing a feature branch against the remote.
+  -- Fall back to the ref's own upstream if HEAD has no upstream configured.
+  local upstream = context.current_upstream or context.ref_upstream
+  if not upstream then
+    vim.notify("[gitlad] No upstream configured", vim.log.levels.WARN)
+    return
+  end
+
+  local range = upstream .. "..." .. context.ref
+  open_diffview({ range }, "git diff " .. range)
+end
+
+--- Build range via guided 3-step flow (base ref → range type → other ref)
+---@param repo_state RepoState
+function M._diff_build_range(repo_state)
+  local prompt_mod = require("gitlad.utils.prompt")
+  prompt_mod.build_range_guided({ cwd = repo_state.repo_root }, function(range)
+    if not range or range == "" then
+      return
+    end
+    open_diffview({ range }, "git diff " .. range)
+  end)
 end
 
 --- Diff a ref against another ref
@@ -110,47 +181,6 @@ end
 function M._diff_ref_against(repo_state, ref, base)
   local range = base .. ".." .. ref
   open_diffview({ range }, "git diff " .. range)
-end
-
---- Diff range with ref context - multi-step picker workflow
---- Step 1: Ask what to diff against
---- Step 2: Ask for range type (.. or ...)
----@param repo_state RepoState
----@param ref string The ref to diff
-function M._diff_range_with_context(repo_state, ref)
-  -- Step 1: Ask what to diff against
-  vim.ui.input({ prompt = "Diff " .. ref .. " against: ", default = "main" }, function(base)
-    if not base or base == "" then
-      return
-    end
-
-    -- Step 2: Ask for range type with descriptive text
-    local range_options = {
-      {
-        value = "..",
-        label = ".. (two-dot)",
-        desc = "Shows all differences between " .. base .. " and " .. ref,
-      },
-      {
-        value = "...",
-        label = "... (three-dot)",
-        desc = "Shows changes on " .. ref .. " since it diverged from " .. base,
-      },
-    }
-
-    vim.ui.select(range_options, {
-      prompt = "Range type:",
-      format_item = function(item)
-        return item.label .. " - " .. item.desc
-      end,
-    }, function(choice)
-      if not choice then
-        return
-      end
-      local range = base .. choice.value .. ref
-      open_diffview({ range }, "git diff " .. range)
-    end)
-  end)
 end
 
 --- 3-way staging view (HEAD/index/working tree)
@@ -239,17 +269,15 @@ function M.open(repo_state, context)
     :action("w", "Diff worktree", function()
       M._diff_worktree(repo_state)
     end)
-  -- Context-aware range action
-  if context.ref then
-    local ref = context.ref
-    builder:action("r", "Diff " .. ref .. " against...", function()
-      M._diff_range_with_context(repo_state, ref)
-    end)
-  else
-    builder:action("r", "Diff range...", function()
-      M._diff_range(repo_state)
-    end)
-  end
+  -- Range action - unified flow with context-aware defaults
+  builder:action("r", "Diff range...", function()
+    M._diff_range(repo_state, context)
+  end)
+
+  -- Build range via guided flow (always available)
+  builder:action("b", "Build range...", function()
+    M._diff_build_range(repo_state)
+  end)
 
   -- Add commit action only if we have a commit in context
   if context.commit then
@@ -258,12 +286,17 @@ function M.open(repo_state, context)
     end)
   end
 
-  -- Add quick ref diff using context's base_ref
+  -- Diff against upstream (only when on a ref)
   if context.ref then
-    local base = context.base_ref or "HEAD"
-    local ref = context.ref
-    builder:action("b", "Diff " .. ref .. ".." .. base, function()
-      M._diff_ref_against(repo_state, ref, base)
+    local effective_upstream = context.current_upstream or context.ref_upstream
+    local upstream_label
+    if effective_upstream then
+      upstream_label = "Diff " .. effective_upstream .. "..." .. context.ref
+    else
+      upstream_label = "Diff against upstream"
+    end
+    builder:action("U", upstream_label, function()
+      M._diff_upstream(repo_state, context)
     end)
   end
 

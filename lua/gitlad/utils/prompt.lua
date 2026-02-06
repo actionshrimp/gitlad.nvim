@@ -254,4 +254,60 @@ function M.prompt_for_ref(opts, callback)
   end
 end
 
+-- =============================================================================
+-- Guided range builder
+-- =============================================================================
+
+--- Guided 3-step range builder using prompt_for_ref and vim.ui.select.
+--- Step 1: Base ref picker
+--- Step 2: Range type (.. or ...)
+--- Step 3: Other ref picker
+---@param opts { cwd?: string }
+---@param callback fun(range: string|nil)
+function M.build_range_guided(opts, callback)
+  -- Step 1: Base ref
+  M.prompt_for_ref({ prompt = "Base ref: ", cwd = opts.cwd }, function(base)
+    if not base then
+      callback(nil)
+      return
+    end
+
+    -- Step 2: Range type
+    local range_options = {
+      {
+        value = "..",
+        label = ".. (two-dot)",
+        desc = "All differences between the two refs",
+      },
+      {
+        value = "...",
+        label = "... (three-dot)",
+        desc = "Changes since the refs diverged",
+      },
+    }
+
+    vim.ui.select(range_options, {
+      prompt = "Range type:",
+      format_item = function(item)
+        return item.label .. " — " .. item.desc
+      end,
+    }, function(choice)
+      if not choice then
+        callback(nil)
+        return
+      end
+
+      -- Step 3: Other ref
+      M.prompt_for_ref({ prompt = "Other ref: ", cwd = opts.cwd }, function(other)
+        if not other then
+          callback(nil)
+          return
+        end
+
+        callback(base .. choice.value .. other)
+      end)
+    end)
+  end)
+end
+
 return M
