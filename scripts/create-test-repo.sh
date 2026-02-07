@@ -856,6 +856,27 @@ git commit -m "Update App component on main"
 
 git stash pop -q 2>/dev/null || true  # Restore stashed changes
 
+# --- Staged rename (added after stash pop to preserve index state) ---
+git mv docs/API.md docs/API-REFERENCE.md
+cat > docs/API-REFERENCE.md << 'EOF'
+# API Reference
+
+## Endpoints
+
+### GET /users
+Returns a list of users.
+
+### POST /users
+Creates a new user.
+
+### GET /users/:id
+Returns a specific user.
+
+### DELETE /users/:id
+Deletes a specific user.
+EOF
+git add docs/API-REFERENCE.md
+
 # =============================================================================
 # Add a pre-commit hook that simulates a slow linting process
 # =============================================================================
@@ -895,6 +916,7 @@ echo "Branches for merge testing:"
 echo "  - feature/clean-merge: Can be merged cleanly (adds math.js)"
 echo "  - feature/conflict-merge: Will conflict with main (both modified App.js)"
 echo ""
+echo "Staged section includes a renamed file: docs/{API.md => API-REFERENCE.md}"
 echo "The 'lib' submodule has new commits - it will appear in Unstaged changes."
 echo "Use this to test submodule popup context from file entries."
 echo ""
