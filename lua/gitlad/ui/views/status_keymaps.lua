@@ -15,16 +15,17 @@ local log_list = require("gitlad.ui.components.log_list")
 ---@return string|nil path
 ---@return string|nil section "staged"|"unstaged"|"untracked"|"conflicted"
 ---@return number|nil hunk_index Index of hunk if on a diff line
+---@return GitStatusEntry|nil entry The full status entry (for accessing orig_path etc.)
 local function get_current_file(self)
   local cursor = vim.api.nvim_win_get_cursor(0)
   local line = cursor[1]
 
   local info = self.line_map[line]
   if info and info.path then
-    return info.path, info.section, info.hunk_index
+    return info.path, info.section, info.hunk_index, info.entry
   end
 
-  return nil, nil, nil
+  return nil, nil, nil, nil
 end
 
 --- Get the commit at the current cursor position

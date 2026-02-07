@@ -854,4 +854,53 @@ T["visual selection untracked"]["stages selected lines from untracked file"] = f
   assert_truthy(unstaged_diff:find("+line5"), "Unstaged diff should contain +line5")
 end
 
+-- =============================================================================
+-- Renamed File Diff Tests
+-- =============================================================================
+
+T["diff expansion"]["TAB shows only content changes for renamed file"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  -- Create and commit a file with multiple lines
+  helpers.create_file(child, repo, "original.txt", "line1\nline2\nline3\nline4\nline5\nline6\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Rename the file and change one line
+  helpers.git(child, repo, "mv original.txt renamed.txt")
+  helpers.create_file(
+    child,
+    repo,
+    "renamed.txt",
+    "line1\nline2 modified\nline3\nline4\nline5\nline6\n"
+  )
+  helpers.git(child, repo, "add .")
+
+  -- Open gitlad and wait for renamed file to appear
+  open_gitlad(child, repo, "renamed.txt")
+
+  -- Navigate to the renamed file and expand its diff
+  local file_line = helpers.goto_line_with(child, "renamed.txt")
+  assert_truthy(file_line, "Should find renamed.txt in status buffer")
+  child.type_keys("<Tab>")
+  helpers.wait_for_diff_expanded(child)
+
+  -- Check the diff output
+  local lines = get_buffer_lines(child)
+
+  -- Should show actual content change (not full file as additions)
+  local has_minus_line = find_line_with(lines, "-line2")
+  local has_plus_line = find_line_with(lines, "+line2 modified")
+  assert_truthy(has_minus_line, "Should show removed line (content change)")
+  assert_truthy(has_plus_line, "Should show added line (content change)")
+
+  -- Should NOT show other unchanged lines as additions from /dev/null
+  -- If the diff incorrectly treats this as a new file, ALL lines would be additions
+  local has_plus_line1 = find_line_with(lines, "+line1")
+  local has_plus_line3 = find_line_with(lines, "+line3")
+  eq(has_plus_line1, nil, "Should NOT show unchanged line1 as addition")
+  eq(has_plus_line3, nil, "Should NOT show unchanged line3 as addition")
+end
+
 return T

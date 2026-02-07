@@ -531,4 +531,32 @@ T["gitlad command"]["triggers refresh when re-running with status already open"]
   assert_truthy(new_file_line, "Should show new_file.txt after re-running :Gitlad")
 end
 
+T["rename detection"] = MiniTest.new_set()
+
+T["rename detection"]["shows rename instead of separate delete and add"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  -- Create and commit a file
+  helpers.create_file(child, repo, "old_name.txt", "line1\nline2\nline3\n")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Simulate rename without git mv: delete old, create new with same content
+  child.lua(string.format("vim.fn.delete(%q)", repo .. "/old_name.txt"))
+  helpers.create_file(child, repo, "new_name.txt", "line1\nline2\nline3\n")
+  helpers.git(child, repo, "add .")
+
+  -- Open gitlad
+  open_gitlad(child, repo)
+
+  local lines = get_buffer_lines(child)
+
+  -- Should show rename notation, not separate D + A entries
+  local has_rename = find_line_with(lines, "=>")
+  local has_delete = find_line_with(lines, "D old_name.txt")
+  assert_truthy(has_rename, "Should show rename with => notation")
+  eq(has_delete, nil, "Should NOT show separate delete entry")
+end
+
 return T

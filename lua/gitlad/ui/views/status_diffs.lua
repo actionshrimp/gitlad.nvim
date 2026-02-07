@@ -300,7 +300,7 @@ local function toggle_diff(self)
     -- If no diff data yet, fall through to file toggle
   end
 
-  local path, section = self:_get_current_file()
+  local path, section, _, entry = self:_get_current_file()
   if not path then
     return
   end
@@ -352,7 +352,8 @@ local function toggle_diff(self)
 
   -- Fetch the diff for staged/unstaged files
   local staged = (section == "staged")
-  git.diff(path, staged, { cwd = self.repo_state.repo_root }, on_diff_result)
+  local orig_path = entry and entry.orig_path
+  git.diff(path, staged, { cwd = self.repo_state.repo_root }, on_diff_result, orig_path)
 end
 
 --- Expand all file diffs (batch fetch)
@@ -415,7 +416,7 @@ local function expand_all_files(self, callback)
       if file_info.untracked then
         git.diff_untracked(file_info.entry.path, opts, on_result)
       else
-        git.diff(file_info.entry.path, file_info.staged, opts, on_result)
+        git.diff(file_info.entry.path, file_info.staged, opts, on_result, file_info.entry.orig_path)
       end
     end
   end
@@ -505,7 +506,8 @@ end
 ---@param path string File path
 ---@param section string Section type
 ---@param callback fun() Called when diff is fetched
-local function fetch_diff_for_file(self, path, section, callback)
+---@param orig_path? string Original path (for renames)
+local function fetch_diff_for_file(self, path, section, callback, orig_path)
   local key = diff_cache_key(path, section)
   local opts = { cwd = self.repo_state.repo_root }
 
@@ -524,7 +526,7 @@ local function fetch_diff_for_file(self, path, section, callback)
     git.diff_untracked(path, opts, on_result)
   else
     local staged = (section == "staged")
-    git.diff(path, staged, opts, on_result)
+    git.diff(path, staged, opts, on_result, orig_path)
   end
 end
 
@@ -533,7 +535,8 @@ end
 ---@param path string File path
 ---@param section string Section type
 ---@param level number Visibility level (1-4)
-local function apply_visibility_level_to_file(self, path, section, level)
+---@param orig_path? string Original path (for renames)
+local function apply_visibility_level_to_file(self, path, section, level, orig_path)
   local key = diff_cache_key(path, section)
 
   if level == 1 or level == 2 then
@@ -547,7 +550,7 @@ local function apply_visibility_level_to_file(self, path, section, level)
       fetch_diff_for_file(self, path, section, function()
         self.expanded_files[key] = {} -- headers mode
         self:render()
-      end)
+      end, orig_path)
     else
       self.expanded_files[key] = {} -- headers mode
       self:render()
@@ -558,7 +561,7 @@ local function apply_visibility_level_to_file(self, path, section, level)
       fetch_diff_for_file(self, path, section, function()
         self.expanded_files[key] = true
         self:render()
-      end)
+      end, orig_path)
     else
       self.expanded_files[key] = true
       self:render()
@@ -655,7 +658,7 @@ local function apply_visibility_level_to_section(self, section_name, level)
             git.diff_untracked(entry.path, opts, on_result)
           else
             local staged = (section_name == "staged")
-            git.diff(entry.path, staged, opts, on_result)
+            git.diff(entry.path, staged, opts, on_result, entry.orig_path)
           end
         end
       end
@@ -707,7 +710,7 @@ local function apply_visibility_level_to_section(self, section_name, level)
             git.diff_untracked(entry.path, opts, on_result)
           else
             local staged = (section_name == "staged")
-            git.diff(entry.path, staged, opts, on_result)
+            git.diff(entry.path, staged, opts, on_result, entry.orig_path)
           end
         end
       end
@@ -803,7 +806,7 @@ local function apply_visibility_level_to_section(self, section_name, level)
           git.diff_untracked(entry.path, opts, on_result)
         else
           local staged = (section_name == "staged")
-          git.diff(entry.path, staged, opts, on_result)
+          git.diff(entry.path, staged, opts, on_result, entry.orig_path)
         end
       end
     end
@@ -854,7 +857,7 @@ local function apply_visibility_level_to_section(self, section_name, level)
           git.diff_untracked(entry.path, opts, on_result)
         else
           local staged = (section_name == "staged")
-          git.diff(entry.path, staged, opts, on_result)
+          git.diff(entry.path, staged, opts, on_result, entry.orig_path)
         end
       end
     end
@@ -924,7 +927,8 @@ local function apply_scoped_visibility_level(self, level)
         end
       end
     else
-      apply_visibility_level_to_file(self, line_info.path, line_info.section, level)
+      local file_orig_path = line_info.entry and line_info.entry.orig_path
+      apply_visibility_level_to_file(self, line_info.path, line_info.section, level, file_orig_path)
     end
     return
   end
