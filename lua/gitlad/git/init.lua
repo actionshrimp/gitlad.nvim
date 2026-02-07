@@ -119,7 +119,7 @@ M.remote_get_url = git_remotes.remote_get_url
 ---@param callback fun(result: GitStatusResult|nil, err: string|nil)
 function M.status(opts, callback)
   cli.run_async(
-    { "status", "--porcelain=v2", "--branch", "--untracked-files=normal" },
+    { "status", "--porcelain=v2", "--branch", "--find-renames", "--untracked-files=normal" },
     opts,
     function(result)
       if result.code ~= 0 then
@@ -135,8 +135,10 @@ end
 ---@param opts? GitCommandOptions
 ---@return GitStatusResult|nil, string|nil
 function M.status_sync(opts)
-  local result =
-    cli.run_sync({ "status", "--porcelain=v2", "--branch", "--untracked-files=normal" }, opts)
+  local result = cli.run_sync(
+    { "status", "--porcelain=v2", "--branch", "--find-renames", "--untracked-files=normal" },
+    opts
+  )
   if result.code ~= 0 then
     return nil, table.concat(result.stderr, "\n")
   end
