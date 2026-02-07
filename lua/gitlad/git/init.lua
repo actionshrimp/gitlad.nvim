@@ -212,12 +212,19 @@ end
 ---@param staged boolean Whether to get staged diff
 ---@param opts? GitCommandOptions
 ---@param callback fun(lines: string[]|nil, err: string|nil)
-function M.diff(path, staged, opts, callback)
+---@param orig_path? string Original path (for renames, enables -M detection)
+function M.diff(path, staged, opts, callback, orig_path)
   local args = { "diff" }
+  if orig_path then
+    table.insert(args, "-M")
+  end
   if staged then
     table.insert(args, "--cached")
   end
   table.insert(args, "--")
+  if orig_path then
+    table.insert(args, orig_path)
+  end
   table.insert(args, path)
 
   cli.run_async(args, opts, function(result)
