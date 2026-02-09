@@ -1336,4 +1336,102 @@ T["discard intent-to-add"]["visual x on mixed intent-to-add and regular unstaged
   restore_ui_select(child)
 end
 
+-- =============================================================================
+-- Discard untracked directory tests
+-- =============================================================================
+
+T["discard untracked directory"] = MiniTest.new_set()
+
+T["discard untracked directory"]["x on untracked directory deletes it recursively"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Create untracked directory with files (including nested subdirectory)
+  helpers.create_file(child, repo, "newdir/file1.txt", "content1")
+  helpers.create_file(child, repo, "newdir/file2.txt", "content2")
+  helpers.create_file(child, repo, "newdir/sub/file3.txt", "content3")
+
+  open_gitlad(child, repo)
+
+  -- Mock vim.ui.select to auto-confirm
+  mock_ui_select_yes(child)
+
+  -- Navigate to the untracked directory
+  local dir_line = helpers.goto_line_with(child, "newdir/")
+  assert_truthy(dir_line, "Should find newdir/ in untracked section")
+
+  -- Press 'x' to discard (delete)
+  child.type_keys("x")
+
+  -- Wait for directory to disappear from buffer
+  helpers.wait_for_buffer_content(child, "No changes", 3000)
+
+  -- Verify the prompt mentioned "directory"
+  local prompt = child.lua_get([[_G.ui_select_prompt]])
+  assert_truthy(prompt:find("directory"), "Prompt should mention 'directory', got: " .. prompt)
+  assert_truthy(
+    prompt:find("Recursively delete"),
+    "Prompt should say 'Recursively delete', got: " .. prompt
+  )
+
+  -- Verify directory is actually deleted from filesystem
+  local exists = child.lua_get(string.format([[vim.fn.isdirectory(%q .. "/newdir")]], repo))
+  eq(exists, 0, "newdir/ should be deleted from filesystem")
+
+  -- Verify git status shows no untracked files
+  local status = helpers.git(child, repo, "status --porcelain")
+  eq(status:find("newdir"), nil, "newdir should not appear in git status")
+
+  restore_ui_select(child)
+end
+
+T["discard untracked directory"]["x on Untracked header deletes mixed files and directories"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "initial")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Create a mix of untracked files and directories
+  helpers.create_file(child, repo, "loose.txt", "loose file")
+  helpers.create_file(child, repo, "mydir/a.txt", "a content")
+  helpers.create_file(child, repo, "mydir/b.txt", "b content")
+
+  open_gitlad(child, repo)
+
+  -- Mock vim.ui.select to auto-confirm
+  mock_ui_select_yes(child)
+
+  -- Navigate to the Untracked section header
+  local header_line = helpers.goto_line_with(child, "Untracked")
+  assert_truthy(header_line, "Should find Untracked section header")
+
+  -- Press 'x' to discard all untracked
+  child.type_keys("x")
+
+  -- Wait for untracked items to disappear
+  helpers.wait_for_buffer_content(child, "No changes", 3000)
+
+  -- Verify everything is deleted from filesystem
+  local dir_exists = child.lua_get(string.format([[vim.fn.isdirectory(%q .. "/mydir")]], repo))
+  eq(dir_exists, 0, "mydir/ should be deleted from filesystem")
+
+  local file_exists =
+    child.lua_get(string.format([[vim.fn.filereadable(%q .. "/loose.txt")]], repo))
+  eq(file_exists, 0, "loose.txt should be deleted from filesystem")
+
+  -- Verify git status is clean (only init.txt committed)
+  local status = helpers.git(child, repo, "status --porcelain")
+  eq(status, "", "Git status should be clean after deleting all untracked")
+
+  restore_ui_select(child)
+end
+
 return T

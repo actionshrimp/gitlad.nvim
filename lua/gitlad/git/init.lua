@@ -285,18 +285,29 @@ function M.discard(path, opts, callback)
   end)
 end
 
---- Delete an untracked file
----@param path string File path to delete
+--- Delete an untracked file or directory
+---@param path string File path to delete (trailing "/" indicates directory)
 ---@param opts? GitCommandOptions Options (cwd is the repository root)
 ---@param callback fun(success: boolean, err: string|nil)
 function M.delete_untracked(path, opts, callback)
   local repo_root = opts and opts.cwd or vim.fn.getcwd()
-  local full_path = repo_root .. "/" .. path
-  local ok, err = os.remove(full_path)
-  if ok then
-    callback(true, nil)
+  if path:sub(-1) == "/" then
+    -- Directory: use vim.fn.delete with 'rf' for recursive removal
+    local dir_path = repo_root .. "/" .. path:sub(1, -2)
+    local ret = vim.fn.delete(dir_path, "rf")
+    if ret == 0 then
+      callback(true, nil)
+    else
+      callback(false, "Failed to delete directory: " .. path)
+    end
   else
-    callback(false, err or "Failed to delete file")
+    local full_path = repo_root .. "/" .. path
+    local ok, err = os.remove(full_path)
+    if ok then
+      callback(true, nil)
+    else
+      callback(false, err or "Failed to delete file")
+    end
   end
 end
 
@@ -330,10 +341,19 @@ function M.delete_untracked_files(paths, opts, callback)
   local failed = {}
 
   for _, path in ipairs(paths) do
-    local full_path = repo_root .. "/" .. path
-    local ok, err = os.remove(full_path)
-    if not ok then
-      table.insert(failed, path .. ": " .. (err or "unknown error"))
+    if path:sub(-1) == "/" then
+      -- Directory: use vim.fn.delete with 'rf' for recursive removal
+      local dir_path = repo_root .. "/" .. path:sub(1, -2)
+      local ret = vim.fn.delete(dir_path, "rf")
+      if ret ~= 0 then
+        table.insert(failed, path .. ": Failed to delete directory")
+      end
+    else
+      local full_path = repo_root .. "/" .. path
+      local ok, err = os.remove(full_path)
+      if not ok then
+        table.insert(failed, path .. ": " .. (err or "unknown error"))
+      end
     end
   end
 
