@@ -723,9 +723,15 @@ local function discard_current(self)
   end
 
   if section == "untracked" then
-    -- Confirm deletion of untracked file
+    -- Confirm deletion of untracked file or directory
+    local prompt
+    if path:sub(-1) == "/" then
+      prompt = string.format("Recursively delete untracked directory '%s'?", path)
+    else
+      prompt = string.format("Delete untracked file '%s'?", path)
+    end
     vim.ui.select({ "Yes", "No" }, {
-      prompt = string.format("Delete untracked file '%s'?", path),
+      prompt = prompt,
     }, function(choice)
       if choice == "Yes" then
         self.repo_state:discard(path, section)
