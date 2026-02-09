@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>gitlad.nvim - A magit-inspired git interface for Neovim</title>
-  <meta name="description" content="A fast, well-tested git interface for Neovim inspired by magit. Optimistic state updates for large monorepos, transient-style popups, and comprehensive test coverage.">
+  <meta name="description" content="A magit-inspired git interface for Neovim. Optimistic state updates for large monorepos, transient-style popups, and familiar keybindings.">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3C!-- git branch line --%3E%3Cline x1='32' y1='58' x2='32' y2='36' stroke='%2358a6ff' stroke-width='5' stroke-linecap='round'/%3E%3Cline x1='32' y1='36' x2='46' y2='22' stroke='%2358a6ff' stroke-width='5' stroke-linecap='round'/%3E%3C!-- branch node --%3E%3Ccircle cx='46' cy='18' r='6' fill='%233fb950'/%3E%3C!-- main commit head (the lad) --%3E%3Ccircle cx='32' cy='36' r='8' fill='%23f85149'/%3E%3C!-- flat cap --%3E%3Cellipse cx='32' cy='28.5' rx='13' ry='3.5' fill='%23c9d1d9'/%3E%3Crect x='27' y='22' width='12' height='7' rx='2' fill='%23c9d1d9'/%3E%3Crect x='24' y='27' width='18' height='2' rx='1' fill='%238b949e'/%3E%3C/svg%3E">
   <style>
     :root {
       --bg: #0d1117;
@@ -326,9 +327,9 @@
     <h1>gitlad<span class="nvim">.nvim</span></h1>
     <p class="tagline">A magit-inspired git interface for Neovim. Built for large monorepos where <code class="mono">git status</code> takes seconds.</p>
     <div class="badges">
-      <span class="badge green">940+ tests</span>
       <span class="badge blue">magit keybindings</span>
       <span class="badge purple">optimistic updates</span>
+      <span class="badge green">well-tested</span>
     </div>
     <div class="install-block">
       <code>:Gitlad</code>
@@ -487,7 +488,7 @@
     <h2>A note on how this was built</h2>
     <div class="transparency">
       <p>gitlad was written with heavy AI assistance. I'm not going to pretend otherwise &mdash; you can look at the <a href="https://github.com/actionshrimp/gitlad.nvim/pulls?q=is%3Apr+is%3Aclosed">PR history</a> and see exactly how it was developed.</p>
-      <p>That said, I've personally spent a huge amount of time on this over the last month or so. Not just prompting, but designing the architecture, reviewing every PR, writing and iterating on extensive development guidelines, and building a tight feedback loop with comprehensive automated testing (940+ tests). The guardrails I put in place to ensure quality &mdash; mandatory tests, atomic commits, CI checks, local reviews &mdash; were as much of the work as the code itself.</p>
+      <p>That said, I've personally spent a huge amount of time on this over the last month or so. Not just prompting, but designing the architecture, reviewing every PR, writing and iterating on extensive development guidelines, and building a tight feedback loop with comprehensive automated testing. The guardrails I put in place to ensure quality &mdash; mandatory tests, atomic commits, CI checks, local reviews &mdash; were as much of the work as the code itself.</p>
       <p>I think the result speaks for itself, but transparency matters. The code is all there if you want to judge it on its merits.</p>
     </div>
   </div>
