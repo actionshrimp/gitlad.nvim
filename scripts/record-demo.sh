@@ -14,6 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 REPO_DIR="/tmp/gitlad-demo-repo"
 OUTPUT="${PROJECT_ROOT}/docs/demo.cast"
+OUTPUT_V2="${PROJECT_ROOT}/docs/demo-v2.cast"
 COLS=130
 ROWS=42
 SESSION="gitlad-demo"
@@ -57,10 +58,16 @@ tmux wait-for demo-done
 # Clean up
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 
+# Convert to v2 format for the web player (asciinema-player 3.x)
+echo "==> Converting to v2 format for web player..."
+asciinema convert -f asciicast-v2 "$OUTPUT" "$OUTPUT_V2" --overwrite
+
 echo ""
-echo "==> Demo recorded to: $OUTPUT"
+echo "==> Demo recorded to:"
+echo "  v3: $OUTPUT"
+echo "  v2: $OUTPUT_V2"
 echo ""
 echo "Preview locally:"
 echo "  asciinema play $OUTPUT"
 echo ""
-ls -lh "$OUTPUT"
+ls -lh "$OUTPUT" "$OUTPUT_V2"
