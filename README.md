@@ -2,7 +2,13 @@
 
 A magit-inspired git interface for Neovim, built for large monorepos.
 
-[**See it in action**](https://actionshrimp.com/gitlad.nvim/#demo) &mdash; interactive demo showing status view, inline diffs, hunk staging, popups, refs, and more.
+<p align="center">
+  <a href="https://actionshrimp.com/gitlad.nvim/#demo">
+    <img src="https://github.com/actionshrimp/gitlad.nvim/raw/docs/demo-recording/docs/demo-preview.svg" alt="gitlad.nvim demo" width="700">
+  </a>
+  <br>
+  <em><a href="https://actionshrimp.com/gitlad.nvim/#demo">Interactive demo</a></em>
+</p>
 
 ## Installation
 
