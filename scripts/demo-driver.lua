@@ -51,77 +51,72 @@ step(600, function() end)
 
 -- Navigate to an unstaged file with a nice diff (Button.js)
 -- Layout: 4 untracked files, then unstaged: README.md, lib (submodule), Button.js
--- So 6 gj presses to reach Button.js (skipping past the submodule)
-keys(400, "gj")
-keys(200, "gj")
-keys(200, "gj")
-keys(200, "gj")
-keys(200, "gj")
-keys(200, "gj")
+keys(300, "gj")
+keys(150, "gj")
+keys(150, "gj")
+keys(150, "gj")
+keys(150, "gj")
+keys(150, "gj")
 
 -- Expand inline diff - Button.js has a great mix of added/removed lines
-keys(1000, "<Tab>")
+keys(800, "<Tab>")
 step(1800, function() end)
 
 -- Scroll through the diff to see the changes
-keys(300, "j")
-keys(200, "j")
-keys(200, "j")
-keys(200, "j")
-keys(200, "j")
-keys(200, "j")
-keys(200, "j")
-keys(200, "j")
+keys(250, "j")
+keys(150, "j")
+keys(150, "j")
+keys(150, "j")
+keys(150, "j")
+keys(150, "j")
+keys(150, "j")
+keys(150, "j")
 step(800, function() end)
 
 -- Collapse diff
 keys(800, "<Tab>")
-step(600, function() end)
-
--- Move to next unstaged file (src/config.js)
-keys(400, "gj")
-
--- Stage this file with s
-keys(800, "s")
-step(800, function() end)
-
--- Next unstaged file (src/utils/helpers.js) - expand for hunk staging
-keys(400, "gj")
-keys(800, "<Tab>")
-step(1200, function() end)
-
--- Move cursor into the diff hunk
-keys(200, "j")
-keys(200, "j")
-keys(200, "j")
-keys(200, "j")
-
--- Stage just this hunk
-keys(800, "s")
-step(800, function() end)
-
--- Collapse
-keys(600, "<Tab>")
 step(400, function() end)
 
--- Navigate down to staged section and unstage something
-keys(300, "gj")
-keys(200, "gj")
-keys(200, "gj")
-keys(200, "gj")
+-- Stage the file
+keys(600, "s")
+step(600, function() end)
 
--- Unstage
-keys(800, "u")
-step(800, function() end)
+-- Next file - expand for hunk staging
+keys(300, "gj")
+keys(600, "<Tab>")
+step(1000, function() end)
+
+-- Move into the diff hunk
+keys(150, "j")
+keys(150, "j")
+keys(150, "j")
+keys(150, "j")
+
+-- Stage just this hunk
+keys(600, "s")
+step(600, function() end)
+
+-- Collapse
+keys(500, "<Tab>")
+step(300, function() end)
 
 -- Show commit popup
-keys(1200, "c")
+keys(1000, "c")
 step(2000, function() end)
 keys(800, "q")
 
--- Show push popup
-keys(1000, "p")
+-- Show branch popup - test repo has feature/clean-merge and feature/conflict-merge
+keys(1000, "b")
 step(1500, function() end)
+keys(800, "q")
+
+-- Show refs popup and open refs view for current branch
+keys(1000, "yr")
+step(1200, function() end)
+keys(600, "r")
+step(2500, function() end)
+
+-- Close refs view
 keys(800, "q")
 
 -- Log popup and open log view
@@ -131,7 +126,7 @@ keys(600, "l")
 step(1800, function() end)
 
 -- Navigate to a commit and expand it
-keys(400, "gj")
+keys(300, "gj")
 keys(800, "<Tab>")
 step(1500, function() end)
 
