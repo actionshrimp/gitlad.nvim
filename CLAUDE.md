@@ -350,6 +350,21 @@ This makes the plugin more comfortable for vim/evil users.
 | `X` | Reset popup |
 | `b` / `c` / `r` / `d` | Branch/Commit/Rebase/Diff popups |
 
+### Log View
+| Key | Action |
+|-----|--------|
+| `gj` / `gk` | Next/previous commit |
+| `<CR>` | Show commit diff |
+| `<Tab>` | Expand/collapse commit details |
+| `y` | Yank commit hash |
+| `+` | Double commit limit |
+| `-` | Halve commit limit |
+| `=` | Toggle limit (remove/reset to 256) |
+| `gr` | Refresh |
+| `q` | Close |
+| `b` / `c` / `r` / `d` | Branch/Commit/Rebase/Diff popups |
+| `A` / `_` / `X` | Cherry-pick/Revert/Reset popups |
+
 ### Rebase Editor (when editing git-rebase-todo)
 | Key | Action |
 |-----|--------|

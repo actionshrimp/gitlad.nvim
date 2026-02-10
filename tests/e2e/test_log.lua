@@ -614,4 +614,122 @@ T["log view"]["reset popup opens with commit context"] = function()
   cleanup_test_repo(child, repo)
 end
 
+-- =============================================================================
+-- Limit control tests
+-- =============================================================================
+
+T["log view"]["+ key doubles the limit"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  -- Press + to double the limit (default 256 → 512)
+  child.type_keys("+")
+  helpers.wait_short(child, 500)
+
+  -- Check args contain -512
+  local limit = child.lua_get(
+    [[require("gitlad.ui.views.log")._parse_limit(require("gitlad.ui.views.log").get_buffer().args)]]
+  )
+  eq(limit, 512)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["- key halves the limit"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  -- Press - to halve the limit (default 256 → 128)
+  child.type_keys("-")
+  helpers.wait_short(child, 500)
+
+  -- Check args contain -128
+  local limit = child.lua_get(
+    [[require("gitlad.ui.views.log")._parse_limit(require("gitlad.ui.views.log").get_buffer().args)]]
+  )
+  eq(limit, 128)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["= key removes limit"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  -- Press = to remove limit
+  child.type_keys("=")
+  helpers.wait_short(child, 500)
+
+  -- Check no -N in args
+  local limit = child.lua_get(
+    [[require("gitlad.ui.views.log")._parse_limit(require("gitlad.ui.views.log").get_buffer().args)]]
+  )
+  eq(limit, vim.NIL)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["= key restores default limit"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  -- Press = twice: first removes, second restores
+  child.type_keys("=")
+  helpers.wait_short(child, 500)
+  child.type_keys("=")
+  helpers.wait_short(child, 500)
+
+  -- Check args contain -256
+  local limit = child.lua_get(
+    [[require("gitlad.ui.views.log")._parse_limit(require("gitlad.ui.views.log").get_buffer().args)]]
+  )
+  eq(limit, 256)
+
+  cleanup_test_repo(child, repo)
+end
+
 return T
