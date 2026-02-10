@@ -2,6 +2,8 @@
 
 A magit-inspired git interface for Neovim, built for large monorepos.
 
+[**See it in action**](https://actionshrimp.com/gitlad.nvim/#demo) &mdash; interactive demo showing status view, inline diffs, hunk staging, popups, refs, and more.
+
 ## Installation
 
 Using [lazy.nvim](https://github.com/folke/lazy.nvim):
