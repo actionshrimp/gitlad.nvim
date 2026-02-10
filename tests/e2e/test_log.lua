@@ -192,6 +192,49 @@ T["log view"]["displays commits"] = function()
   cleanup_test_repo(child, repo)
 end
 
+T["log view"]["winbar shows commit info"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  local winbar = child.lua_get("vim.wo.winbar")
+  expect.equality(winbar:match("Commits in main") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["commits start at line 1"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  -- First line should be a commit (hash pattern)
+  local first_line = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]")
+  expect.equality(first_line:match("^%x%x%x%x%x%x%x ") ~= nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 T["log view"]["commit lines have no leading indent"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
@@ -243,11 +286,7 @@ T["log view"]["can yank commit hash with y"] = function()
   helpers.wait_for_buffer(child, "gitlad://log")
   helpers.wait_for_buffer_content(child, "Test commit")
 
-  -- Navigate to first commit (after header)
-  child.type_keys("j")
-  helpers.wait_short(child)
-
-  -- Yank the hash
+  -- Yank the hash (cursor starts on first commit at line 1)
   child.type_keys("y")
   helpers.wait_short(child, 100)
 
@@ -571,6 +610,124 @@ T["log view"]["reset popup opens with commit context"] = function()
   -- Should have opened a popup window
   local win_count_after = child.lua_get("vim.fn.winnr('$')")
   eq(win_count_after > win_count_before, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+-- =============================================================================
+-- Limit control tests
+-- =============================================================================
+
+T["log view"]["+ key doubles the limit"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  -- Press + to double the limit (default 256 → 512)
+  child.type_keys("+")
+  helpers.wait_short(child, 500)
+
+  -- Check args contain -512
+  local limit = child.lua_get(
+    [[require("gitlad.ui.views.log")._parse_limit(require("gitlad.ui.views.log").get_buffer().args)]]
+  )
+  eq(limit, 512)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["- key halves the limit"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  -- Press - to halve the limit (default 256 → 128)
+  child.type_keys("-")
+  helpers.wait_short(child, 500)
+
+  -- Check args contain -128
+  local limit = child.lua_get(
+    [[require("gitlad.ui.views.log")._parse_limit(require("gitlad.ui.views.log").get_buffer().args)]]
+  )
+  eq(limit, 128)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["= key removes limit"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  -- Press = to remove limit
+  child.type_keys("=")
+  helpers.wait_short(child, 500)
+
+  -- Check no -N in args
+  local limit = child.lua_get(
+    [[require("gitlad.ui.views.log")._parse_limit(require("gitlad.ui.views.log").get_buffer().args)]]
+  )
+  eq(limit, vim.NIL)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["log view"]["= key restores default limit"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Test commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  child.type_keys("ll")
+  helpers.wait_for_buffer(child, "gitlad://log")
+  helpers.wait_for_buffer_content(child, "Test commit")
+
+  -- Press = twice: first removes, second restores
+  child.type_keys("=")
+  helpers.wait_short(child, 500)
+  child.type_keys("=")
+  helpers.wait_short(child, 500)
+
+  -- Check args contain -256
+  local limit = child.lua_get(
+    [[require("gitlad.ui.views.log")._parse_limit(require("gitlad.ui.views.log").get_buffer().args)]]
+  )
+  eq(limit, 256)
 
   cleanup_test_repo(child, repo)
 end

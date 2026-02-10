@@ -125,10 +125,18 @@ step(1200, function() end)
 keys(600, "l")
 step(1800, function() end)
 
--- Navigate to a commit and expand it
-keys(300, "gj")
+-- Expand commit details (cursor starts on first commit)
 keys(800, "<Tab>")
 step(1500, function() end)
+
+-- Collapse and show limit controls: double with +
+keys(600, "<Tab>")
+keys(800, "+")
+step(1200, function() end)
+
+-- Halve with -
+keys(800, "-")
+step(1200, function() end)
 
 -- Close log view
 keys(1000, "q")

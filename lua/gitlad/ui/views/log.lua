@@ -16,6 +16,49 @@ local signs_util = require("gitlad.ui.utils.signs")
 -- Namespace for sign column indicators
 local ns_signs = vim.api.nvim_create_namespace("gitlad_log_signs")
 
+local DEFAULT_LIMIT = 256
+
+--- Parse a -N limit argument from an args list
+--- Returns the numeric limit, or nil if no limit arg is found.
+--- Only matches bare -N (not --all, --author=foo, etc.)
+---@param args string[]
+---@return number|nil
+function M._parse_limit(args)
+  for _, arg in ipairs(args) do
+    local n = arg:match("^%-(%d+)$")
+    if n then
+      return tonumber(n)
+    end
+  end
+  return nil
+end
+
+--- Return a new args list with the limit replaced, added, or removed.
+--- If new_limit is nil, the limit arg is removed.
+--- If no existing limit arg exists, -N is appended.
+---@param args string[]
+---@param new_limit number|nil
+---@return string[]
+function M._update_limit(args, new_limit)
+  local result = {}
+  local replaced = false
+  for _, arg in ipairs(args) do
+    if arg:match("^%-(%d+)$") then
+      if new_limit then
+        table.insert(result, "-" .. new_limit)
+        replaced = true
+      end
+      -- else: skip (remove limit)
+    else
+      table.insert(result, arg)
+    end
+  end
+  if new_limit and not replaced then
+    table.insert(result, "-" .. new_limit)
+  end
+  return result
+end
+
 ---@class LogSignInfo
 ---@field expanded boolean Whether the commit is expanded
 
@@ -172,6 +215,26 @@ function LogBuffer:_setup_keymaps()
     local context = commit and { commit = commit.hash } or nil
     reset_popup.open(self.repo_state, context)
   end, "Reset popup")
+
+  -- Limit controls
+  keymap.set(bufnr, "n", "+", function()
+    local limit = self:_get_current_limit() or DEFAULT_LIMIT
+    self:_set_limit(limit * 2)
+  end, "Double commit limit")
+
+  keymap.set(bufnr, "n", "-", function()
+    local limit = self:_get_current_limit() or DEFAULT_LIMIT
+    self:_set_limit(math.max(1, math.floor(limit / 2)))
+  end, "Halve commit limit")
+
+  keymap.set(bufnr, "n", "=", function()
+    local limit = self:_get_current_limit()
+    if limit then
+      self:_set_limit(nil)
+    else
+      self:_set_limit(DEFAULT_LIMIT)
+    end
+  end, "Toggle commit limit")
 end
 
 --- Get current commit under cursor
@@ -301,6 +364,19 @@ function LogBuffer:_yank_hash()
   vim.notify("[gitlad] Yanked: " .. commit.hash, vim.log.levels.INFO)
 end
 
+--- Get current limit from args
+---@return number|nil
+function LogBuffer:_get_current_limit()
+  return M._parse_limit(self.args)
+end
+
+--- Set a new limit, updating args and refreshing
+---@param new_limit number|nil nil to remove limit
+function LogBuffer:_set_limit(new_limit)
+  self.args = M._update_limit(self.args, new_limit)
+  self:refresh()
+end
+
 --- Refresh log with current arguments
 function LogBuffer:refresh()
   vim.notify("[gitlad] Refreshing log...", vim.log.levels.INFO)
@@ -319,6 +395,27 @@ function LogBuffer:refresh()
   end)
 end
 
+--- Update the winbar with log info
+function LogBuffer:_update_winbar()
+  if not self.winnr or not vim.api.nvim_win_is_valid(self.winnr) then
+    return
+  end
+
+  local status = self.repo_state.status
+  local branch = (status and status.branch ~= "") and status.branch or "HEAD"
+
+  local winbar = "%#GitladSectionHeader#Commits in " .. branch:gsub("%%", "%%%%")
+
+  if #self.args > 0 then
+    local args_str = table.concat(self.args, " "):gsub("%%", "%%%%")
+    winbar = winbar .. " (" .. args_str .. ")"
+  end
+
+  winbar = winbar .. " (" .. #self.commits .. ")"
+
+  vim.api.nvim_set_option_value("winbar", winbar, { win = self.winnr, scope = "local" })
+end
+
 --- Render the log buffer
 function LogBuffer:render()
   if not vim.api.nvim_buf_is_valid(self.bufnr) then
@@ -332,18 +429,9 @@ function LogBuffer:render()
   self.commit_ranges = {}
   self.sign_lines = {}
 
-  -- Header
-  local header = "Commits"
-  if #self.args > 0 then
-    header = header .. " (" .. table.concat(self.args, " ") .. ")"
-  end
-  table.insert(lines, header)
-  table.insert(lines, string.format("%d commits", #self.commits))
-  table.insert(lines, "")
-  table.insert(lines, "Press <CR> diff, <Tab> expand, d popup, y yank, gr refresh, q close")
-  table.insert(lines, "")
+  local header_lines = 0
 
-  local header_lines = #lines
+  self:_update_winbar()
 
   if #self.commits == 0 then
     table.insert(lines, "No commits found.")
@@ -403,9 +491,6 @@ function LogBuffer:_apply_highlights(header_lines, show_tags)
   -- Clear existing highlights
   vim.api.nvim_buf_clear_namespace(self.bufnr, ns, 0, -1)
 
-  -- Header highlighting (use set_line for entire line)
-  hl.set_line(self.bufnr, ns, 0, "GitladSectionHeader")
-
   -- Use log_list's highlight function for commit lines
   if #self.commits > 0 then
     local result = log_list.render(self.commits, self.expanded_commits, {
@@ -451,7 +536,7 @@ function LogBuffer:open_with_commits(repo_state, commits, args)
   self:render()
 
   -- Position cursor on first commit
-  local first_commit_line = 6 -- After header
+  local first_commit_line = 1
   if self.line_map[first_commit_line] then
     vim.api.nvim_win_set_cursor(self.winnr, { first_commit_line, 0 })
   end
