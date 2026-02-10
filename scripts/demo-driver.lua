@@ -1,0 +1,158 @@
+-- Demo driver for asciinema recording
+-- Sends keystrokes with delays to showcase gitlad features
+--
+-- Usage: nvim -u scripts/demo-init.lua
+
+local function type_keys(keys)
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "m", false)
+end
+
+local queue = {}
+local idx = 1
+
+local function step(delay_ms, fn)
+  table.insert(queue, { delay = delay_ms, fn = fn })
+end
+
+local function keys(delay_ms, k)
+  step(delay_ms, function()
+    type_keys(k)
+  end)
+end
+
+local function run_next()
+  if idx > #queue then
+    vim.defer_fn(function()
+      vim.cmd("qa!")
+    end, 2000)
+    return
+  end
+  local s = queue[idx]
+  idx = idx + 1
+  vim.defer_fn(function()
+    s.fn()
+    vim.schedule(run_next)
+  end, s.delay)
+end
+
+-- ============================================================================
+-- Demo sequence
+-- ============================================================================
+
+-- Open gitlad status
+keys(1200, ":Gitlad<CR>")
+step(2000, function() end)
+
+-- Show help first - give an overview of what's available
+keys(1000, "?")
+step(3000, function() end)
+keys(800, "q")
+step(600, function() end)
+
+-- Navigate to an unstaged file with a nice diff (Button.js)
+-- Layout: 4 untracked files, then unstaged: README.md, lib (submodule), Button.js
+-- So 6 gj presses to reach Button.js (skipping past the submodule)
+keys(400, "gj")
+keys(200, "gj")
+keys(200, "gj")
+keys(200, "gj")
+keys(200, "gj")
+keys(200, "gj")
+
+-- Expand inline diff - Button.js has a great mix of added/removed lines
+keys(1000, "<Tab>")
+step(1800, function() end)
+
+-- Scroll through the diff to see the changes
+keys(300, "j")
+keys(200, "j")
+keys(200, "j")
+keys(200, "j")
+keys(200, "j")
+keys(200, "j")
+keys(200, "j")
+keys(200, "j")
+step(800, function() end)
+
+-- Collapse diff
+keys(800, "<Tab>")
+step(600, function() end)
+
+-- Move to next unstaged file (src/config.js)
+keys(400, "gj")
+
+-- Stage this file with s
+keys(800, "s")
+step(800, function() end)
+
+-- Next unstaged file (src/utils/helpers.js) - expand for hunk staging
+keys(400, "gj")
+keys(800, "<Tab>")
+step(1200, function() end)
+
+-- Move cursor into the diff hunk
+keys(200, "j")
+keys(200, "j")
+keys(200, "j")
+keys(200, "j")
+
+-- Stage just this hunk
+keys(800, "s")
+step(800, function() end)
+
+-- Collapse
+keys(600, "<Tab>")
+step(400, function() end)
+
+-- Navigate down to staged section and unstage something
+keys(300, "gj")
+keys(200, "gj")
+keys(200, "gj")
+keys(200, "gj")
+
+-- Unstage
+keys(800, "u")
+step(800, function() end)
+
+-- Show commit popup
+keys(1200, "c")
+step(2000, function() end)
+keys(800, "q")
+
+-- Show push popup
+keys(1000, "p")
+step(1500, function() end)
+keys(800, "q")
+
+-- Log popup and open log view
+keys(1000, "l")
+step(1200, function() end)
+keys(600, "l")
+step(1800, function() end)
+
+-- Navigate to a commit and expand it
+keys(400, "gj")
+keys(800, "<Tab>")
+step(1500, function() end)
+
+-- Close log view
+keys(1000, "q")
+
+-- Show git command history
+keys(1000, "$")
+step(2500, function() end)
+
+-- Close history
+keys(800, "q")
+
+-- Final pause on status view
+step(1500, function() end)
+
+-- ============================================================================
+-- Start the demo
+-- ============================================================================
+vim.api.nvim_create_autocmd("VimEnter", {
+  callback = function()
+    vim.defer_fn(run_next, 500)
+  end,
+})
