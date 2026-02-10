@@ -319,6 +319,27 @@ function LogBuffer:refresh()
   end)
 end
 
+--- Update the winbar with log info
+function LogBuffer:_update_winbar()
+  if not self.winnr or not vim.api.nvim_win_is_valid(self.winnr) then
+    return
+  end
+
+  local status = self.repo_state.status
+  local branch = (status and status.branch ~= "") and status.branch or "HEAD"
+
+  local winbar = "%#GitladSectionHeader#Commits in " .. branch:gsub("%%", "%%%%")
+
+  if #self.args > 0 then
+    local args_str = table.concat(self.args, " "):gsub("%%", "%%%%")
+    winbar = winbar .. " (" .. args_str .. ")"
+  end
+
+  winbar = winbar .. " (" .. #self.commits .. ")"
+
+  vim.api.nvim_set_option_value("winbar", winbar, { win = self.winnr, scope = "local" })
+end
+
 --- Render the log buffer
 function LogBuffer:render()
   if not vim.api.nvim_buf_is_valid(self.bufnr) then
@@ -332,18 +353,9 @@ function LogBuffer:render()
   self.commit_ranges = {}
   self.sign_lines = {}
 
-  -- Header
-  local header = "Commits"
-  if #self.args > 0 then
-    header = header .. " (" .. table.concat(self.args, " ") .. ")"
-  end
-  table.insert(lines, header)
-  table.insert(lines, string.format("%d commits", #self.commits))
-  table.insert(lines, "")
-  table.insert(lines, "Press <CR> diff, <Tab> expand, d popup, y yank, gr refresh, q close")
-  table.insert(lines, "")
+  local header_lines = 0
 
-  local header_lines = #lines
+  self:_update_winbar()
 
   if #self.commits == 0 then
     table.insert(lines, "No commits found.")
@@ -403,9 +415,6 @@ function LogBuffer:_apply_highlights(header_lines, show_tags)
   -- Clear existing highlights
   vim.api.nvim_buf_clear_namespace(self.bufnr, ns, 0, -1)
 
-  -- Header highlighting (use set_line for entire line)
-  hl.set_line(self.bufnr, ns, 0, "GitladSectionHeader")
-
   -- Use log_list's highlight function for commit lines
   if #self.commits > 0 then
     local result = log_list.render(self.commits, self.expanded_commits, {
@@ -451,7 +460,7 @@ function LogBuffer:open_with_commits(repo_state, commits, args)
   self:render()
 
   -- Position cursor on first commit
-  local first_commit_line = 6 -- After header
+  local first_commit_line = 1
   if self.line_map[first_commit_line] then
     vim.api.nvim_win_set_cursor(self.winnr, { first_commit_line, 0 })
   end
