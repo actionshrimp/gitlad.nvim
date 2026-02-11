@@ -325,12 +325,30 @@ end
 
 T["parse_log_format"] = MiniTest.new_set()
 
+-- Helper: build a log record with RS (0x1E) record separator and US (0x1F) field separator
+-- Fields: hash, decorations, author, date, subject, body
+local function log_record(hash, decorations, author, date, subject, body)
+  local RS = "\x1e"
+  local US = "\x1f"
+  return RS
+    .. hash
+    .. US
+    .. (decorations or "")
+    .. US
+    .. (author or "")
+    .. US
+    .. (date or "")
+    .. US
+    .. (subject or "")
+    .. US
+    .. (body or "")
+end
+
 T["parse_log_format"]["parses commits with all fields"] = function()
   local parse = require("gitlad.git.parse")
 
-  -- Format: hash|||decorations|||author|||date|||subject
-  local output =
-    "abc1234||||||John Doe|||2 hours ago|||Add feature X\ndef5678||||||Jane Smith|||1 day ago|||Fix bug Y"
+  local output = log_record("abc1234", "", "John Doe", "2 hours ago", "Add feature X")
+    .. log_record("def5678", "", "Jane Smith", "1 day ago", "Fix bug Y")
 
   local result = parse.parse_log_format(output)
 
@@ -339,10 +357,12 @@ T["parse_log_format"]["parses commits with all fields"] = function()
   eq(result[1].author, "John Doe")
   eq(result[1].date, "2 hours ago")
   eq(result[1].subject, "Add feature X")
+  eq(result[1].body, nil)
   eq(result[2].hash, "def5678")
   eq(result[2].author, "Jane Smith")
   eq(result[2].date, "1 day ago")
   eq(result[2].subject, "Fix bug Y")
+  eq(result[2].body, nil)
 end
 
 T["parse_log_format"]["handles empty output"] = function()
@@ -356,8 +376,7 @@ end
 T["parse_log_format"]["handles commits with empty optional fields"] = function()
   local parse = require("gitlad.git.parse")
 
-  -- Format: hash|||decorations|||author|||date|||subject (12 pipes = 4 separators)
-  local output = "abc1234||||||||||||Just a hash and subject"
+  local output = log_record("abc1234", "", "", "", "Just a hash and subject")
 
   local result = parse.parse_log_format(output)
 
@@ -371,8 +390,7 @@ end
 T["parse_log_format"]["handles subjects with special characters"] = function()
   local parse = require("gitlad.git.parse")
 
-  -- Format: hash|||decorations|||author|||date|||subject
-  local output = "abc1234||||||John|||1 hour ago|||feat: add login (WIP) [#123]"
+  local output = log_record("abc1234", "", "John", "1 hour ago", "feat: add login (WIP) [#123]")
 
   local result = parse.parse_log_format(output)
 
@@ -385,19 +403,20 @@ T["parse_log_format"]["get_log_format_string returns expected format"] = functio
 
   local format = parse.get_log_format_string()
 
-  -- Should contain placeholders for hash (full), decorations, author, date, subject
+  -- Should contain placeholders for hash (full), decorations, author, date, subject, body
   expect.equality(format:match("%%H"), "%H")
   expect.equality(format:match("%%D"), "%D")
   expect.equality(format:match("%%an"), "%an")
   expect.equality(format:match("%%ar"), "%ar")
-  expect.equality(format:match("%%s"), "%s")
+  expect.equality(format:match("%%s") ~= nil, true)
+  expect.equality(format:match("%%b"), "%b")
 end
 
 T["parse_log_format"]["parses commits with refs"] = function()
   local parse = require("gitlad.git.parse")
 
-  -- Format: hash|||decorations|||author|||date|||subject
-  local output = "abc1234|||HEAD -> main, origin/main|||John Doe|||2 hours ago|||Add feature X"
+  local output =
+    log_record("abc1234", "HEAD -> main, origin/main", "John Doe", "2 hours ago", "Add feature X")
 
   local result = parse.parse_log_format(output)
 
@@ -417,8 +436,7 @@ end
 T["parse_log_format"]["parses commits without refs"] = function()
   local parse = require("gitlad.git.parse")
 
-  -- Format: hash|||decorations|||author|||date|||subject (empty decorations)
-  local output = "abc1234||||||John Doe|||2 hours ago|||Add feature X"
+  local output = log_record("abc1234", "", "John Doe", "2 hours ago", "Add feature X")
 
   local result = parse.parse_log_format(output)
 
@@ -428,6 +446,49 @@ T["parse_log_format"]["parses commits without refs"] = function()
   -- Should have empty refs
   expect.equality(result[1].refs ~= nil, true)
   eq(#result[1].refs, 0)
+end
+
+T["parse_log_format"]["parses commits with body"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local output = log_record(
+    "abc1234",
+    "",
+    "John Doe",
+    "2 hours ago",
+    "Add feature X",
+    "This is the body\n\nWith multiple paragraphs"
+  )
+
+  local result = parse.parse_log_format(output)
+
+  eq(#result, 1)
+  eq(result[1].subject, "Add feature X")
+  eq(result[1].body, "This is the body\n\nWith multiple paragraphs")
+end
+
+T["parse_log_format"]["body is nil for commits without body"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local output = log_record("abc1234", "", "John", "1 hour ago", "Simple commit")
+
+  local result = parse.parse_log_format(output)
+
+  eq(#result, 1)
+  eq(result[1].body, nil)
+end
+
+T["parse_log_format"]["mixed commits with and without body"] = function()
+  local parse = require("gitlad.git.parse")
+
+  local output = log_record("abc1234", "", "John", "1 hour ago", "Has body", "Body text here")
+    .. log_record("def5678", "", "Jane", "2 hours ago", "No body")
+
+  local result = parse.parse_log_format(output)
+
+  eq(#result, 2)
+  eq(result[1].body, "Body text here")
+  eq(result[2].body, nil)
 end
 
 -- =============================================================================
