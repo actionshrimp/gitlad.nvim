@@ -89,6 +89,7 @@ T["watcher"]["creates new watcher instance"] = function()
   -- Mock repo state
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
   }
 
@@ -107,6 +108,7 @@ T["watcher"]["start is idempotent"] = function()
   -- Mock repo state
   local mock_repo_state = {
     git_dir = "/tmp/nonexistent/.git", -- Won't actually start since dir doesn't exist
+    repo_root = "/tmp/nonexistent/",
     mark_stale = function() end,
   }
 
@@ -126,6 +128,7 @@ T["watcher"]["stop is idempotent"] = function()
   -- Mock repo state
   local mock_repo_state = {
     git_dir = "/tmp/nonexistent/.git",
+    repo_root = "/tmp/nonexistent/",
     mark_stale = function() end,
   }
 
@@ -144,6 +147,7 @@ T["watcher"]["is_running returns false initially"] = function()
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
   }
 
@@ -156,6 +160,7 @@ T["watcher"]["is_in_cooldown returns false when no recent operation"] = function
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
     last_operation_time = 0, -- No recent operation
   }
@@ -169,6 +174,7 @@ T["watcher"]["is_in_cooldown returns true when within cooldown period"] = functi
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
     last_operation_time = vim.loop.now(), -- Just happened
   }
@@ -182,6 +188,7 @@ T["watcher"]["is_in_cooldown returns false after cooldown expires"] = function()
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
     last_operation_time = vim.loop.now() - 2000, -- 2 seconds ago
   }
@@ -195,6 +202,7 @@ T["watcher"]["respects custom cooldown duration"] = function()
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
     last_operation_time = vim.loop.now() - 500, -- 500ms ago
   }
@@ -213,6 +221,7 @@ T["watcher"]["defaults to stale_indicator enabled and auto_refresh disabled"] = 
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
   }
 
@@ -226,6 +235,7 @@ T["watcher"]["creates stale_indicator_debounced when stale_indicator enabled"] =
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
   }
 
@@ -239,6 +249,7 @@ T["watcher"]["does not create stale_indicator_debounced when disabled"] = functi
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
   }
 
@@ -252,6 +263,7 @@ T["watcher"]["creates auto_refresh_debounced when auto_refresh enabled with call
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
   }
 
@@ -269,6 +281,7 @@ T["watcher"]["auto_refresh requires on_refresh callback to create debouncer"] = 
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
   }
 
@@ -283,6 +296,7 @@ T["watcher"]["accepts custom auto_refresh_debounce_ms"] = function()
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
   }
 
@@ -301,6 +315,7 @@ T["watcher"]["supports both stale_indicator and auto_refresh enabled"] = functio
 
   local mock_repo_state = {
     git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
     mark_stale = function() end,
   }
 
@@ -314,6 +329,179 @@ T["watcher"]["supports both stale_indicator and auto_refresh enabled"] = functio
   eq(w._auto_refresh, true)
   eq(w._stale_indicator_debounced ~= nil, true)
   eq(w._auto_refresh_debounced ~= nil, true)
+end
+
+-- =============================================================================
+-- _handle_event tests
+-- =============================================================================
+
+T["watcher"]["_handle_event does nothing when not running"] = function()
+  local watcher = require("gitlad.watcher")
+  local stale_called = false
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function()
+      stale_called = true
+    end,
+    last_operation_time = 0,
+  }
+
+  local w = watcher.new(mock_repo_state, { stale_indicator = true })
+  -- running is false by default
+  w:_handle_event()
+  -- The debounced function was not called (running = false)
+  eq(stale_called, false)
+end
+
+T["watcher"]["_handle_event respects cooldown"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+    last_operation_time = vim.loop.now(), -- Just happened
+  }
+
+  local w = watcher.new(mock_repo_state, { cooldown_ms = 5000, stale_indicator = true })
+  w.running = true
+
+  -- Should not call debounced because of cooldown
+  local debounce_called = false
+  w._stale_indicator_debounced = {
+    call = function()
+      debounce_called = true
+    end,
+  }
+
+  w:_handle_event()
+  eq(debounce_called, false)
+end
+
+T["watcher"]["_handle_event calls debouncers when running and no cooldown"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+    last_operation_time = 0, -- No recent operation
+  }
+
+  local w = watcher.new(mock_repo_state, {
+    stale_indicator = true,
+    auto_refresh = true,
+    on_refresh = function() end,
+  })
+  w.running = true
+
+  local stale_called = false
+  local refresh_called = false
+  w._stale_indicator_debounced = {
+    call = function()
+      stale_called = true
+    end,
+  }
+  w._auto_refresh_debounced = {
+    call = function()
+      refresh_called = true
+    end,
+  }
+
+  w:_handle_event()
+  eq(stale_called, true)
+  eq(refresh_called, true)
+end
+
+-- =============================================================================
+-- _watch_directory tests
+-- =============================================================================
+
+T["watcher"]["_watch_directory with non-existent path returns false"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  local result = w:_watch_directory("/tmp/definitely-nonexistent-dir-12345", function() end)
+  eq(result, false)
+  eq(#w._fs_events, 0)
+end
+
+-- =============================================================================
+-- watch_worktree config tests
+-- =============================================================================
+
+T["watcher"]["defaults to watch_worktree enabled"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  eq(w._watch_worktree, true)
+end
+
+T["watcher"]["watch_worktree can be disabled"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state, { watch_worktree = false })
+  eq(w._watch_worktree, false)
+end
+
+T["watcher"]["stores repo_root from repo_state"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  eq(w._repo_root, "/tmp/test/")
+end
+
+T["watcher"]["initializes empty gitignore cache"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  eq(type(w._gitignore_cache), "table")
+  eq(next(w._gitignore_cache), nil)
+end
+
+T["watcher"]["initializes with nil augroup"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  eq(w._augroup, nil)
 end
 
 return T
