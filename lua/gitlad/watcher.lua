@@ -307,9 +307,8 @@ function Watcher:_start_worktree_watcher()
 
       -- Rebuild gitignore cache when .gitignore changes
       if filename == ".gitignore" then
-        self:_build_gitignore_cache()
-        -- Also trigger event since .gitignore change may affect tracked status
         vim.schedule(function()
+          self:_build_gitignore_cache()
           self:_handle_event()
         end)
         return
