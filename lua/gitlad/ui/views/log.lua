@@ -318,38 +318,17 @@ end
 --- Toggle expand/collapse of current commit
 function LogBuffer:_toggle_expand()
   local commit = self:_get_current_commit()
-  if not commit then
+  if not commit or not commit.body then
     return
   end
 
   local hash = commit.hash
-  local is_expanded = self.expanded_commits[hash]
-
-  if is_expanded then
-    -- Collapse
+  if self.expanded_commits[hash] then
     self.expanded_commits[hash] = nil
-    self:render()
   else
-    -- Need to fetch body if not available
-    if commit.body then
-      self.expanded_commits[hash] = true
-      self:render()
-    else
-      -- Fetch full commit message
-      git.show_commit(hash, { cwd = self.repo_state.repo_root }, function(body, err)
-        vim.schedule(function()
-          if err then
-            vim.notify("[gitlad] Failed to get commit: " .. err, vim.log.levels.ERROR)
-            return
-          end
-          -- Update commit in place
-          commit.body = body
-          self.expanded_commits[hash] = true
-          self:render()
-        end)
-      end)
-    end
+    self.expanded_commits[hash] = true
   end
+  self:render()
 end
 
 --- Yank commit hash to clipboard
@@ -461,10 +440,13 @@ function LogBuffer:render()
         start = adjusted_start,
         end_line = range.end_line + header_lines,
       }
-      -- Add sign indicator for the first line of each commit
-      self.sign_lines[adjusted_start] = {
-        expanded = self.expanded_commits[hash] or false,
-      }
+      -- Only show expand indicator for commits that have a body to expand
+      local commit_info = result.line_info[range.start]
+      if commit_info and commit_info.commit and commit_info.commit.body then
+        self.sign_lines[adjusted_start] = {
+          expanded = self.expanded_commits[hash] or false,
+        }
+      end
     end
   end
 

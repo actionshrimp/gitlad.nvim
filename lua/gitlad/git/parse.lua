@@ -547,29 +547,52 @@ function M.parse_log_oneline(lines)
   return commits
 end
 
--- Separator used in git log --format for parsing
-local LOG_FORMAT_SEP = "|||"
+-- ASCII control characters for structured parsing
+local LOG_RECORD_SEP = "\x1e" -- Record Separator (0x1E) - between commits
+local LOG_FIELD_SEP = "\x1f" -- Unit Separator (0x1F) - between fields
 
 --- Parse git log output with custom format
---- Format: hash|||decorations|||author|||date|||subject
---- Each commit is separated by a record separator (newline + COMMIT_START marker)
+--- Records separated by RS (0x1E), fields by US (0x1F)
+--- Format per record: hash<US>decorations<US>author<US>date<US>subject<US>body
+--- Body is included so we know upfront which commits are expandable
 ---@param output string Raw output from git log
 ---@return GitCommitInfo[]
 function M.parse_log_format(output)
   local commits = {}
 
-  -- Split by newlines and parse each line as a commit
-  for line in output:gmatch("[^\n]+") do
-    -- Format: "hash|||decorations|||author|||date|||subject"
-    local hash, decorations, author, date, subject =
-      line:match("^([^|]+)|||([^|]*)|||([^|]*)|||([^|]*)|||(.*)$")
-    if hash then
+  -- Split on record separator (0x1E)
+  local records = vim.split(output, LOG_RECORD_SEP, { plain = true, trimempty = true })
+  for _, record in ipairs(records) do
+    -- Split first 5 fields on unit separator; everything after is body
+    local fields = {}
+    local pos = 1
+    local field_count = 0
+    while field_count < 5 do
+      local sep_pos = record:find(LOG_FIELD_SEP, pos, true)
+      if not sep_pos then
+        break
+      end
+      table.insert(fields, record:sub(pos, sep_pos - 1))
+      pos = sep_pos + 1
+      field_count = field_count + 1
+    end
+    local body_raw = record:sub(pos)
+
+    local hash = vim.trim(fields[1] or "")
+    if hash ~= "" then
+      local decorations = fields[2] or ""
+      local author = fields[3] or ""
+      local date_str = fields[4] or ""
+      local subject = fields[5] or ""
+      local body = vim.trim(body_raw)
+
       table.insert(commits, {
         hash = hash,
         author = author ~= "" and author or nil,
-        date = date ~= "" and date or nil,
-        subject = subject or "",
-        refs = M.parse_decorations(decorations or ""),
+        date = date_str ~= "" and date_str or nil,
+        subject = subject,
+        body = body ~= "" and body or nil,
+        refs = M.parse_decorations(decorations),
       })
     end
   end
@@ -578,17 +601,11 @@ function M.parse_log_format(output)
 end
 
 --- Get the git log format string for parse_log_format
+--- Uses Record Separator (%x1e) between commits and Unit Separator (%x1f) between fields
+--- Body (%b) is the last field so it can span multiple lines
 ---@return string
 function M.get_log_format_string()
-  return "%H"
-    .. LOG_FORMAT_SEP
-    .. "%D"
-    .. LOG_FORMAT_SEP
-    .. "%an"
-    .. LOG_FORMAT_SEP
-    .. "%ar"
-    .. LOG_FORMAT_SEP
-    .. "%s"
+  return "%x1e%H%x1f%D%x1f%an%x1f%ar%x1f%s%x1f%b"
 end
 
 --- Parse git branch -r output (remote branches)

@@ -396,15 +396,16 @@ T["log view"]["buffer is not modifiable"] = function()
   cleanup_test_repo(child, repo)
 end
 
-T["log view"]["has sign column with expand indicators"] = function()
+T["log view"]["has sign column with expand indicators for commits with body"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
-  -- Create commits
+  -- Create a commit with a body (has expand indicator)
   helpers.create_file(child, repo, "file1.txt", "content 1")
   helpers.git(child, repo, "add file1.txt")
-  helpers.git(child, repo, "commit -m 'First commit'")
+  helpers.git(child, repo, 'commit -m "First commit" -m "This is the body"')
 
+  -- Create a commit without a body (no expand indicator)
   helpers.create_file(child, repo, "file2.txt", "content 2")
   helpers.git(child, repo, "add file2.txt")
   helpers.git(child, repo, "commit -m 'Second commit'")
@@ -421,21 +422,22 @@ T["log view"]["has sign column with expand indicators"] = function()
   local signcolumn = child.lua_get("vim.wo.signcolumn")
   eq(signcolumn, "yes:1")
 
-  -- Check that extmarks exist in the sign namespace
+  -- Check that only the commit with a body has an expand sign
   child.lua([[
-    _G.test_has_signs = false
+    _G.test_sign_count = 0
     local log_view = require("gitlad.ui.views.log")
     local buf = log_view.get_buffer()
     if buf then
       local ns = vim.api.nvim_get_namespaces()["gitlad_log_signs"]
       if ns then
         local marks = vim.api.nvim_buf_get_extmarks(buf.bufnr, ns, 0, -1, {})
-        _G.test_has_signs = #marks > 0
+        _G.test_sign_count = #marks
       end
     end
   ]])
-  local has_signs = child.lua_get("_G.test_has_signs")
-  eq(has_signs, true)
+  local sign_count = child.lua_get("_G.test_sign_count")
+  -- Only 1 sign: the commit with a body
+  eq(sign_count, 1)
 
   cleanup_test_repo(child, repo)
 end
