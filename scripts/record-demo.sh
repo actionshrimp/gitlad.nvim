@@ -2,7 +2,7 @@
 # Record an asciinema demo of gitlad.nvim
 # Uses tmux to create a terminal of the correct dimensions
 #
-# Prerequisites: brew install asciinema tmux; npm install -g tree-sitter-cli
+# Prerequisites: brew install asciinema tmux agg; npm install -g tree-sitter-cli
 #
 # Dependencies (lazy.nvim, kanagawa, treesitter) are bootstrapped by
 # demo-init.lua and cached in /tmp/gitlad-demo-deps/ across runs.
@@ -15,12 +15,13 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 REPO_DIR="/tmp/gitlad-demo-repo"
 OUTPUT="${PROJECT_ROOT}/docs/demo.cast"
 OUTPUT_V2="${PROJECT_ROOT}/docs/demo-v2.cast"
-COLS=80
-ROWS=28
+OUTPUT_GIF="${PROJECT_ROOT}/docs/demo-preview.gif"
+COLS=130
+ROWS=42
 SESSION="gitlad-demo"
 
 # Check prerequisites
-for cmd in asciinema tmux tree-sitter nvim; do
+for cmd in asciinema tmux tree-sitter nvim agg; do
   if ! command -v "$cmd" &>/dev/null; then
     echo "Error: $cmd is required. Install with: brew install $cmd"
     exit 1
@@ -62,12 +63,17 @@ tmux kill-session -t "$SESSION" 2>/dev/null || true
 echo "==> Converting to v2 format for web player..."
 asciinema convert -f asciicast-v2 "$OUTPUT" "$OUTPUT_V2" --overwrite
 
+# Generate GIF for README (renders pixel-perfect on GitHub, unlike SVG)
+echo "==> Generating GIF for README..."
+agg "$OUTPUT_V2" "$OUTPUT_GIF" --font-size 14
+
 echo ""
 echo "==> Demo recorded to:"
 echo "  v3: $OUTPUT"
 echo "  v2: $OUTPUT_V2"
+echo "  gif: $OUTPUT_GIF"
 echo ""
 echo "Preview locally:"
 echo "  asciinema play $OUTPUT"
 echo ""
-ls -lh "$OUTPUT" "$OUTPUT_V2"
+ls -lh "$OUTPUT" "$OUTPUT_V2" "$OUTPUT_GIF"
