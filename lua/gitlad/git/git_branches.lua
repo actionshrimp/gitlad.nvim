@@ -181,28 +181,36 @@ end
 ---@param callback fun(remote: string|nil, err: string|nil)
 function M.get_push_remote(branch, opts, callback)
   -- First try branch.<branch>.pushRemote
-  cli.run_async({ "config", "--default", "", "--get", "branch." .. branch .. ".pushRemote" }, opts, function(result)
-    if result.code == 0 and result.stdout[1] and result.stdout[1] ~= "" then
-      callback(result.stdout[1], nil)
-      return
-    end
-
-    -- Fallback to remote.pushDefault
-    cli.run_async({ "config", "--default", "", "--get", "remote.pushDefault" }, opts, function(fallback_result)
-      if
-        fallback_result.code == 0
-        and fallback_result.stdout[1]
-        and fallback_result.stdout[1] ~= ""
-      then
-        callback(fallback_result.stdout[1], nil)
-      else
-        -- Final fallback: get default remote (single remote or "origin")
-        M.get_default_remote(opts, function(default_remote)
-          callback(default_remote, nil)
-        end)
+  cli.run_async(
+    { "config", "--default", "", "--get", "branch." .. branch .. ".pushRemote" },
+    opts,
+    function(result)
+      if result.code == 0 and result.stdout[1] and result.stdout[1] ~= "" then
+        callback(result.stdout[1], nil)
+        return
       end
-    end)
-  end)
+
+      -- Fallback to remote.pushDefault
+      cli.run_async(
+        { "config", "--default", "", "--get", "remote.pushDefault" },
+        opts,
+        function(fallback_result)
+          if
+            fallback_result.code == 0
+            and fallback_result.stdout[1]
+            and fallback_result.stdout[1] ~= ""
+          then
+            callback(fallback_result.stdout[1], nil)
+          else
+            -- Final fallback: get default remote (single remote or "origin")
+            M.get_default_remote(opts, function(default_remote)
+              callback(default_remote, nil)
+            end)
+          end
+        end
+      )
+    end
+  )
 end
 
 --- Set push remote for a branch
