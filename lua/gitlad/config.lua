@@ -34,6 +34,7 @@ local M = {}
 ---@field status GitladStatusConfig
 ---@field worktree GitladWorktreeConfig
 ---@field watcher GitladWatcherConfig
+---@field show_tags_in_refs boolean Whether to show tags alongside branch names in refs (default: false)
 local defaults = {
   signs = {
     staged = "●",
@@ -55,6 +56,7 @@ local defaults = {
     cooldown_ms = 1000, -- Ignore events for 1s after gitlad operations
     auto_refresh_debounce_ms = 500, -- Debounce for auto_refresh
   },
+  show_tags_in_refs = false,
 }
 
 ---@type GitladConfig

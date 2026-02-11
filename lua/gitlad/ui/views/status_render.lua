@@ -7,7 +7,6 @@
 local M = {}
 
 local config = require("gitlad.config")
-local git = require("gitlad.git")
 local hl = require("gitlad.ui.hl")
 local log_list = require("gitlad.ui.components.log_list")
 local path_utils = require("gitlad.utils.path")
@@ -102,8 +101,7 @@ local function render(self)
   end
 
   local cfg = config.get()
-  local show_tags =
-    git.config_get_bool("gitlad.showTagsInRefs", { cwd = self.repo_state.repo_root })
+  local show_tags = cfg.show_tags_in_refs
   local lines = {}
   self.line_map = {} -- Reset line map
   self.section_lines = {} -- Reset section lines

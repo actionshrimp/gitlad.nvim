@@ -80,7 +80,8 @@ end
 ---@param repo_state RepoState
 function M.open(repo_state)
   -- Read current show_tags setting for display
-  local show_tags = git.config_get_bool("gitlad.showTagsInRefs", { cwd = repo_state.repo_root })
+  local config = require("gitlad.config")
+  local show_tags = config.get().show_tags_in_refs
   local tags_label = show_tags and "Hide tags in refs" or "Show tags in refs"
 
   local log_popup = popup
@@ -247,35 +248,26 @@ end
 --- Toggle showing tags in refs
 ---@param repo_state RepoState
 function M._toggle_tags(repo_state)
-  git.config_toggle(
-    "gitlad.showTagsInRefs",
-    { cwd = repo_state.repo_root },
-    function(new_value, err)
-      vim.schedule(function()
-        if err then
-          vim.notify("[gitlad] Failed to toggle tags: " .. err, vim.log.levels.ERROR)
-          return
-        end
+  local config = require("gitlad.config")
+  local cfg = config.get()
+  cfg.show_tags_in_refs = not cfg.show_tags_in_refs
 
-        local msg = new_value and "Tags in refs: shown" or "Tags in refs: hidden"
-        vim.notify("[gitlad] " .. msg, vim.log.levels.INFO)
+  local msg = cfg.show_tags_in_refs and "Tags in refs: shown" or "Tags in refs: hidden"
+  vim.notify("[gitlad] " .. msg, vim.log.levels.INFO)
 
-        -- Refresh status view if open
-        local status_view = require("gitlad.ui.views.status")
-        local status_buf = status_view.get_buffer(repo_state)
-        if status_buf then
-          status_buf:render()
-        end
+  -- Refresh status view if open
+  local status_view = require("gitlad.ui.views.status")
+  local status_buf = status_view.get_buffer(repo_state)
+  if status_buf then
+    status_buf:render()
+  end
 
-        -- Refresh log view if open
-        local log_view = require("gitlad.ui.views.log")
-        local log_buf = log_view.get_buffer()
-        if log_buf then
-          log_buf:render()
-        end
-      end)
-    end
-  )
+  -- Refresh log view if open
+  local log_view = require("gitlad.ui.views.log")
+  local log_buf = log_view.get_buffer()
+  if log_buf then
+    log_buf:render()
+  end
 end
 
 return M

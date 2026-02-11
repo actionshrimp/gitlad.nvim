@@ -401,8 +401,7 @@ function LogBuffer:render()
     return
   end
 
-  local show_tags =
-    git.config_get_bool("gitlad.showTagsInRefs", { cwd = self.repo_state.repo_root })
+  local show_tags = require("gitlad.config").get().show_tags_in_refs
   local lines = {}
   self.line_map = {}
   self.commit_ranges = {}
