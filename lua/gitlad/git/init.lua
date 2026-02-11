@@ -880,7 +880,7 @@ function M.submodule_list(opts, callback)
 end
 
 --- Get a git config value synchronously
----@param key string Config key (e.g., "gitlad.showTagsInRefs")
+---@param key string Config key (e.g., "user.name")
 ---@param opts? GitCommandOptions
 ---@return string|nil value The config value or nil if not set
 function M.config_get(key, opts)

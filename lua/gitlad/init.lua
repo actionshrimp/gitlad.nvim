@@ -14,6 +14,7 @@ local config = require("gitlad.config")
 ---@field commit_editor? table Commit editor configuration
 ---@field worktree? table Worktree configuration
 ---@field status? table Status buffer configuration
+---@field show_tags_in_refs? boolean Whether to show tags alongside branch names in refs (default: false)
 
 --- Setup gitlad with user options
 ---@param opts? GitladSetupOptions
