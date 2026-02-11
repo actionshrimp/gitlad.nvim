@@ -94,8 +94,8 @@ T["amend action"]["opens editor with previous commit message"] = function()
   end
   eq(found_message, true)
 
-  -- Clean up - abort the amend
-  child.type_keys("<C-c><C-k>")
+  -- Clean up - abort the amend (split keys with delay to avoid <C-c> interrupt race on slow CI)
+  child.type_keys("Z", "Q")
   helpers.cleanup_repo(child, repo)
 end
 
@@ -131,8 +131,8 @@ T["reword action"]["opens editor with previous commit message"] = function()
   end
   eq(found_message, true)
 
-  -- Clean up - abort the reword
-  child.type_keys("<C-c><C-k>")
+  -- Clean up - abort the reword (split keys with delay to avoid <C-c> interrupt race on slow CI)
+  child.type_keys("Z", "Q")
   helpers.cleanup_repo(child, repo)
 end
 
@@ -164,8 +164,9 @@ T["reword action"]["ignores staged changes"] = function()
   child.type_keys("iReworded message")
   child.type_keys("<Esc>")
 
-  -- Confirm with C-c C-c
-  child.type_keys("<C-c><C-c>")
+  -- Confirm with ZZ (avoid <C-c><C-c> which is unreliable on nightly due to
+  -- <C-c> interrupt semantics breaking the chord mapping)
+  child.type_keys("Z", "Z")
 
   -- Wait for async commit operation to complete
   helpers.wait_for_buffer(child, "gitlad://status")

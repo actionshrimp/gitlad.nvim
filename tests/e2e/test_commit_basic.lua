@@ -268,8 +268,9 @@ T["commit editor"]["can close status with q after abort"] = function()
   -- Clear any error messages before abort
   child.lua([[vim.cmd("messages clear")]])
 
-  -- Abort
-  child.type_keys("<C-c><C-k>")
+  -- Abort with ZQ (avoid <C-c><C-k> which is unreliable on nightly due to
+  -- <C-c> interrupt semantics breaking the chord mapping)
+  child.type_keys("Z", "Q")
   helpers.wait_for_buffer(child, "gitlad://status")
 
   -- Verify we're in status buffer
@@ -320,8 +321,9 @@ T["commit editor"]["rapid q after abort does not error"] = function()
   -- Clear messages before abort/close sequence
   child.lua([[vim.cmd("messages clear")]])
 
-  -- Rapid abort then q
-  child.type_keys("<C-c><C-k>")
+  -- Abort with ZQ (avoid <C-c><C-k> which is unreliable on nightly due to
+  -- <C-c> interrupt semantics breaking the chord mapping)
+  child.type_keys("Z", "Q")
   -- Immediate q without waiting for scheduled callbacks
   child.type_keys("q")
   helpers.wait_short(child, 200)
@@ -359,8 +361,9 @@ T["commit editor"]["q works after abort without error"] = function()
   -- Clear all messages
   child.lua([[vim.cmd("messages clear")]])
 
-  -- Abort the commit
-  child.type_keys("<C-c><C-k>")
+  -- Abort with ZQ (avoid <C-c><C-k> which is unreliable on nightly due to
+  -- <C-c> interrupt semantics breaking the chord mapping)
+  child.type_keys("Z", "Q")
   -- Wait for the deferred close to complete
   helpers.wait_for_buffer(child, "gitlad://status")
 
@@ -481,7 +484,7 @@ T["commit editor"]["shows staged files summary"] = function()
   eq(found_modified, true)
   eq(found_new, true)
 
-  child.type_keys("<C-c><C-k>")
+  child.type_keys("Z", "Q")
   helpers.cleanup_repo(child, repo)
 end
 
@@ -522,7 +525,7 @@ T["commit editor"]["opens in split above status"] = function()
   local status_row = child.lua_get("_G.status_row")
   eq(editor_row < status_row, true)
 
-  child.type_keys("<C-c><C-k>")
+  child.type_keys("Z", "Q")
   helpers.cleanup_repo(child, repo)
 end
 
@@ -593,7 +596,7 @@ T["commit validation"]["allows commit with -a flag when nothing staged"] = funct
   local bufname = child.lua_get([[vim.api.nvim_buf_get_name(0)]])
   eq(bufname:match("COMMIT_EDITMSG") ~= nil, true)
 
-  child.type_keys("<C-c><C-k>")
+  child.type_keys("Z", "Q")
   helpers.cleanup_repo(child, repo)
 end
 
