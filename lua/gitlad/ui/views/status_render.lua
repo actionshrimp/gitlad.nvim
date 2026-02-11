@@ -54,6 +54,14 @@ local function update_status_line(self)
     return
   end
 
+  -- Skip buffer modification during visual/select mode to avoid disrupting
+  -- active visual selections (buffer changes can exit visual mode on some
+  -- Neovim versions)
+  local mode = vim.fn.mode()
+  if mode:find("[vVsS\22\19]") then
+    return
+  end
+
   local line_idx = self.status_line_num - 1 -- 0-indexed
   local new_text = self.spinner:get_display()
 
