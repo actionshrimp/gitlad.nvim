@@ -411,7 +411,9 @@ T["watcher"]["_handle_event calls debouncers when running and no cooldown"] = fu
   }
 
   w:_handle_event()
-  eq(stale_called, true)
+  -- When auto_refresh is active, stale indicator is skipped to avoid
+  -- a brief flash before the refresh clears it
+  eq(stale_called, false)
   eq(refresh_called, true)
 end
 

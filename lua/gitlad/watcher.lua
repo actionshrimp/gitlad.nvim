@@ -150,12 +150,13 @@ function Watcher:_handle_event()
   if self:is_in_cooldown() then
     return
   end
-  -- Call enabled features (both can be active simultaneously)
-  if self._stale_indicator and self._stale_indicator_debounced then
-    self._stale_indicator_debounced:call()
-  end
+  -- Call enabled features
+  -- When auto_refresh is active, skip the stale indicator to avoid a brief
+  -- flash before the refresh clears it (the refresh handles everything)
   if self._auto_refresh and self._auto_refresh_debounced then
     self._auto_refresh_debounced:call()
+  elseif self._stale_indicator and self._stale_indicator_debounced then
+    self._stale_indicator_debounced:call()
   end
 end
 
