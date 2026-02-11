@@ -271,6 +271,55 @@ function M.popup_switch_enabled(child, pattern)
   ))
 end
 
+--- Get all highlight groups applied to a specific line matching a pattern in the status buffer
+--- Returns a list of {hl_group, col_start, col_end} for the matching line
+---@param child table MiniTest child process
+---@param line_pattern string Lua pattern to match the line (e.g. "^Merge:")
+---@return table[] List of {hl_group=string, col=number, end_col=number}
+function M.get_status_line_highlights(child, line_pattern)
+  return child.lua_get(string.format(
+    [[(function()
+    local buf = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local ns = vim.api.nvim_get_namespaces()["gitlad_status"]
+    if not ns then return {} end
+    for i, line in ipairs(lines) do
+      if line:match(%q) then
+        local marks = vim.api.nvim_buf_get_extmarks(buf, ns, {i-1, 0}, {i-1, -1}, {details=true})
+        local result = {}
+        for _, mark in ipairs(marks) do
+          if mark[4] and mark[4].hl_group then
+            table.insert(result, {
+              hl_group = mark[4].hl_group,
+              col = mark[3],
+              end_col = mark[4].end_col,
+            })
+          end
+        end
+        return result
+      end
+    end
+    return {}
+  end)()]],
+    line_pattern
+  ))
+end
+
+--- Check if a specific highlight group appears on a line matching a pattern in the status buffer
+---@param child table MiniTest child process
+---@param line_pattern string Lua pattern to match the line
+---@param hl_group string Highlight group name to look for
+---@return boolean
+function M.status_line_has_highlight(child, line_pattern, hl_group)
+  local highlights = M.get_status_line_highlights(child, line_pattern)
+  for _, hl in ipairs(highlights) do
+    if hl.hl_group == hl_group then
+      return true
+    end
+  end
+  return false
+end
+
 --- Open gitlad status view and wait for it to load
 ---@param child table MiniTest child process
 ---@param repo_path string Repository path

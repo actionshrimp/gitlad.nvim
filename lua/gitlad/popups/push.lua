@@ -343,10 +343,24 @@ function M._push_to_upstream(repo_state, popup_data)
 
   -- Extract branch name from merge ref (refs/heads/main -> main)
   local upstream_branch = upstream_merge:gsub("^refs/heads/", "")
-  local upstream_ref = upstream_remote .. "/" .. upstream_branch
+
+  -- For local upstream (remote = "."), the ref is just the branch name, not "./branch"
+  local upstream_ref
+  if upstream_remote == "." then
+    upstream_ref = upstream_branch
+  else
+    upstream_ref = upstream_remote .. "/" .. upstream_branch
+  end
 
   -- Build refspec: local_branch:remote_branch
   local refspec = branch .. ":" .. upstream_merge
+
+  -- For local upstream, the branch always exists if upstream is configured
+  if upstream_remote == "." then
+    local args = build_push_args(popup_data, upstream_remote, refspec)
+    do_push(repo_state, args)
+    return
+  end
 
   -- Check if remote branch exists
   if not remote_branch_exists(status, upstream_ref) then
@@ -389,10 +403,29 @@ function M._configure_and_push_upstream(repo_state, popup_data, branch)
     end
 
     -- Parse upstream into remote and branch
+    -- "origin/main" → remote="origin", branch="main"
+    -- "main" (no slash) → remote=".", branch="main" (local upstream)
+    -- "feature/foo" (local branch with slash) → remote=".", branch="feature/foo"
     local remote_part, branch_part = upstream:match("^([^/]+)/(.+)$")
-    if not remote_part or not branch_part then
-      vim.notify("[gitlad] Invalid upstream format (expected remote/branch)", vim.log.levels.ERROR)
-      return
+    if not remote_part then
+      -- No slash: treat as local branch name (remote = ".")
+      remote_part = "."
+      branch_part = upstream
+    else
+      -- Has a slash: check if the first component is a known remote
+      local remotes = git.remote_names_sync(opts)
+      local is_remote = false
+      for _, r in ipairs(remotes) do
+        if r == remote_part then
+          is_remote = true
+          break
+        end
+      end
+      if not is_remote then
+        -- Not a remote: treat as local branch name (e.g., "feature/foo")
+        remote_part = "."
+        branch_part = upstream
+      end
     end
 
     -- Set upstream using git branch --set-upstream-to
@@ -505,10 +538,29 @@ function M._push_another_branch(repo_state, popup_data, context)
       end
 
       -- Parse target: "origin/feature" → remote="origin", branch="feature"
+      -- "main" (no slash) → remote=".", branch="main" (local push)
+      -- "feature/foo" (local branch with slash) → remote=".", branch="feature/foo"
+      local push_opts = { cwd = repo_state.repo_root }
       local remote, branch_name = target:match("^([^/]+)/(.+)$")
       if not remote then
-        vim.notify("[gitlad] Invalid target format (expected remote/branch)", vim.log.levels.ERROR)
-        return
+        -- No slash: treat as local branch name (remote = ".")
+        remote = "."
+        branch_name = target
+      else
+        -- Has a slash: check if the first component is a known remote
+        local remotes = git.remote_names_sync(push_opts)
+        local is_remote = false
+        for _, r in ipairs(remotes) do
+          if r == remote then
+            is_remote = true
+            break
+          end
+        end
+        if not is_remote then
+          -- Not a remote: treat as local branch name (e.g., "feature/foo")
+          remote = "."
+          branch_name = target
+        end
       end
 
       -- Build args and push: git push <remote> <source>:<branch>

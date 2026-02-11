@@ -139,6 +139,19 @@ end
 ---@param popup_data PopupData
 function M._fetch_upstream(repo_state, popup_data)
   local status = repo_state.status
+  local branch = status and status.branch or nil
+
+  -- Check if upstream is a local branch (remote = ".")
+  if branch then
+    local git_module = require("gitlad.git")
+    local upstream_remote =
+      git_module.config_get("branch." .. branch .. ".remote", { cwd = repo_state.repo_root })
+    if upstream_remote == "." then
+      vim.notify("[gitlad] Upstream is a local branch — nothing to fetch", vim.log.levels.INFO)
+      return
+    end
+  end
+
   local remote = status and get_remote_from_ref(status.upstream) or nil
 
   -- Validate

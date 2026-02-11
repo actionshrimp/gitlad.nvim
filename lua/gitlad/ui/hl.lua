@@ -318,7 +318,8 @@ end
 ---@param lines string[] The rendered lines
 ---@param line_map table<number, LineInfo> Map of line numbers to file info (1-indexed)
 ---@param section_lines table<number, SectionInfo> Map of line numbers to section info (1-indexed)
-function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
+---@param opts? { local_upstream?: boolean } Optional rendering hints
+function M.apply_status_highlights(bufnr, lines, line_map, section_lines, opts)
   hl_status.apply_status_highlights(
     bufnr,
     lines,
@@ -326,7 +327,8 @@ function M.apply_status_highlights(bufnr, lines, line_map, section_lines)
     section_lines,
     ns_status,
     ns_diff_markers,
-    M
+    M,
+    opts
   )
 end
 
