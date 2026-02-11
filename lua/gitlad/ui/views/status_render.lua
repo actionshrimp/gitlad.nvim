@@ -7,6 +7,7 @@
 local M = {}
 
 local config = require("gitlad.config")
+local git = require("gitlad.git")
 local hl = require("gitlad.ui.hl")
 local log_list = require("gitlad.ui.components.log_list")
 local path_utils = require("gitlad.utils.path")
@@ -350,8 +351,18 @@ local function render(self)
   vim.bo[self.bufnr].modifiable = true
   vim.api.nvim_buf_set_lines(self.bufnr, 0, -1, false, lines)
 
+  -- Determine if upstream is a local branch (remote = ".")
+  local local_upstream = false
+  if status.upstream and status.branch then
+    local upstream_remote =
+      git.config_get("branch." .. status.branch .. ".remote", { cwd = self.repo_state.repo_root })
+    local_upstream = upstream_remote == "."
+  end
+
   -- Apply syntax highlighting
-  hl.apply_status_highlights(self.bufnr, lines, self.line_map, self.section_lines)
+  hl.apply_status_highlights(self.bufnr, lines, self.line_map, self.section_lines, {
+    local_upstream = local_upstream,
+  })
 
   -- Apply full-buffer background during initial load for visual effect
   -- Once loading completes, only the status line (line 1) keeps the background

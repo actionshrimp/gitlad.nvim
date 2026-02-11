@@ -87,11 +87,14 @@ end
 --- Parse upstream input like "origin/main" into separate remote and merge values
 --- If input is "origin/main", returns { remote = "origin", merge = "refs/heads/main" }
 --- If input is just "main" (local branch), returns { remote = ".", merge = "refs/heads/main" }
+--- Also handles "feature/foo" (local branch with slash) by checking if the first
+--- component is a known remote name. If not, treats it as a local branch.
 --- The "." remote means "local repository" in git
 ---@param input string User input for upstream
 ---@param branch string Current branch name
+---@param opts? { cwd?: string } Options for git operations
 ---@return table<string, string> Config key-value pairs to set
-local function parse_upstream_input(input, branch)
+local function parse_upstream_input(input, branch, opts)
   if not input or input == "" then
     return {}
   end
@@ -100,13 +103,30 @@ local function parse_upstream_input(input, branch)
   local remote_key = "branch." .. branch .. ".remote"
   local merge_key = "branch." .. branch .. ".merge"
 
-  -- Check if input contains a slash (could be remote/branch)
+  -- Check if input contains a slash (could be remote/branch or local branch with slash)
   local remote_part, branch_part = input:match("^([^/]+)/(.+)$")
 
   if remote_part and branch_part then
-    -- Input is like "origin/main" or "upstream/feature/fix"
-    result[remote_key] = remote_part
-    result[merge_key] = "refs/heads/" .. branch_part
+    -- Check if the first component is actually a known remote name
+    -- This distinguishes "origin/main" (remote) from "feature/foo" (local branch with slash)
+    local remotes = git.remote_names_sync(opts)
+    local is_remote = false
+    for _, r in ipairs(remotes) do
+      if r == remote_part then
+        is_remote = true
+        break
+      end
+    end
+
+    if is_remote then
+      -- Input is like "origin/main" — a remote tracking branch
+      result[remote_key] = remote_part
+      result[merge_key] = "refs/heads/" .. branch_part
+    else
+      -- Input is like "feature/foo" — a local branch with a slash in its name
+      result[remote_key] = "."
+      result[merge_key] = "refs/heads/" .. input
+    end
   else
     -- Input is just a branch name like "main" (local branch)
     -- Use "." as the remote to indicate local repository
@@ -153,7 +173,9 @@ function M.open(repo_state, context)
         type = "ref",
         on_set = function(value, popup_data)
           -- Auto-parse "origin/main" into remote=origin and merge=refs/heads/main
-          return parse_upstream_input(value, popup_data.branch_scope)
+          -- Pass cwd so we can check remote names to distinguish "origin/main" from "feature/foo"
+          local git_opts = popup_data.repo_root and { cwd = popup_data.repo_root } or nil
+          return parse_upstream_input(value, popup_data.branch_scope, git_opts)
         end,
         on_unset = function(popup_data)
           -- Unset both merge and remote when clearing upstream

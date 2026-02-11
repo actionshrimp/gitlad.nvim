@@ -114,6 +114,7 @@ end
 ---@param ns_status number Status namespace
 ---@param ns_diff_markers number Diff markers namespace
 ---@param hl_module table Reference to the hl module for set/set_line/clear functions
+---@param opts? { local_upstream?: boolean } Optional rendering hints
 function M.apply_status_highlights(
   bufnr,
   lines,
@@ -121,8 +122,10 @@ function M.apply_status_highlights(
   section_lines,
   ns_status,
   ns_diff_markers,
-  hl_module
+  hl_module,
+  opts
 )
+  opts = opts or {}
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
@@ -174,28 +177,48 @@ function M.apply_status_highlights(
           local ahead_behind = line:match("%[%+%d+/%-?%d+%]")
           local is_in_sync = not ahead_behind -- No indicator means in sync
 
-          -- Highlight the ref: combined (green prefix + red name) if in sync, else all green
-          local slash_pos = ref_name:find("/")
-          if is_in_sync and slash_pos then
-            -- In sync: green prefix + muted red branch name
+          if opts.local_upstream then
+            -- Local upstream: entire ref is a local branch name, use red
             hl_module.set(
               bufnr,
               ns_status,
               line_idx,
               remote_start - 1,
-              remote_start - 1 + slash_pos,
-              "GitladRefRemote"
-            )
-            hl_module.set(
-              bufnr,
-              ns_status,
-              line_idx,
-              remote_start - 1 + slash_pos,
               remote_end - 1,
               "GitladRefCombined"
             )
+          elseif is_in_sync then
+            -- Remote upstream, in sync: green prefix + red branch name
+            local slash_pos = ref_name:find("/")
+            if slash_pos then
+              hl_module.set(
+                bufnr,
+                ns_status,
+                line_idx,
+                remote_start - 1,
+                remote_start - 1 + slash_pos,
+                "GitladRefRemote"
+              )
+              hl_module.set(
+                bufnr,
+                ns_status,
+                line_idx,
+                remote_start - 1 + slash_pos,
+                remote_end - 1,
+                "GitladRefCombined"
+              )
+            else
+              hl_module.set(
+                bufnr,
+                ns_status,
+                line_idx,
+                remote_start - 1,
+                remote_end - 1,
+                "GitladRefCombined"
+              )
+            end
           else
-            -- Not in sync or no slash: all green
+            -- Remote upstream, not in sync: all green
             hl_module.set(
               bufnr,
               ns_status,
@@ -236,7 +259,8 @@ function M.apply_status_highlights(
             end
           end
         else
-          hl_module.set(bufnr, ns_status, line_idx, remote_start - 1, #line, "GitladRefRemote")
+          local ref_hl = opts.local_upstream and "GitladRefCombined" or "GitladRefRemote"
+          hl_module.set(bufnr, ns_status, line_idx, remote_start - 1, #line, ref_hl)
         end
       end
 
