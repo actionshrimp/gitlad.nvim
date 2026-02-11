@@ -15,8 +15,8 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 REPO_DIR="/tmp/gitlad-demo-repo"
 OUTPUT="${PROJECT_ROOT}/docs/demo.cast"
 OUTPUT_V2="${PROJECT_ROOT}/docs/demo-v2.cast"
-COLS=130
-ROWS=42
+COLS=80
+ROWS=28
 SESSION="gitlad-demo"
 
 # Check prerequisites
