@@ -205,6 +205,7 @@ local function get_or_create_buffer(repo_state)
       stale_indicator = cfg.watcher.stale_indicator,
       auto_refresh = cfg.watcher.auto_refresh,
       auto_refresh_debounce_ms = cfg.watcher.auto_refresh_debounce_ms,
+      watch_worktree = cfg.watcher.watch_worktree,
       on_refresh = function()
         -- Auto-refresh callback: trigger a status refresh
         repo_state:refresh_status()
