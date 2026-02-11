@@ -92,6 +92,20 @@ local function render(self)
     return
   end
 
+  -- Defer render during visual/select mode to avoid disrupting active
+  -- selections (buffer modifications can exit visual mode on some Neovim versions)
+  local mode = vim.fn.mode()
+  if mode:find("[vVsS\22\19]") then
+    if not self._render_deferred then
+      self._render_deferred = true
+      vim.defer_fn(function()
+        self._render_deferred = false
+        render(self)
+      end, 100)
+    end
+    return
+  end
+
   local status = self.repo_state.status
   if not status then
     -- Show spinner with full-buffer loading background during initial load
