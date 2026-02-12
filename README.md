@@ -65,45 +65,9 @@ A file watcher detects external changes (terminal commands, other git clients) a
 
 ## Keybindings
 
-Follows [evil-collection-magit](https://github.com/emacs-evil/evil-collection/blob/master/modes/magit/evil-collection-magit.el) conventions.
+Follows [evil-collection-magit](https://github.com/emacs-evil/evil-collection/blob/master/modes/magit/evil-collection-magit.el) conventions. If you're familiar with magit, you'll feel right at home.
 
-**Staging**
-| Key | Action |
-|-----|--------|
-| `s` | Stage file/hunk at cursor |
-| `u` | Unstage file/hunk at cursor |
-| `S` / `U` | Stage / unstage all |
-| `x` | Discard changes at cursor |
-
-**Popups**
-| Key | Popup |
-|-----|-------|
-| `c` | Commit |
-| `b` | Branch |
-| `f` | Fetch |
-| `F` | Pull |
-| `p` | Push |
-| `l` | Log |
-| `d` | Diff |
-| `z` | Stash |
-| `r` | Rebase |
-| `m` | Merge |
-| `A` | Cherry-pick |
-| `_` | Revert |
-| `X` | Reset |
-| `'` | Submodule |
-
-**Navigation**
-| Key | Action |
-|-----|--------|
-| `gj` / `gk` | Next/previous file or commit |
-| `M-n` / `M-p` | Next/previous section |
-| `TAB` | Toggle inline diff / expand commit |
-| `RET` | Visit file at cursor |
-| `gr` | Refresh |
-| `$` | Git command history |
-| `?` | Help |
-| `q` | Close |
+All keybindings are discoverable from within the plugin — press `?` in any gitlad buffer to open the help popup showing every available key.
 
 ## Configuration
 
