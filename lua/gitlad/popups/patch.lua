@@ -33,7 +33,7 @@ function M.open(repo_state, context)
     end)
     :group_heading("Apply")
     :action("a", "Apply plain patch", function(popup_data)
-      M._apply_plain_patch(repo_state, popup_data)
+      M._apply_plain_patch(repo_state, popup_data, context)
     end)
     :action("w", "Apply patches (git am)", function(_popup_data)
       -- Shortcut into the am popup
@@ -104,7 +104,16 @@ end
 --- Apply a plain patch file (git apply - no commits)
 ---@param repo_state RepoState
 ---@param _popup_data PopupData
-function M._apply_plain_patch(repo_state, _popup_data)
+---@param context? PatchContext
+function M._apply_plain_patch(repo_state, _popup_data, context)
+  -- Default to file at point if it looks like a patch file
+  local default_file = nil
+  if context and context.file_path then
+    if context.file_path:match("%.patch$") or context.file_path:match("%.diff$") then
+      default_file = context.file_path
+    end
+  end
+
   -- Build a sub-popup with apply options
   local apply_popup = popup
     .builder()
@@ -120,6 +129,7 @@ function M._apply_plain_patch(repo_state, _popup_data)
       -- Prompt for patch file
       vim.ui.input({
         prompt = "Patch file: ",
+        default = default_file,
         completion = "file",
       }, function(input)
         if not input or input == "" then

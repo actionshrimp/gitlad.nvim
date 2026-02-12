@@ -162,7 +162,8 @@ local function execute_instant_operation(repo_state, target_hash, args, is_squas
 
   -- Determine commit flag
   local commit_flag = is_squash and ("--squash=" .. target_hash) or ("--fixup=" .. target_hash)
-  local commit_args = vim.list_extend({ commit_flag }, args)
+  local commit_args = { commit_flag, "--no-edit" }
+  vim.list_extend(commit_args, args)
 
   local operation_name = is_squash and "squash" or "fixup"
 

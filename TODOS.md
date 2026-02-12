@@ -33,6 +33,7 @@
 - [x] unstage new files from unstaged back to untracked doesnt work with visual selection (confirmed fixed)
 - [x] for a moved file, only show the actual file changes in the diff
 - [x] hitting discard on an untracked directory gives an error - it should be possible to delete the whole directory (with a confirmation though!)
+- [x] setting upstream to a local branch doesnt work properly (couldn't repro this actually?)
+- [x] applying a patch
 - [ ] some kind of display of queued git operations so you know git is still working underneath for slow operations?
 - [ ] hook output window should only appear if hooks are actually configured. Before implementing, consider a holistic approach: detect configured hooks and show progress/output for all git operations that may trigger them (commit, push, etc.). This may warrant a dedicated phase in PLAN.md.
-- [ ] setting upstream to a local branch doesnt work properly (couldn't repro this actually?)
