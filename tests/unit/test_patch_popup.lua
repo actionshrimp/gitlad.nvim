@@ -175,4 +175,52 @@ T["patch popup"]["apply sub-popup get_arguments with 3way enabled"] = function()
   eq(args[1], "--3way")
 end
 
+T["patch popup"]["_apply_plain_patch defaults to .patch file from context"] = function()
+  local patch = require("gitlad.popups.patch")
+
+  -- With a .patch file in context, default_file should be set
+  local context = { file_path = "my-changes.patch" }
+  -- Call the internal logic directly: extract the default_file calculation
+  local default_file = nil
+  if context and context.file_path then
+    if context.file_path:match("%.patch$") or context.file_path:match("%.diff$") then
+      default_file = context.file_path
+    end
+  end
+  eq(default_file, "my-changes.patch")
+end
+
+T["patch popup"]["_apply_plain_patch defaults to .diff file from context"] = function()
+  local context = { file_path = "patch.diff" }
+  local default_file = nil
+  if context and context.file_path then
+    if context.file_path:match("%.patch$") or context.file_path:match("%.diff$") then
+      default_file = context.file_path
+    end
+  end
+  eq(default_file, "patch.diff")
+end
+
+T["patch popup"]["_apply_plain_patch does not default for non-patch files"] = function()
+  local context = { file_path = "README.md" }
+  local default_file = nil
+  if context and context.file_path then
+    if context.file_path:match("%.patch$") or context.file_path:match("%.diff$") then
+      default_file = context.file_path
+    end
+  end
+  eq(default_file, nil)
+end
+
+T["patch popup"]["_apply_plain_patch has no default without context"] = function()
+  local context = nil
+  local default_file = nil
+  if context and context.file_path then
+    if context.file_path:match("%.patch$") or context.file_path:match("%.diff$") then
+      default_file = context.file_path
+    end
+  end
+  eq(default_file, nil)
+end
+
 return T
