@@ -982,7 +982,9 @@ function PopupData:_render_multicolumn(lines, groups)
       local padded = pad_to_width(col_line, column_widths[col])
 
       -- Track action positions for highlighting
-      if col_line ~= "" then
+      -- Use line count check instead of col_line ~= "" to handle empty headings
+      -- (empty heading strings are valid content, not padding)
+      if row <= #column_lines[col] then
         -- Find which action this line corresponds to
         local groups_in_col = column_groups[col]
         local tracker = col_action_indices[col]

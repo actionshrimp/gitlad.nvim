@@ -331,6 +331,48 @@ T["popup two column layout"]["balances groups between columns"] = function()
   eq(#lines < 9, true)
 end
 
+T["popup two column layout"]["tracks positions for actions after empty group heading"] = function()
+  local popup = require("gitlad.ui.popup")
+
+  -- Reproduces the branch popup layout where an empty heading group
+  -- caused the 'c' key to miss position tracking (and thus highlighting)
+  local data = popup
+    .builder()
+    :columns(4)
+    :group_heading("Checkout")
+    :action("b", "branch/revision", function() end)
+    :action("l", "local branch", function() end)
+    :group_heading("")
+    :action("c", "new branch", function() end)
+    :action("s", "new spin-off", function() end)
+    :group_heading("Create")
+    :action("n", "new branch", function() end)
+    :group_heading("Do")
+    :action("m", "rename", function() end)
+    :action("x", "delete", function() end)
+    :build()
+
+  local _ = data:render_lines()
+
+  -- All action keys should have positions tracked
+  local found_keys = {}
+  for _, pos_table in pairs(data.action_positions) do
+    for key, pos in pairs(pos_table) do
+      expect.no_equality(pos.col, nil)
+      expect.no_equality(pos.len, nil)
+      found_keys[key] = true
+    end
+  end
+
+  eq(found_keys["b"], true)
+  eq(found_keys["c"], true) -- This was missing before the fix
+  eq(found_keys["s"], true)
+  eq(found_keys["n"], true)
+  eq(found_keys["m"], true)
+  eq(found_keys["l"], true)
+  eq(found_keys["x"], true)
+end
+
 -- Mutually exclusive switches tests
 T["exclusive_with"] = MiniTest.new_set()
 
