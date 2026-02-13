@@ -649,7 +649,7 @@ T["stash section"]["TAB collapses and expands stash section"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
-T["stash section"]["p on stash entry opens stash popup"] = function()
+T["stash section"]["p on stash entry opens push popup"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
@@ -677,7 +677,7 @@ T["stash section"]["p on stash entry opens stash popup"] = function()
     end
   ]])
 
-  -- Press p on stash entry (should open stash popup, not push popup)
+  -- Press p on stash entry — should always open push popup
   child.type_keys("p")
   helpers.wait_for_popup(child)
 
@@ -685,70 +685,82 @@ T["stash section"]["p on stash entry opens stash popup"] = function()
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count, 2)
 
-  -- Verify it's the stash popup by checking content
-  -- Stash popup has "Stash" group heading and "Use" group heading with pop/apply/drop actions
+  -- Verify it's the push popup (not stash popup)
   child.lua([[
     local bufnr = vim.api.nvim_get_current_buf()
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-    _G.has_stash_group = false
-    _G.has_use_group = false
-    _G.has_pop_action = false
+    _G.has_push_heading = false
+    _G.has_stash_heading = false
     for _, line in ipairs(lines) do
+      if line:match("Push") and line:match("to") then
+        _G.has_push_heading = true
+      end
       if line:match("^Stash$") then
-        _G.has_stash_group = true
-      end
-      if line:match("^Use$") then
-        _G.has_use_group = true
-      end
-      -- Pop action shows "Pop stash@{0}" when stash is at point
-      if line:match("p%s+Pop") then
-        _G.has_pop_action = true
+        _G.has_stash_heading = true
       end
     end
   ]])
-  eq(child.lua_get([[_G.has_stash_group]]), true)
-  eq(child.lua_get([[_G.has_use_group]]), true)
-  eq(child.lua_get([[_G.has_pop_action]]), true)
+  eq(child.lua_get([[_G.has_push_heading]]), true)
+  eq(child.lua_get([[_G.has_stash_heading]]), false)
 
   child.type_keys("q")
   helpers.cleanup_repo(child, repo)
 end
 
-T["stash section"]["p not on stash opens push popup"] = function()
+T["stash section"]["z on stash entry opens stash popup with context"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  -- Create initial commit (no stashes)
+  -- Create initial commit and stash
   helpers.create_file(child, repo, "test.txt", "hello")
   helpers.git(child, repo, "add test.txt")
   helpers.git(child, repo, 'commit -m "Initial"')
+  helpers.create_file(child, repo, "test.txt", "modified")
+  helpers.git(child, repo, "stash push -m 'test stash'")
 
   -- Open status view
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   child.lua([[require("gitlad.ui.views.status").open()]])
   helpers.wait_for_status(child)
 
-  -- Press p (not on stash entry, should open push popup)
-  child.type_keys("p")
+  -- Find and navigate to stash entry
+  child.lua([[
+    local bufnr = vim.api.nvim_get_current_buf()
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("stash@{0}") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Press z on stash entry — should open stash popup with context
+  child.type_keys("z")
   helpers.wait_for_popup(child)
 
   -- Should have a popup window
   local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
   eq(win_count, 2)
 
-  -- Verify it's the push popup by checking content
+  -- Verify it's the stash popup with stash context
   child.lua([[
     local bufnr = vim.api.nvim_get_current_buf()
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-    _G.is_push_popup = false
+    _G.has_stash_group = false
+    _G.has_pop_with_context = false
     for _, line in ipairs(lines) do
-      if line:match("Push") then
-        _G.is_push_popup = true
-        break
+      if line:match("^Stash$") then
+        _G.has_stash_group = true
+      end
+      -- Pop action shows "Pop stash@{0}" when stash context is passed
+      if line:match("Pop stash@{0}") then
+        _G.has_pop_with_context = true
       end
     end
   ]])
-  eq(child.lua_get([[_G.is_push_popup]]), true)
+  eq(child.lua_get([[_G.has_stash_group]]), true)
+  eq(child.lua_get([[_G.has_pop_with_context]]), true)
 
   child.type_keys("q")
   helpers.cleanup_repo(child, repo)
