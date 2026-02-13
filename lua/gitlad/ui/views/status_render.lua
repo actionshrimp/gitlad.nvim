@@ -54,6 +54,14 @@ local function update_status_line(self)
     return
   end
 
+  -- Skip buffer modification during visual/select mode to avoid disrupting
+  -- active visual selections (buffer changes can exit visual mode on some
+  -- Neovim versions)
+  local mode = vim.fn.mode()
+  if mode:find("[vVsS\22\19]") then
+    return
+  end
+
   local line_idx = self.status_line_num - 1 -- 0-indexed
   local new_text = self.spinner:get_display()
 
@@ -81,6 +89,20 @@ end
 ---@param self StatusBuffer
 local function render(self)
   if not vim.api.nvim_buf_is_valid(self.bufnr) then
+    return
+  end
+
+  -- Defer render during visual/select mode to avoid disrupting active
+  -- selections (buffer modifications can exit visual mode on some Neovim versions)
+  local mode = vim.fn.mode()
+  if mode:find("[vVsS\22\19]") then
+    if not self._render_deferred then
+      self._render_deferred = true
+      vim.defer_fn(function()
+        self._render_deferred = false
+        render(self)
+      end, 100)
+    end
     return
   end
 

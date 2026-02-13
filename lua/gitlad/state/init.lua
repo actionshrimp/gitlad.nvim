@@ -170,7 +170,8 @@ end
 ---@param result GitStatusResult The base status result to extend
 ---@param callback fun(result: GitStatusResult) Callback with extended result
 function RepoState:_fetch_extended_status(result, callback)
-  local opts = { cwd = self.repo_root }
+  -- Use internal=true so refresh commands don't mark cooldown or pollute history
+  local opts = { cwd = self.repo_root, internal = true }
 
   -- Counter to track parallel operations
   local pending = 0
@@ -380,7 +381,7 @@ function RepoState:refresh_status(force, callback)
 
   -- Dispatch async refresh
   self.status_handler:dispatch(function(done)
-    git.status({ cwd = self.repo_root }, function(result, err)
+    git.status({ cwd = self.repo_root, internal = true }, function(result, err)
       if err then
         errors.notify("Status", err)
         done(nil)
@@ -413,7 +414,7 @@ function RepoState:get_status_sync(force)
     end
   end
 
-  local result, err = git.status_sync({ cwd = self.repo_root })
+  local result, err = git.status_sync({ cwd = self.repo_root, internal = true })
   if err then
     errors.notify("Status", err)
     return nil

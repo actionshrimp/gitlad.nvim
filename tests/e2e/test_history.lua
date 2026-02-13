@@ -69,15 +69,32 @@ T["history view"]["displays git command history entries"] = function()
   helpers.git(child, repo, "add init.txt")
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
-  -- Open status buffer (this triggers git status command via plugin)
+  -- Create an untracked file so we can stage it (user-facing operation)
+  helpers.create_file(child, repo, "new.txt", "new content")
+
+  -- Open status buffer
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
+
+  -- Stage the file (creates a git add history entry)
+  helpers.wait_for_buffer_content(child, "new.txt")
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("new.txt") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+  child.type_keys("s")
+  helpers.wait_for_buffer_content(child, "Staged")
 
   -- Open history view
   child.type_keys("$")
   helpers.wait_for_filetype(child, "gitlad-history")
   -- Wait for content to be rendered
-  helpers.wait_for_buffer_content(child, "git status")
+  helpers.wait_for_buffer_content(child, "git add")
 
   -- Get buffer content
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -85,15 +102,15 @@ T["history view"]["displays git command history entries"] = function()
   -- First line should be a command entry (no header)
   expect.equality(lines[1]:match("[✓✗]") ~= nil, true)
 
-  -- Should show git status command (from opening Gitlad)
-  local has_status_cmd = false
+  -- Should show git add command (from staging)
+  local has_add_cmd = false
   for _, line in ipairs(lines) do
-    if line:match("git status") then
-      has_status_cmd = true
+    if line:match("git add") then
+      has_add_cmd = true
       break
     end
   end
-  eq(has_status_cmd, true)
+  eq(has_add_cmd, true)
 
   cleanup_test_repo(child, repo)
 end
@@ -107,14 +124,31 @@ T["history view"]["expands entry with <Tab>"] = function()
   helpers.git(child, repo, "add init.txt")
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
+  -- Create an untracked file so we can stage it
+  helpers.create_file(child, repo, "new.txt", "new content")
+
   -- Open status
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
 
+  -- Stage the file to create history entry
+  helpers.wait_for_buffer_content(child, "new.txt")
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("new.txt") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+  child.type_keys("s")
+  helpers.wait_for_buffer_content(child, "Staged")
+
   -- Open history
   child.type_keys("$")
   helpers.wait_for_filetype(child, "gitlad-history")
-  helpers.wait_for_buffer_content(child, "git status")
+  helpers.wait_for_buffer_content(child, "git add")
 
   -- Get initial line count
   local initial_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -151,14 +185,31 @@ T["history view"]["collapses entry with <Tab> again"] = function()
   helpers.git(child, repo, "add init.txt")
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
+  -- Create an untracked file so we can stage it
+  helpers.create_file(child, repo, "new.txt", "new content")
+
   -- Open status
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
 
+  -- Stage the file to create history entry
+  helpers.wait_for_buffer_content(child, "new.txt")
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("new.txt") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+  child.type_keys("s")
+  helpers.wait_for_buffer_content(child, "Staged")
+
   -- Open history
   child.type_keys("$")
   helpers.wait_for_filetype(child, "gitlad-history")
-  helpers.wait_for_buffer_content(child, "git status")
+  helpers.wait_for_buffer_content(child, "git add")
 
   -- Cursor is already on first entry (no header)
   -- Expand
@@ -188,14 +239,31 @@ T["history view"]["expands entry with <CR>"] = function()
   helpers.git(child, repo, "add init.txt")
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
+  -- Create an untracked file so we can stage it
+  helpers.create_file(child, repo, "new.txt", "new content")
+
   -- Open status
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
 
+  -- Stage the file to create history entry
+  helpers.wait_for_buffer_content(child, "new.txt")
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("new.txt") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+  child.type_keys("s")
+  helpers.wait_for_buffer_content(child, "Staged")
+
   -- Open history
   child.type_keys("$")
   helpers.wait_for_filetype(child, "gitlad-history")
-  helpers.wait_for_buffer_content(child, "git status")
+  helpers.wait_for_buffer_content(child, "git add")
 
   -- Get initial line count
   local initial_lines = child.lua_get("#vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -281,14 +349,31 @@ T["history view"]["shows success indicator for successful commands"] = function(
   helpers.git(child, repo, "add init.txt")
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
+  -- Create an untracked file so we can stage it
+  helpers.create_file(child, repo, "new.txt", "new content")
+
   -- Open status (successful git status)
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
 
+  -- Stage the file to create history entry
+  helpers.wait_for_buffer_content(child, "new.txt")
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("new.txt") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+  child.type_keys("s")
+  helpers.wait_for_buffer_content(child, "Staged")
+
   -- Open history
   child.type_keys("$")
   helpers.wait_for_filetype(child, "gitlad-history")
-  helpers.wait_for_buffer_content(child, "git status")
+  helpers.wait_for_buffer_content(child, "git add")
 
   -- Get lines
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
@@ -315,14 +400,31 @@ T["history view"]["shows duration in milliseconds"] = function()
   helpers.git(child, repo, "add init.txt")
   helpers.git(child, repo, "commit -m 'Initial commit'")
 
+  -- Create an untracked file so we can stage it
+  helpers.create_file(child, repo, "new.txt", "new content")
+
   -- Open status
   child.cmd("Gitlad")
   helpers.wait_for_status(child)
 
+  -- Stage the file to create history entry
+  helpers.wait_for_buffer_content(child, "new.txt")
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("new.txt") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+  child.type_keys("s")
+  helpers.wait_for_buffer_content(child, "Staged")
+
   -- Open history
   child.type_keys("$")
   helpers.wait_for_filetype(child, "gitlad-history")
-  helpers.wait_for_buffer_content(child, "git status")
+  helpers.wait_for_buffer_content(child, "git add")
 
   -- Get lines
   local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")

@@ -101,6 +101,20 @@ T["watcher config"]["can configure auto_refresh_debounce_ms"] = function()
   eq(debounce, 1000)
 end
 
+T["watcher config"]["watch_worktree enabled by default"] = function()
+  child.lua([[require("gitlad").setup({})]])
+
+  local watch_worktree = child.lua_get([[require("gitlad.config").get().watcher.watch_worktree]])
+  eq(watch_worktree, true)
+end
+
+T["watcher config"]["can disable watch_worktree"] = function()
+  child.lua([[require("gitlad").setup({ watcher = { watch_worktree = false } })]])
+
+  local watch_worktree = child.lua_get([[require("gitlad.config").get().watcher.watch_worktree]])
+  eq(watch_worktree, false)
+end
+
 -- =============================================================================
 -- Spinner stale state tests (UI level)
 -- =============================================================================
@@ -527,6 +541,100 @@ T["watcher integration"]["creates watcher with both features enabled"] = functio
   cleanup_test_repo(child, repo)
 end
 
+T["watcher integration"]["watcher has multiple fs_event handles"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit (this creates refs/heads/)
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with watcher enabled
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Check that multiple fs_events were created
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_fs_event_count = buf and buf.watcher and #buf.watcher._fs_events or 0
+  ]])
+  local fs_event_count = child.lua_get("_G.test_fs_event_count")
+  -- Should have at least 2: .git/ and .git/refs/heads (refs/remotes and refs/tags may or may not exist)
+  eq(fs_event_count >= 2, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["watcher integration"]["passes watch_worktree config to watcher"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with watch_worktree disabled
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, watch_worktree = false } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Check that watcher has watch_worktree = false
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_watch_worktree = buf and buf.watcher and buf.watcher._watch_worktree
+    _G.test_worktree_event = buf and buf.watcher and buf.watcher._worktree_event
+  ]])
+  local watch_worktree = child.lua_get("_G.test_watch_worktree")
+  local worktree_event = child.lua_get("_G.test_worktree_event")
+  eq(watch_worktree, false)
+  eq(worktree_event, vim.NIL)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["watcher integration"]["sets up autocmds when watcher starts"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with watcher enabled
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Check that augroup was created
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_has_augroup = buf and buf.watcher and buf.watcher._augroup ~= nil
+  ]])
+  local has_augroup = child.lua_get("_G.test_has_augroup")
+  eq(has_augroup, true)
+
+  cleanup_test_repo(child, repo)
+end
+
 -- =============================================================================
 -- Git command cooldown tests
 -- =============================================================================
@@ -605,6 +713,260 @@ T["git command cooldown"]["watcher is in cooldown after git command"] = function
   local in_cooldown = child.lua_get("_G.test_in_cooldown")
 
   eq(in_cooldown, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["git command cooldown"]["internal git commands do not set last_operation_time"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
+
+  -- Open status buffer to initialize repo_state
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Record last_operation_time
+  child.lua([[_G.test_initial_time = require("gitlad.state").get().last_operation_time]])
+  local initial_time = child.lua_get("_G.test_initial_time")
+
+  -- Wait a bit
+  helpers.wait_short(child)
+
+  -- Run an internal git command (should NOT update last_operation_time)
+  child.lua([[
+    local cli = require("gitlad.git.cli")
+    cli.run_async({ "status" }, { cwd = vim.fn.getcwd(), internal = true }, function() end)
+  ]])
+  helpers.wait_short(child)
+
+  -- Check that last_operation_time was NOT updated
+  child.lua([[_G.test_new_time = require("gitlad.state").get().last_operation_time]])
+  local new_time = child.lua_get("_G.test_new_time")
+
+  eq(new_time, initial_time)
+
+  cleanup_test_repo(child, repo)
+end
+
+-- =============================================================================
+-- Branch detection tests
+-- =============================================================================
+
+T["branch detection"] = MiniTest.new_set()
+
+T["branch detection"]["external branch creation triggers stale indicator"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with watcher enabled and short cooldown
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, cooldown_ms = 100 } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Wait for cooldown from initial refresh to pass
+  helpers.wait_short(child, 500)
+
+  -- Create a branch externally (this writes to .git/refs/heads/)
+  helpers.git(child, repo, "branch test-branch")
+
+  -- Wait for the stale indicator to appear
+  local found_stale = child.lua_get([[
+    (function()
+      local ok = vim.wait(3000, function()
+        local lines = vim.api.nvim_buf_get_lines(0, 0, 1, false)
+        return lines[1] and lines[1]:match("Stale") ~= nil
+      end, 50)
+      return ok
+    end)()
+  ]])
+
+  eq(found_stale, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+-- =============================================================================
+-- BufWritePost detection tests
+-- =============================================================================
+
+T["bufwritepost detection"] = MiniTest.new_set()
+
+T["bufwritepost detection"]["file save triggers stale indicator"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create a tracked file
+  helpers.create_file(child, repo, "tracked.txt", "hello")
+  helpers.git(child, repo, "add tracked.txt")
+  helpers.git(child, repo, "commit -m 'Add tracked file'")
+
+  -- Setup with watcher enabled and short cooldown
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, cooldown_ms = 100 } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Wait for cooldown from initial refresh to pass
+  helpers.wait_short(child, 500)
+
+  -- Open the tracked file in a split and modify it
+  child.lua(string.format(
+    [[
+    vim.cmd("split " .. %q .. "/tracked.txt")
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, {"modified content"})
+    vim.cmd("write")
+  ]],
+    repo
+  ))
+
+  -- Switch back to status buffer
+  child.lua([[
+    local bufs = vim.api.nvim_list_bufs()
+    for _, buf in ipairs(bufs) do
+      if vim.api.nvim_buf_get_name(buf):match("gitlad://status") then
+        vim.api.nvim_set_current_buf(buf)
+        break
+      end
+    end
+  ]])
+
+  -- Wait for the stale indicator to appear
+  local found_stale = child.lua_get([[
+    (function()
+      local ok = vim.wait(3000, function()
+        local lines = vim.api.nvim_buf_get_lines(0, 0, 1, false)
+        return lines[1] and lines[1]:match("Stale") ~= nil
+      end, 50)
+      return ok
+    end)()
+  ]])
+
+  eq(found_stale, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["bufwritepost detection"]["file save outside repo does not trigger stale"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with watcher enabled and short cooldown
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, cooldown_ms = 100 } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Wait for cooldown from initial refresh to pass
+  helpers.wait_short(child, 500)
+
+  -- Create and write a file outside the repo
+  local outside_file = child.lua_get("vim.fn.tempname()")
+  child.lua(string.format(
+    [[
+    vim.cmd("split " .. %q)
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, {"outside content"})
+    vim.cmd("write")
+  ]],
+    outside_file
+  ))
+
+  -- Switch back to status buffer
+  child.lua([[
+    local bufs = vim.api.nvim_list_bufs()
+    for _, buf in ipairs(bufs) do
+      if vim.api.nvim_buf_get_name(buf):match("gitlad://status") then
+        vim.api.nvim_set_current_buf(buf)
+        break
+      end
+    end
+  ]])
+
+  -- Wait briefly to see if stale appears (it shouldn't)
+  helpers.wait_short(child, 500)
+
+  -- Check that status is still showing Idle (not Stale)
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, 1, false)")
+  eq(lines[1]:match("Stale") == nil, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+-- =============================================================================
+-- Gitignore filtering tests
+-- =============================================================================
+
+T["gitignore filtering"] = MiniTest.new_set()
+
+T["gitignore filtering"]["gitignore cache is built on start"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create .gitignore with build/ and node_modules/
+  helpers.create_file(child, repo, ".gitignore", "build/\nnode_modules/\n")
+  helpers.git(child, repo, "add .gitignore")
+  helpers.git(child, repo, "commit -m 'Add gitignore'")
+
+  -- Create the ignored directories
+  child.lua(string.format(
+    [[
+    vim.fn.mkdir(%q .. "/build", "p")
+    vim.fn.mkdir(%q .. "/node_modules", "p")
+  ]],
+    repo,
+    repo
+  ))
+
+  -- Setup with watcher enabled
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, cooldown_ms = 100 } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Wait for gitignore cache to be built (async)
+  helpers.wait_short(child, 1000)
+
+  -- Check that gitignore cache has the ignored entries
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_cache = buf and buf.watcher and buf.watcher._gitignore_cache or {}
+  ]])
+  local cache = child.lua_get("_G.test_cache")
+  eq(cache["build"] ~= nil or cache["build/"] ~= nil, true)
 
   cleanup_test_repo(child, repo)
 end
@@ -700,6 +1062,42 @@ T["worktree watcher"]["watcher watches correct directory for worktree"] = functi
   -- Cleanup worktree
   child.lua(string.format([[vim.cmd("cd %s")]], repo))
   helpers.git(child, repo, string.format("worktree remove %s", worktree_path))
+  cleanup_test_repo(child, repo)
+end
+
+T["worktree watcher"]["watch_worktree=false prevents worktree watcher"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with watch_worktree disabled
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, watch_worktree = false } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Check that worktree watcher was not created
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_watch_worktree = buf and buf.watcher and buf.watcher._watch_worktree
+    _G.test_worktree_event = buf and buf.watcher and buf.watcher._worktree_event
+  ]])
+
+  local watch_worktree = child.lua_get("_G.test_watch_worktree")
+  eq(watch_worktree, false)
+
+  -- worktree_event should be nil
+  local worktree_event = child.lua_get("_G.test_worktree_event")
+  eq(worktree_event, vim.NIL)
+
   cleanup_test_repo(child, repo)
 end
 

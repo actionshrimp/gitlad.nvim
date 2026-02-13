@@ -27,6 +27,7 @@ local M = {}
 ---@field auto_refresh boolean Automatically refresh when external changes detected (default: false)
 ---@field cooldown_ms number Cooldown period in ms after gitlad operations before events are processed (default: 1000)
 ---@field auto_refresh_debounce_ms number Debounce period in ms before triggering auto-refresh (default: 500)
+---@field watch_worktree boolean Whether to watch working tree files for changes (default: true)
 
 ---@class GitladConfig
 ---@field signs GitladSigns
@@ -55,6 +56,7 @@ local defaults = {
     auto_refresh = false, -- Automatically refresh when external changes detected
     cooldown_ms = 1000, -- Ignore events for 1s after gitlad operations
     auto_refresh_debounce_ms = 500, -- Debounce for auto_refresh
+    watch_worktree = true, -- Watch working tree files for changes
   },
   show_tags_in_refs = false,
 }

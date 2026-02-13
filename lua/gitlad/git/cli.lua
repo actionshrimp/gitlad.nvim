@@ -18,6 +18,7 @@ local history = require("gitlad.git.history")
 ---@field env? table<string, string> Environment variables
 ---@field timeout? number Timeout in milliseconds (default: 30000)
 ---@field on_output_line? fun(line: string, is_stderr: boolean) Callback for each output line (streaming)
+---@field internal? boolean If true, bypass cooldown marking and command history (for internal operations like git check-ignore)
 
 -- Standard git flags for performance and consistency
 local GIT_FLAGS = {
@@ -81,10 +82,13 @@ function M.run_async(args, opts, callback)
   local cmd = build_command(args)
   local cwd = opts.cwd or vim.fn.getcwd()
   local start_time = vim.loop.hrtime()
+  local internal = opts.internal or false
 
   -- Mark operation time for watcher cooldown (lazy require to avoid circular deps)
-  local state = require("gitlad.state")
-  state.mark_operation_time(cwd)
+  if not internal then
+    local state = require("gitlad.state")
+    state.mark_operation_time(cwd)
+  end
 
   local stdout_data = {}
   local stderr_data = {}
@@ -128,17 +132,19 @@ function M.run_async(args, opts, callback)
     local end_time = vim.loop.hrtime()
     local duration_ms = (end_time - start_time) / 1e6
 
-    -- Log to history
-    history.add({
-      cmd = args[1] or "git",
-      args = args,
-      cwd = cwd,
-      exit_code = code,
-      stdout = stdout_data,
-      stderr = stderr_data,
-      timestamp = os.time(),
-      duration_ms = duration_ms,
-    })
+    -- Log to history (skip for internal operations)
+    if not internal then
+      history.add({
+        cmd = args[1] or "git",
+        args = args,
+        cwd = cwd,
+        exit_code = code,
+        stdout = stdout_data,
+        stderr = stderr_data,
+        timestamp = os.time(),
+        duration_ms = duration_ms,
+      })
+    end
 
     -- Schedule callback to ensure we're in main loop
     vim.schedule(function()
@@ -238,10 +244,13 @@ function M.run_sync(args, opts)
   local cmd = build_command(args)
   local cwd = opts.cwd or vim.fn.getcwd()
   local start_time = vim.loop.hrtime()
+  local internal = opts.internal or false
 
   -- Mark operation time for watcher cooldown (lazy require to avoid circular deps)
-  local state = require("gitlad.state")
-  state.mark_operation_time(cwd)
+  if not internal then
+    local state = require("gitlad.state")
+    state.mark_operation_time(cwd)
+  end
 
   local result = vim.fn.systemlist(cmd)
   local code = vim.v.shell_error
@@ -250,17 +259,19 @@ function M.run_sync(args, opts)
   local end_time = vim.loop.hrtime()
   local duration_ms = (end_time - start_time) / 1e6
 
-  -- Log to history
-  history.add({
-    cmd = args[1] or "git",
-    args = args,
-    cwd = cwd,
-    exit_code = code,
-    stdout = result,
-    stderr = {}, -- systemlist doesn't separate stderr
-    timestamp = os.time(),
-    duration_ms = duration_ms,
-  })
+  -- Log to history (skip for internal operations)
+  if not internal then
+    history.add({
+      cmd = args[1] or "git",
+      args = args,
+      cwd = cwd,
+      exit_code = code,
+      stdout = result,
+      stderr = {}, -- systemlist doesn't separate stderr
+      timestamp = os.time(),
+      duration_ms = duration_ms,
+    })
+  end
 
   return {
     stdout = result,
@@ -286,10 +297,13 @@ function M.run_async_with_stdin(args, stdin_lines, opts, callback)
   local cmd = build_command(args)
   local cwd = opts.cwd or vim.fn.getcwd()
   local start_time = vim.loop.hrtime()
+  local internal = opts.internal or false
 
   -- Mark operation time for watcher cooldown (lazy require to avoid circular deps)
-  local state = require("gitlad.state")
-  state.mark_operation_time(cwd)
+  if not internal then
+    local state = require("gitlad.state")
+    state.mark_operation_time(cwd)
+  end
 
   local stdout_data = {}
   local stderr_data = {}
@@ -333,17 +347,19 @@ function M.run_async_with_stdin(args, stdin_lines, opts, callback)
     local end_time = vim.loop.hrtime()
     local duration_ms = (end_time - start_time) / 1e6
 
-    -- Log to history
-    history.add({
-      cmd = args[1] or "git",
-      args = args,
-      cwd = cwd,
-      exit_code = code,
-      stdout = stdout_data,
-      stderr = stderr_data,
-      timestamp = os.time(),
-      duration_ms = duration_ms,
-    })
+    -- Log to history (skip for internal operations)
+    if not internal then
+      history.add({
+        cmd = args[1] or "git",
+        args = args,
+        cwd = cwd,
+        exit_code = code,
+        stdout = stdout_data,
+        stderr = stderr_data,
+        timestamp = os.time(),
+        duration_ms = duration_ms,
+      })
+    end
 
     -- Schedule callback to ensure we're in main loop
     vim.schedule(function()
