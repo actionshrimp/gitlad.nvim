@@ -383,7 +383,7 @@ T["rebase popup"]["shows in-progress actions when rebase is active"] = function(
   helpers.cleanup_repo(child, repo)
 end
 
-T["rebase popup"]["status shows rebase in progress"] = function()
+T["rebase popup"]["status shows rebase in progress with full sequence"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
@@ -411,21 +411,106 @@ T["rebase popup"]["status shows rebase in progress"] = function()
   child.lua([[require("gitlad.ui.views.status").open()]])
   helpers.wait_for_status(child)
 
-  -- Check that status shows rebase in progress
+  -- Check that status shows rebase section header with branch and target
   child.lua([[
     status_buf = vim.api.nvim_get_current_buf()
     status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
   ]])
   local lines = child.lua_get([[status_lines]])
 
-  local found_rebasing = false
+  local found_rebasing_header = false
+  local found_onto = false
   for _, line in ipairs(lines) do
-    if line:match("Rebasing") then
-      found_rebasing = true
+    -- Should show "Rebasing feature onto target" (or similar)
+    if line:match("Rebasing.*feature.*onto") then
+      found_rebasing_header = true
+    end
+    -- Should show an "onto" line with the base commit
+    if line:match("^onto%s+%x+") then
+      found_onto = true
     end
   end
 
-  eq(found_rebasing, true)
+  eq(found_rebasing_header, true)
+  eq(found_onto, true)
+
+  -- Abort the rebase to clean up
+  helpers.git(child, repo, "rebase --abort")
+  helpers.cleanup_repo(child, repo)
+end
+
+T["rebase popup"]["status shows todo and done commits during interactive rebase with edit"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  -- Create initial commit (base)
+  helpers.create_file(child, repo, "base.txt", "base")
+  helpers.git(child, repo, "add base.txt")
+  helpers.git(child, repo, 'commit -m "Base commit"')
+
+  -- Create 3 commits on feature branch
+  helpers.git(child, repo, "checkout -b feature")
+  helpers.create_file(child, repo, "a.txt", "a")
+  helpers.git(child, repo, "add a.txt")
+  helpers.git(child, repo, 'commit -m "Add file A"')
+
+  helpers.create_file(child, repo, "b.txt", "b")
+  helpers.git(child, repo, "add b.txt")
+  helpers.git(child, repo, 'commit -m "Add file B"')
+
+  helpers.create_file(child, repo, "c.txt", "c")
+  helpers.git(child, repo, "add c.txt")
+  helpers.git(child, repo, 'commit -m "Add file C"')
+
+  -- Start interactive rebase with GIT_SEQUENCE_EDITOR to set "edit" on the first commit
+  -- This will stop after applying the first commit.
+  -- Can't use helpers.git() because we need to set an env var.
+  child.lua_get(
+    string.format(
+      [[vim.fn.system("cd %s && GIT_SEQUENCE_EDITOR=\"sed -i.bak '1s/^pick/edit/'\" git rebase -i HEAD~3 2>&1 || true")]],
+      repo
+    )
+  )
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
+  -- Get status buffer lines
+  child.lua([[
+    status_buf = vim.api.nvim_get_current_buf()
+    status_lines = vim.api.nvim_buf_get_lines(status_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[status_lines]])
+
+  -- Should show "Rebasing feature onto ..." header
+  local found_header = false
+  local found_pick_lines = false
+  local found_done = false
+  local found_stop = false
+  for _, line in ipairs(lines) do
+    if line:match("Rebasing.*feature.*onto") then
+      found_header = true
+    end
+    -- Should have pending pick lines for remaining commits
+    if line:match("^pick%s+%x+") then
+      found_pick_lines = true
+    end
+    -- Should have "done" commits for already-applied ones
+    if line:match("^done%s+%x+") then
+      found_done = true
+    end
+    -- Should have a "stop" line for the commit being edited
+    if line:match("^stop%s+%x+") then
+      found_stop = true
+    end
+  end
+
+  eq(found_header, true)
+  -- After editing commit 1, commits 2 and 3 should still be in todo
+  eq(found_pick_lines, true)
+  -- The stopped commit should show as "stop"
+  eq(found_stop, true)
 
   -- Abort the rebase to clean up
   helpers.git(child, repo, "rebase --abort")

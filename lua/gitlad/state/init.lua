@@ -8,6 +8,7 @@ local M = {}
 
 local cache = require("gitlad.state.cache")
 local async = require("gitlad.state.async")
+local cli = require("gitlad.git.cli")
 local git = require("gitlad.git")
 local commands = require("gitlad.state.commands")
 local reducer = require("gitlad.state.reducer")
@@ -237,6 +238,13 @@ function RepoState:_fetch_extended_status(result, callback)
     result.am_last_patch = seq_state.am_last_patch
     result.sequencer_head_oid = seq_state.sequencer_head_oid
 
+    -- Copy rebase-specific state
+    result.rebase_head_name = seq_state.rebase_head_name
+    result.rebase_onto = seq_state.rebase_onto
+    result.rebase_stopped_sha = seq_state.rebase_stopped_sha
+    result.rebase_todo = seq_state.rebase_todo
+    result.rebase_done = seq_state.rebase_done
+
     -- If there's a sequencer operation in progress, fetch the commit subject
     if seq_state.sequencer_head_oid then
       start_op()
@@ -244,6 +252,66 @@ function RepoState:_fetch_extended_status(result, callback)
         result.sequencer_head_subject = subject
         complete_one()
       end)
+    end
+
+    -- If rebase is in progress with onto, fetch additional info
+    if seq_state.rebase_in_progress and seq_state.rebase_onto then
+      -- Fetch onto commit info (abbreviated hash + subject)
+      start_op()
+      cli.run_async(
+        { "log", "-1", "--format=%h%n%s", seq_state.rebase_onto },
+        opts,
+        function(log_result)
+          if log_result.code == 0 then
+            result.rebase_onto_abbrev = log_result.stdout[1]
+            result.rebase_onto_subject = log_result.stdout[2]
+          end
+          complete_one()
+        end
+      )
+
+      -- Fetch done commits (new commits created during rebase: onto..HEAD)
+      -- Use record separator %x1e to split fields (safe in commit subjects)
+      start_op()
+      cli.run_async(
+        { "log", "--format=%H%x1e%h%x1e%s", "--reverse", seq_state.rebase_onto .. "..HEAD" },
+        opts,
+        function(log_result)
+          if log_result.code == 0 then
+            result.rebase_done_commits = {}
+            for _, line in ipairs(log_result.stdout) do
+              if line ~= "" then
+                local parts = vim.split(line, "\30")
+                table.insert(result.rebase_done_commits, {
+                  hash = parts[1],
+                  abbrev = parts[2],
+                  subject = parts[3] or "",
+                })
+              end
+            end
+          end
+          complete_one()
+        end
+      )
+
+      -- Try to resolve onto to a meaningful branch name
+      start_op()
+      cli.run_async(
+        { "name-rev", "--name-only", "--no-undefined", seq_state.rebase_onto },
+        opts,
+        function(nr_result)
+          if nr_result.code == 0 and nr_result.stdout[1] then
+            local name = vim.trim(nr_result.stdout[1])
+            -- Clean up name-rev output (e.g., "main~2" -> "main")
+            -- Only use it if it's a clean branch/tag name
+            local clean_name = name:match("^([^~^]+)")
+            if clean_name and clean_name ~= "" then
+              result.rebase_onto_name = clean_name
+            end
+          end
+          complete_one()
+        end
+      )
     end
 
     complete_one()

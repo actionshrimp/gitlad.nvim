@@ -90,6 +90,7 @@ require("gitlad").setup({
       "unstaged",
       "staged",
       "conflicted",
+      "rebase_sequence",
       "stashes",
       "submodules",
       { "worktrees", min_count = 2 },

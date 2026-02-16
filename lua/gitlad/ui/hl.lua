@@ -169,6 +169,15 @@ local highlight_groups = {
   GitladReflogReset = { link = "DiagnosticError" }, -- Red: reset, restart
   GitladReflogPull = { link = "DiagnosticHint" }, -- Cyan: pull, clone
   GitladReflogSelector = { link = "Comment" }, -- For HEAD@{0} selectors
+
+  -- Rebase sequence (matching magit-sequence faces)
+  GitladSequencePick = { link = "Normal" }, -- Pending actions (default fg)
+  GitladSequenceDone = { link = "Comment" }, -- Completed commits (muted)
+  GitladSequenceHead = { link = "DiagnosticInfo" }, -- Current HEAD commit (blue)
+  GitladSequenceOnto = { link = "Comment" }, -- Base "onto" commit (muted)
+  GitladSequenceStop = { link = "DiagnosticOk" }, -- Stopped commit (green)
+  GitladSequenceDrop = { link = "DiagnosticError" }, -- Dropped commit (red)
+  GitladSectionRebase = { link = "GitladSectionHeader" }, -- Rebase section header
 }
 
 -- Section header definition: single style for all section headers (like magit/neogit)
