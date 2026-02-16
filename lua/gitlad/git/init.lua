@@ -502,6 +502,11 @@ function M.remote_names_sync(opts)
   return remotes
 end
 
+---@class RebaseTodoEntry
+---@field action string Action type (pick/reword/squash/fixup/edit/drop/exec/break/label/reset/update-ref)
+---@field hash string|nil Abbreviated commit hash (nil for exec/break/label/reset/update-ref)
+---@field subject string|nil Commit subject or command target (nil for break)
+
 ---@class SequencerState
 ---@field cherry_pick_in_progress boolean
 ---@field revert_in_progress boolean
@@ -510,6 +515,82 @@ end
 ---@field am_current_patch string|nil Current patch number during git am
 ---@field am_last_patch string|nil Total patch count during git am
 ---@field sequencer_head_oid string|nil The commit being cherry-picked/reverted
+---@field rebase_head_name string|nil Branch being rebased (short name, e.g. "feature")
+---@field rebase_onto string|nil Full SHA of the rebase target base commit
+---@field rebase_stopped_sha string|nil SHA of commit that caused a stop (conflict/edit)
+---@field rebase_todo RebaseTodoEntry[]|nil Pending rebase actions
+---@field rebase_done RebaseTodoEntry[]|nil Completed rebase actions
+
+--- Parse a rebase todo or done file into a list of entries
+--- Skips comment lines (starting with # or configured commentChar)
+---@param lines string[] Lines from the file
+---@return RebaseTodoEntry[]
+function M.parse_rebase_todo_lines(lines)
+  local entries = {}
+  for _, line in ipairs(lines) do
+    -- Skip empty lines and comments
+    if line == "" or line:match("^%s*#") or line:match("^%s*;") then
+      goto continue
+    end
+
+    -- Trim leading/trailing whitespace
+    line = vim.trim(line)
+
+    -- Parse action
+    local action, rest = line:match("^(%S+)%s*(.*)")
+    if not action then
+      goto continue
+    end
+
+    -- Normalize short aliases to full names
+    local aliases = {
+      p = "pick",
+      r = "reword",
+      e = "edit",
+      s = "squash",
+      f = "fixup",
+      d = "drop",
+      x = "exec",
+      b = "break",
+      l = "label",
+      t = "reset",
+      u = "update-ref",
+    }
+    action = aliases[action] or action
+
+    if action == "break" then
+      table.insert(entries, { action = "break", hash = nil, subject = nil })
+    elseif action == "exec" then
+      table.insert(entries, { action = "exec", hash = nil, subject = rest })
+    elseif action == "label" or action == "reset" or action == "update-ref" then
+      table.insert(entries, { action = action, hash = nil, subject = rest })
+    elseif
+      action == "pick"
+      or action == "reword"
+      or action == "edit"
+      or action == "squash"
+      or action == "fixup"
+      or action == "drop"
+    then
+      -- Format: action hash subject
+      -- fixup can have -C/-c flags: fixup -C hash subject
+      local hash, subject
+      if action == "fixup" then
+        local flag, flag_rest = rest:match("^(%-[Cc])%s+(.*)")
+        if flag then
+          rest = flag_rest
+        end
+      end
+      hash, subject = rest:match("^(%S+)%s*(.*)")
+      if hash then
+        table.insert(entries, { action = action, hash = hash, subject = subject or "" })
+      end
+    end
+
+    ::continue::
+  end
+  return entries
+end
 
 --- Check if a cherry-pick, revert, rebase, or am is in progress
 ---@param opts? GitCommandOptions
@@ -525,6 +606,11 @@ function M.get_sequencer_state(opts, callback)
       am_current_patch = nil,
       am_last_patch = nil,
       sequencer_head_oid = nil,
+      rebase_head_name = nil,
+      rebase_onto = nil,
+      rebase_stopped_sha = nil,
+      rebase_todo = nil,
+      rebase_done = nil,
     })
     return
   end
@@ -537,6 +623,11 @@ function M.get_sequencer_state(opts, callback)
     am_current_patch = nil,
     am_last_patch = nil,
     sequencer_head_oid = nil,
+    rebase_head_name = nil,
+    rebase_onto = nil,
+    rebase_stopped_sha = nil,
+    rebase_todo = nil,
+    rebase_done = nil,
   }
 
   -- Check for CHERRY_PICK_HEAD
@@ -567,6 +658,50 @@ function M.get_sequencer_state(opts, callback)
   local rebase_merge = git_dir .. "/rebase-merge"
   if vim.fn.isdirectory(rebase_merge) == 1 then
     state.rebase_in_progress = true
+
+    -- Read head-name (branch being rebased)
+    local head_name_file = rebase_merge .. "/head-name"
+    if vim.fn.filereadable(head_name_file) == 1 then
+      local content = vim.fn.readfile(head_name_file)
+      if content[1] then
+        local name = vim.trim(content[1])
+        -- Strip refs/heads/ prefix for display
+        state.rebase_head_name = name:gsub("^refs/heads/", "")
+      end
+    end
+
+    -- Read onto (target base commit SHA)
+    local onto_file = rebase_merge .. "/onto"
+    if vim.fn.filereadable(onto_file) == 1 then
+      local content = vim.fn.readfile(onto_file)
+      if content[1] then
+        state.rebase_onto = vim.trim(content[1])
+      end
+    end
+
+    -- Read stopped-sha (commit that caused a stop, if any)
+    local stopped_sha_file = rebase_merge .. "/stopped-sha"
+    if vim.fn.filereadable(stopped_sha_file) == 1 then
+      local content = vim.fn.readfile(stopped_sha_file)
+      if content[1] then
+        state.rebase_stopped_sha = vim.trim(content[1])
+      end
+    end
+
+    -- Read git-rebase-todo (pending actions)
+    local todo_file = rebase_merge .. "/git-rebase-todo"
+    if vim.fn.filereadable(todo_file) == 1 then
+      local content = vim.fn.readfile(todo_file)
+      state.rebase_todo = M.parse_rebase_todo_lines(content)
+    end
+
+    -- Read done (completed actions)
+    local done_file = rebase_merge .. "/done"
+    if vim.fn.filereadable(done_file) == 1 then
+      local content = vim.fn.readfile(done_file)
+      state.rebase_done = M.parse_rebase_todo_lines(content)
+    end
+
     callback(state)
     return
   end

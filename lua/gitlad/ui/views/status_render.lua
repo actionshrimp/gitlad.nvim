@@ -30,6 +30,8 @@ local COLLAPSIBLE_SECTIONS = {
   unpulled_push = true,
   unpushed_push = true,
   recent = true,
+  -- Rebase sequence
+  rebase_sequence = true,
   -- Other sections
   stashes = true,
   submodules = true,
@@ -307,7 +309,110 @@ local function render(self)
     end
     table.insert(lines, seq_line)
   elseif status.rebase_in_progress then
-    table.insert(lines, "Rebasing: resolve conflicts and press 'r' to continue")
+    -- Blank line before the rebase section (separates from Head/Merge/Push header)
+    table.insert(lines, "")
+
+    -- Full rebase sequence section (magit-style)
+    local rebase_branch = status.rebase_head_name or status.branch or "unknown"
+    local rebase_target = status.rebase_onto_name or (status.rebase_onto_abbrev or "unknown")
+    local rebase_header = string.format("Rebasing %s onto %s", rebase_branch, rebase_target)
+    table.insert(lines, rebase_header)
+    self.section_lines[#lines] = { name = rebase_header, section = "rebase_sequence" }
+    self.sign_lines[#lines] = { expanded = not self.collapsed_sections["rebase_sequence"] }
+
+    if not self.collapsed_sections["rebase_sequence"] then
+      -- 1. Todo lines (pending actions, in original order - first item is next to be applied)
+      if status.rebase_todo then
+        for _, entry in ipairs(status.rebase_todo) do
+          local todo_line
+          if entry.action == "break" then
+            todo_line = "break"
+          elseif
+            entry.action == "exec"
+            or entry.action == "label"
+            or entry.action == "reset"
+            or entry.action == "update-ref"
+          then
+            todo_line = string.format("%s %s", entry.action, entry.subject or "")
+          else
+            todo_line =
+              string.format("%s %s %s", entry.action, entry.hash or "", entry.subject or "")
+          end
+          table.insert(lines, todo_line)
+          self.line_map[#lines] = {
+            type = "rebase_commit",
+            action = entry.action,
+            hash = entry.hash,
+            subject = entry.subject,
+            rebase_state = "todo",
+          }
+        end
+      end
+
+      -- 2. Stopped commit (if paused at conflict/edit)
+      if status.rebase_stopped_sha then
+        local stopped_abbrev = status.rebase_stopped_sha:sub(1, 7)
+        -- Find the subject from the done file entries
+        local stopped_subject = ""
+        if status.rebase_done then
+          for i = #status.rebase_done, 1, -1 do
+            local entry = status.rebase_done[i]
+            if entry.hash and entry.hash:sub(1, 7) == stopped_abbrev then
+              stopped_subject = entry.subject or ""
+              break
+            end
+          end
+        end
+        local stop_line = string.format("stop %s %s", stopped_abbrev, stopped_subject)
+        table.insert(lines, stop_line)
+        self.line_map[#lines] = {
+          type = "rebase_commit",
+          action = "stop",
+          hash = stopped_abbrev,
+          subject = stopped_subject,
+          rebase_state = "stop",
+        }
+      end
+
+      -- 3. Done commits (from git log onto..HEAD, most recent first)
+      -- Skip the stopped commit (already shown as "stop" above)
+      if status.rebase_done_commits and #status.rebase_done_commits > 0 then
+        local stopped_sha = status.rebase_stopped_sha
+        for i = #status.rebase_done_commits, 1, -1 do
+          local commit = status.rebase_done_commits[i]
+          -- Skip if this is the stopped commit (already shown as "stop")
+          if not stopped_sha or not commit.hash:find(stopped_sha, 1, true) then
+            local done_line = string.format("done %s %s", commit.abbrev, commit.subject)
+            table.insert(lines, done_line)
+            self.line_map[#lines] = {
+              type = "rebase_commit",
+              action = "done",
+              hash = commit.abbrev,
+              full_hash = commit.hash,
+              subject = commit.subject,
+              rebase_state = "done",
+              -- Only mark as HEAD if there's no stopped commit (stop line is HEAD otherwise)
+              is_head = not stopped_sha and (i == #status.rebase_done_commits),
+            }
+          end
+        end
+      end
+
+      -- 4. Onto line
+      if status.rebase_onto_abbrev then
+        local onto_line =
+          string.format("onto %s %s", status.rebase_onto_abbrev, status.rebase_onto_subject or "")
+        table.insert(lines, onto_line)
+        self.line_map[#lines] = {
+          type = "rebase_commit",
+          action = "onto",
+          hash = status.rebase_onto_abbrev,
+          full_hash = status.rebase_onto,
+          subject = status.rebase_onto_subject,
+          rebase_state = "onto",
+        }
+      end
+    end
   elseif status.merge_in_progress then
     local short_oid = status.merge_head_oid and status.merge_head_oid:sub(1, 7) or "unknown"
     local merge_line = "Merging: " .. short_oid

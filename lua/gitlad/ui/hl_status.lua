@@ -33,6 +33,26 @@ local section_hl = {
   unpulled_push = "GitladSectionUnpulled",
   unpushed_push = "GitladSectionUnpushed",
   recent = "GitladSectionRecent",
+  -- Rebase sequence
+  rebase_sequence = "GitladSectionRebase",
+}
+
+-- Map rebase actions to highlight groups for the action keyword
+local rebase_action_hl = {
+  pick = "GitladSequencePick",
+  reword = "GitladSequencePick",
+  edit = "GitladSequencePick",
+  squash = "GitladSequencePick",
+  fixup = "GitladSequencePick",
+  drop = "GitladSequenceDrop",
+  exec = "GitladSequencePick",
+  ["break"] = "GitladSequencePick",
+  label = "GitladSequencePick",
+  reset = "GitladSequencePick",
+  ["update-ref"] = "GitladSequencePick",
+  stop = "GitladSequenceStop",
+  done = "GitladSequenceDone",
+  onto = "GitladSequenceOnto",
 }
 
 --- Apply highlight to a status indicator line (full render)
@@ -567,6 +587,34 @@ function M.apply_status_highlights(
         if path_start then
           hl_module.set(bufnr, ns_status, line_idx, path_start - 1, #line, "GitladWorktreePath")
         end
+      end
+
+      -- Rebase sequence lines (pick, reword, edit, squash, fixup, drop, exec, break, done, stop, onto)
+    elseif line_map[i] and line_map[i].type == "rebase_commit" then
+      local info = line_map[i]
+      local action = info.action
+      local action_group = rebase_action_hl[action] or "GitladSequencePick"
+
+      -- For HEAD commit in done section, use head highlight
+      if info.is_head and info.rebase_state == "done" then
+        action_group = "GitladSequenceHead"
+      end
+
+      -- Highlight the action keyword
+      local action_len = #action
+      hl_module.set(bufnr, ns_status, line_idx, 0, action_len, action_group)
+
+      -- For commit actions (with hash), highlight hash and subject
+      if info.hash then
+        local hash_start = action_len + 1
+        local hash_end = hash_start + #info.hash
+        hl_module.set(bufnr, ns_status, line_idx, hash_start, hash_end, "GitladCommitHash")
+        if hash_end < #line then
+          hl_module.set(bufnr, ns_status, line_idx, hash_end + 1, #line, "GitladCommitMsg")
+        end
+      elseif action_len < #line then
+        -- For non-commit actions (exec, break, label, etc.), highlight the rest as commit msg
+        hl_module.set(bufnr, ns_status, line_idx, action_len + 1, #line, "GitladCommitMsg")
       end
 
       -- Help line
