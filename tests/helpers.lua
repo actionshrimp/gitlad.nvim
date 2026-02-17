@@ -136,9 +136,9 @@ end
 
 --- Wait until a popup window opens (window count > 1)
 ---@param child table MiniTest child process
----@param timeout? number Timeout in milliseconds (default 500)
+---@param timeout? number Timeout in milliseconds (default 2000)
 function M.wait_for_popup(child, timeout)
-  timeout = timeout or 500
+  timeout = timeout or 2000
   child.lua(string.format(
     [[
     vim.wait(%d, function()
@@ -151,9 +151,9 @@ end
 
 --- Wait until popup window closes (window count == 1)
 ---@param child table MiniTest child process
----@param timeout? number Timeout in milliseconds (default 300)
+---@param timeout? number Timeout in milliseconds (default 1000)
 function M.wait_for_popup_closed(child, timeout)
-  timeout = timeout or 300
+  timeout = timeout or 1000
   child.lua(string.format(
     [[
     vim.wait(%d, function()
@@ -219,9 +219,9 @@ end
 --- Wait until a global variable is set (useful for async callbacks)
 ---@param child table MiniTest child process
 ---@param var_name string Name of the global variable (e.g., "_G.my_result")
----@param timeout? number Timeout in milliseconds (default 1000)
+---@param timeout? number Timeout in milliseconds (default 5000)
 function M.wait_for_var(child, var_name, timeout)
-  timeout = timeout or 1000
+  timeout = timeout or 5000
   child.lua(string.format(
     [[
     vim.wait(%d, function()
@@ -327,7 +327,7 @@ end
 function M.open_gitlad(child, repo_path, timeout)
   child.lua(string.format([[vim.cmd("cd %s")]], repo_path))
   child.cmd("Gitlad")
-  M.wait_for_status(child, timeout or 1000)
+  M.wait_for_status(child, timeout or 5000)
 end
 
 --- Change directory in child process

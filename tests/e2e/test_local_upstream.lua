@@ -114,6 +114,7 @@ T["local upstream"]["rebase popup shows local upstream ref"] = function()
   -- Open rebase popup
   child.type_keys("r")
   helpers.wait_for_popup(child)
+  helpers.wait_for_buffer_content(child, "Rebase", 2000)
 
   -- Get popup content
   child.lua([[
@@ -149,6 +150,7 @@ T["local upstream"]["rebase onto local upstream succeeds"] = function()
   -- Open rebase popup
   child.type_keys("r")
   helpers.wait_for_popup(child)
+  helpers.wait_for_buffer_content(child, "Rebase", 2000)
 
   -- Press u to rebase onto upstream (which is local branch "main")
   child.type_keys("u")
@@ -204,6 +206,7 @@ T["local upstream"]["rebase onto local upstream with conflicts shows in-progress
   -- Open rebase popup and rebase onto upstream
   child.type_keys("r")
   helpers.wait_for_popup(child)
+  helpers.wait_for_buffer_content(child, "Rebase", 2000)
   child.type_keys("u")
 
   -- Should get a conflict notification
@@ -281,10 +284,11 @@ T["local upstream"]["setting local upstream via branch popup updates status view
   -- Open branch popup and press u to set upstream
   child.type_keys("b")
   helpers.wait_for_popup(child)
+  helpers.wait_for_buffer_content(child, "Set upstream", 2000)
   child.type_keys("u")
 
-  -- Wait for async config operations to complete
-  helpers.wait_short(child, 500)
+  -- Wait for async set-upstream operation to complete
+  helpers.wait_for_message(child, "Set upstream", 5000)
 
   -- Close popup to return to status view
   child.type_keys("q")
@@ -348,10 +352,11 @@ T["local upstream"]["setting slashed local branch as upstream works via branch p
   -- Open branch popup and press u to set upstream
   child.type_keys("b")
   helpers.wait_for_popup(child)
+  helpers.wait_for_buffer_content(child, "Set upstream", 2000)
   child.type_keys("u")
 
-  -- Wait for async config operations to complete
-  helpers.wait_short(child, 500)
+  -- Wait for async set-upstream operation to complete
+  helpers.wait_for_message(child, "Set upstream", 5000)
 
   -- Close popup to return to status view
   child.type_keys("q")
@@ -398,6 +403,7 @@ T["local upstream"]["push popup shows local branch name as upstream label"] = fu
   -- Open push popup
   child.type_keys("p")
   helpers.wait_for_popup(child)
+  helpers.wait_for_buffer_content(child, "Push", 2000)
 
   -- Get popup content
   child.lua([[
