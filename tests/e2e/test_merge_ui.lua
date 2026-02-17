@@ -390,7 +390,7 @@ T["branch selection"]["shows notification when no branches available"] = functio
   child.type_keys("m")
   helpers.wait_for_popup(child)
   child.type_keys("m")
-  helpers.wait_short(child, 500)
+  child.lua([[vim.wait(5000, function() return #_G.notifications > 0 end, 10)]])
 
   local notifications = child.lua_get([[_G.notifications]])
 

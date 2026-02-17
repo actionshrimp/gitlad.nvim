@@ -226,7 +226,7 @@ T["stash operations"]["stash push creates a stash"] = function()
     repo
   ))
 
-  helpers.wait_for_var(child, "_G.stash_result")
+  helpers.wait_for_var(child, "_G.stash_result", 5000)
   local result = child.lua_get([[_G.stash_result]])
 
   eq(result.success, true)

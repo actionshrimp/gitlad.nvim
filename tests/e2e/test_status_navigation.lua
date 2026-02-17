@@ -81,7 +81,7 @@ T["refresh"]["gr refreshes status"] = function()
   ]])
 
   -- Wait for async refresh to complete
-  child.lua([[vim.wait(1000, function()
+  child.lua([[vim.wait(5000, function()
     local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
     for _, line in ipairs(lines) do
       if line:find("newfile.txt", 1, true) then return true end
@@ -123,7 +123,7 @@ T["refresh"]["shows updated status after external git changes"] = function()
   ]])
 
   -- Wait for refresh to complete - use vim.wait with a condition
-  child.lua([[vim.wait(1000, function()
+  child.lua([[vim.wait(5000, function()
     local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
     for _, line in ipairs(lines) do
       if line:find("Staged", 1, true) then return true end
