@@ -12,18 +12,7 @@ A magit-inspired git interface for Neovim, built for large monorepos.
 
 ## Installation
 
-Using [lazy.nvim](https://github.com/folke/lazy.nvim):
-
-```lua
-{
-  "actionshrimp/gitlad.nvim",
-  config = function()
-    require("gitlad").setup()
-  end,
-}
-```
-
-Optionally add [diffview.nvim](https://github.com/sindrets/diffview.nvim) for full-buffer diffs and 3-way staging:
+Using [lazy.nvim](https://github.com/folke/lazy.nvim) (use either the standard diffview.nvim, or use my fork for 3-way staging functionality like magit/ediff):
 
 ```lua
 {
