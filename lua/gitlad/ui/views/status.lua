@@ -24,6 +24,7 @@ local status_keymaps = require("gitlad.ui.views.status_keymaps")
 local status_staging = require("gitlad.ui.views.status_staging")
 local status_diffs = require("gitlad.ui.views.status_diffs")
 local status_navigation = require("gitlad.ui.views.status_navigation")
+local status_cursor = require("gitlad.ui.views.status_cursor")
 
 ---@class LineInfo
 ---@field type "file" Discriminator for union type
@@ -94,6 +95,7 @@ status_keymaps.setup(StatusBuffer)
 status_staging.setup(StatusBuffer)
 status_diffs.setup(StatusBuffer)
 status_navigation.setup(StatusBuffer)
+status_cursor.setup(StatusBuffer)
 
 -- Active status buffers by repo root
 local status_buffers = {}
@@ -157,32 +159,43 @@ local function get_or_create_buffer(repo_state)
   -- Listen for status updates
   repo_state:on("status", function()
     vim.schedule(function()
-      -- Manage spinner based on refreshing state
       if repo_state.refreshing then
+        -- Just update spinner — don't re-render or clear state
         self.spinner:start(function()
           self:_update_status_line()
         end)
-      else
-        self.spinner:stop()
-        -- Clear stale flag since we just refreshed
-        self.spinner:clear_stale()
-        -- Mark initial load as complete once data arrives
-        if not self.initial_load_complete then
-          self.initial_load_complete = true
-        end
+        return
       end
 
-      -- Clear diff/expansion data when status changes to avoid stale data
-      self.expanded_files = {}
-      self.expanded_commits = {}
+      self.spinner:stop()
+      self.spinner:clear_stale()
+      if not self.initial_load_complete then
+        self.initial_load_complete = true
+      end
+
+      -- Save cursor identity before re-render (skip on initial open or pending target)
+      local cursor_identity = nil
+      if not self._position_cursor_on_render and not self.pending_cursor_target then
+        cursor_identity = self:_save_cursor_identity()
+      end
+
+      -- Clean up stale expansion entries instead of blanket clearing
+      self:_cleanup_stale_expansion()
+
+      -- Invalidate diff cache (status changed, diffs may be stale)
+      -- Re-fetch diffs for expanded files before rendering
       self.diff_cache = {}
-      self:render()
+      self:_refresh_expanded_diffs(function()
+        self:render()
 
-      -- Position cursor at first item after fresh open (only when data has arrived, not during refresh)
-      if self._position_cursor_on_render and not repo_state.refreshing then
-        self._position_cursor_on_render = false
-        self:_goto_first_item()
-      end
+        -- Position cursor at first item after fresh open
+        if self._position_cursor_on_render then
+          self._position_cursor_on_render = false
+          self:_goto_first_item()
+        elseif cursor_identity then
+          self:_restore_cursor(cursor_identity)
+        end
+      end)
     end)
   end)
 
