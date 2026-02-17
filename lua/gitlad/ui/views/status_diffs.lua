@@ -966,6 +966,73 @@ local function toggle_all_sections(self)
   self:render()
 end
 
+--- Re-fetch diffs for all currently expanded files
+--- Used after refresh to update stale diff cache while preserving expansion state
+---@param self StatusBuffer
+---@param callback fun() Called when all diffs have been re-fetched
+local function refresh_expanded_diffs(self, callback)
+  local status = self.repo_state.status
+  if not status then
+    callback()
+    return
+  end
+
+  -- Collect all expanded files that need diffs re-fetched
+  local to_fetch = {}
+  for key, expansion_state in pairs(self.expanded_files) do
+    if expansion_state then -- truthy (true or table)
+      -- Parse key: "section:path" or "submodule:path"
+      local section, path = key:match("^([^:]+):(.+)$")
+      if section and path and section ~= "submodule" then
+        -- Find the entry in status to get orig_path for renames
+        local entry = nil
+        local entries = status[section] or {}
+        for _, e in ipairs(entries) do
+          if e.path == path then
+            entry = e
+            break
+          end
+        end
+        if entry then
+          table.insert(to_fetch, {
+            key = key,
+            path = path,
+            section = section,
+            entry = entry,
+          })
+        end
+      end
+    end
+  end
+
+  if #to_fetch == 0 then
+    callback()
+    return
+  end
+
+  local pending = #to_fetch
+  local opts = { cwd = self.repo_state.repo_root }
+
+  for _, file_info in ipairs(to_fetch) do
+    local function on_result(diff_lines, err)
+      if not err then
+        self.diff_cache[file_info.key] = parse_diff(diff_lines or {})
+      end
+      pending = pending - 1
+      if pending == 0 then
+        vim.schedule(callback)
+      end
+    end
+
+    if file_info.section == "untracked" then
+      git.diff_untracked(file_info.path, opts, on_result)
+    else
+      local staged = (file_info.section == "staged")
+      git.diff(file_info.path, staged, opts, on_result, file_info.entry.orig_path)
+    end
+  end
+end
+
 --- Attach diff methods to StatusBuffer class
 ---@param StatusBuffer table The StatusBuffer class
 function M.setup(StatusBuffer)
@@ -973,6 +1040,7 @@ function M.setup(StatusBuffer)
   StatusBuffer._build_partial_hunk_patch = build_partial_hunk_patch
   StatusBuffer._toggle_diff = toggle_diff
   StatusBuffer._expand_all_files = expand_all_files
+  StatusBuffer._refresh_expanded_diffs = refresh_expanded_diffs
   StatusBuffer._apply_visibility_level = apply_visibility_level
   StatusBuffer._apply_scoped_visibility_level = apply_scoped_visibility_level
   StatusBuffer._cycle_visibility_level = cycle_visibility_level

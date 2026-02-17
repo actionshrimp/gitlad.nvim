@@ -35,7 +35,7 @@
 - [x] hitting discard on an untracked directory gives an error - it should be possible to delete the whole directory (with a confirmation though!)
 - [x] setting upstream to a local branch doesnt work properly (couldn't repro this actually?)
 - [x] applying a patch
+- [x] stage some changes, tab to expand and check them. commit. after refresh, cursor is now on stashes. press p to push but it pops the stash instead
 - [ ] some kind of display of queued git operations so you know git is still working underneath for slow operations?
 - [ ] hook output window should only appear if hooks are actually configured. Before implementing, consider a holistic approach: detect configured hooks and show progress/output for all git operations that may trigger them (commit, push, etc.). This may warrant a dedicated phase in PLAN.md.
-- [ ] stage some changes, tab to expand and check them. commit. after refresh, cursor is now on stashes. press p to push but it pops the stash instead
 - [ ] implement the rebase todo list as per magit

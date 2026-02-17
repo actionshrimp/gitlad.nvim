@@ -431,6 +431,20 @@ local function stage_current(self)
     return
   end
 
+  if section == "unstaged" or section == "untracked" or section == "conflicted" then
+    -- Find the next file in this section to move cursor to after staging
+    -- First try next file, then try previous file
+    local _, next_path = self:_find_next_file_in_section(line, section, path)
+    if not next_path then
+      _, next_path = self:_find_prev_file_in_section(line, section, path)
+    end
+
+    -- Store the target for cursor positioning after render
+    if next_path then
+      self.pending_cursor_target = { path = next_path, section = section }
+    end
+  end
+
   if section == "unstaged" then
     -- Check if we're on a hunk line
     if hunk_index then
