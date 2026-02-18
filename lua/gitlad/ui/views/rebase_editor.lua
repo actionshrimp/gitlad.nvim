@@ -21,17 +21,37 @@ local keymap = require("gitlad.utils.keymap")
 ---@type RebaseEditorState|nil
 local active_editor = nil
 
---- Action abbreviation map (single char → full word)
-local ACTION_ABBREVIATIONS = {
-  p = "pick",
-  r = "reword",
-  e = "edit",
-  s = "squash",
-  f = "fixup",
-  d = "drop",
-  x = "exec",
-  b = "break",
-}
+--- Ordered list of actions for prefix matching. Earlier entries win when
+--- a prefix is ambiguous (e.g. "e" matches "edit" before "exec").
+local ACTION_WORDS = { "pick", "reword", "edit", "squash", "fixup", "drop", "exec", "break" }
+
+--- Set of full action words for quick lookup.
+local FULL_ACTIONS = {}
+for _, word in ipairs(ACTION_WORDS) do
+  FULL_ACTIONS[word] = true
+end
+
+--- Git's non-prefix aliases (e.g. "x" for "exec").
+local ACTION_ALIASES = { x = "exec" }
+
+--- Resolve a prefix (or alias) to a full action word. Returns the first
+--- action in priority order whose prefix matches, or nil if no match.
+---@param prefix string
+---@return string|nil
+function M._resolve_action_prefix(prefix)
+  if FULL_ACTIONS[prefix] then
+    return prefix
+  end
+  if ACTION_ALIASES[prefix] then
+    return ACTION_ALIASES[prefix]
+  end
+  for _, word in ipairs(ACTION_WORDS) do
+    if word:sub(1, #prefix) == prefix then
+      return word
+    end
+  end
+  return nil
+end
 
 --- Get git's comment character
 ---@return string
@@ -43,9 +63,9 @@ local function get_comment_char()
   return "#"
 end
 
---- Expand single-character action abbreviations to full words in-place.
+--- Expand action abbreviations (any prefix) to full words in-place.
 --- Operates on the given buffer. For each todo line, if the first word is a
---- recognized single-char abbreviation, replaces it with the full word.
+--- recognized prefix of an action word, replaces it with the full word.
 --- Uses nvim_buf_set_text to avoid moving the cursor.
 ---@param bufnr number Buffer number
 ---@param comment_char string Git comment character
@@ -59,12 +79,13 @@ function M._expand_action_abbreviations(bufnr, comment_char)
       goto continue
     end
 
-    -- Match: single char followed by space and more content
-    local abbrev = line:match("^(%a)%s")
-    if abbrev and ACTION_ABBREVIATIONS[abbrev] then
-      local full = ACTION_ABBREVIATIONS[abbrev]
-      -- Replace just the abbreviation character with the full word
-      vim.api.nvim_buf_set_text(bufnr, i - 1, 0, i - 1, 1, { full })
+    -- Extract the first word (must be followed by space or be the entire line for "break")
+    local first_word = line:match("^(%a+)%s")
+    if first_word and not FULL_ACTIONS[first_word] then
+      local full = M._resolve_action_prefix(first_word)
+      if full then
+        vim.api.nvim_buf_set_text(bufnr, i - 1, 0, i - 1, #first_word, { full })
+      end
     end
 
     ::continue::

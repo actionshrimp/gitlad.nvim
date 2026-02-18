@@ -227,12 +227,13 @@ T["expand_abbreviations"]["handles custom comment char"] = function()
   eq(lines[3], "fixup def5678 Second commit")
 end
 
-T["expand_abbreviations"]["does not expand unrecognized single chars"] = function()
+T["expand_abbreviations"]["does not expand unrecognized prefixes"] = function()
   local rebase_editor = require("gitlad.ui.views.rebase_editor")
   local buf = _G._test_buf
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
     "z abc1234 Not a valid action",
     "q abc1234 Not a valid action",
+    "xyz abc1234 Not a valid prefix",
   })
 
   rebase_editor._expand_action_abbreviations(buf, "#")
@@ -240,6 +241,7 @@ T["expand_abbreviations"]["does not expand unrecognized single chars"] = functio
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   eq(lines[1], "z abc1234 Not a valid action")
   eq(lines[2], "q abc1234 Not a valid action")
+  eq(lines[3], "xyz abc1234 Not a valid prefix")
 end
 
 T["expand_abbreviations"]["handles mixed abbreviated and full actions"] = function()
@@ -259,6 +261,92 @@ T["expand_abbreviations"]["handles mixed abbreviated and full actions"] = functi
   eq(lines[2], "fixup def5678 Abbreviated")
   eq(lines[3], "reword ghi9012 Already full")
   eq(lines[4], "squash jkl3456 Abbreviated")
+end
+
+T["expand_abbreviations"]["expands multi-char prefixes"] = function()
+  local rebase_editor = require("gitlad.ui.views.rebase_editor")
+  local buf = _G._test_buf
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+    "pi abc1234 commit1",
+    "rew abc1234 commit2",
+    "sq abc1234 commit3",
+    "fi abc1234 commit4",
+    "dr abc1234 commit5",
+    "ex echo hello",
+    "br abc1234 commit7",
+  })
+
+  rebase_editor._expand_action_abbreviations(buf, "#")
+
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  eq(lines[1], "pick abc1234 commit1")
+  eq(lines[2], "reword abc1234 commit2")
+  eq(lines[3], "squash abc1234 commit3")
+  eq(lines[4], "fixup abc1234 commit4")
+  eq(lines[5], "drop abc1234 commit5")
+  eq(lines[6], "exec echo hello")
+  eq(lines[7], "break abc1234 commit7")
+end
+
+T["expand_abbreviations"]["'e' prefers edit over exec"] = function()
+  local rebase_editor = require("gitlad.ui.views.rebase_editor")
+  local buf = _G._test_buf
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+    "e abc1234 ambiguous prefix",
+    "ed abc1234 clearly edit",
+    "ex echo hello",
+  })
+
+  rebase_editor._expand_action_abbreviations(buf, "#")
+
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  eq(lines[1], "edit abc1234 ambiguous prefix")
+  eq(lines[2], "edit abc1234 clearly edit")
+  eq(lines[3], "exec echo hello")
+end
+
+-- Test resolve_action_prefix directly
+T["resolve_prefix"] = MiniTest.new_set()
+
+T["resolve_prefix"]["resolves single-char prefixes"] = function()
+  local re = require("gitlad.ui.views.rebase_editor")
+  eq(re._resolve_action_prefix("p"), "pick")
+  eq(re._resolve_action_prefix("r"), "reword")
+  eq(re._resolve_action_prefix("e"), "edit")
+  eq(re._resolve_action_prefix("s"), "squash")
+  eq(re._resolve_action_prefix("f"), "fixup")
+  eq(re._resolve_action_prefix("d"), "drop")
+  eq(re._resolve_action_prefix("x"), "exec")
+  eq(re._resolve_action_prefix("b"), "break")
+end
+
+T["resolve_prefix"]["resolves multi-char prefixes"] = function()
+  local re = require("gitlad.ui.views.rebase_editor")
+  eq(re._resolve_action_prefix("pi"), "pick")
+  eq(re._resolve_action_prefix("pic"), "pick")
+  eq(re._resolve_action_prefix("rew"), "reword")
+  eq(re._resolve_action_prefix("ed"), "edit")
+  eq(re._resolve_action_prefix("ex"), "exec")
+  eq(re._resolve_action_prefix("sq"), "squash")
+  eq(re._resolve_action_prefix("fi"), "fixup")
+  eq(re._resolve_action_prefix("dr"), "drop")
+  eq(re._resolve_action_prefix("br"), "break")
+end
+
+T["resolve_prefix"]["returns full words unchanged"] = function()
+  local re = require("gitlad.ui.views.rebase_editor")
+  eq(re._resolve_action_prefix("pick"), "pick")
+  eq(re._resolve_action_prefix("reword"), "reword")
+  eq(re._resolve_action_prefix("edit"), "edit")
+  eq(re._resolve_action_prefix("exec"), "exec")
+  eq(re._resolve_action_prefix("break"), "break")
+end
+
+T["resolve_prefix"]["returns nil for unrecognized prefixes"] = function()
+  local re = require("gitlad.ui.views.rebase_editor")
+  eq(re._resolve_action_prefix("z"), nil)
+  eq(re._resolve_action_prefix("abc"), nil)
+  eq(re._resolve_action_prefix("picks"), nil)
 end
 
 -- Test git module has rebase_instantly
