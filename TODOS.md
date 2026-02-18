@@ -37,8 +37,8 @@
 - [x] applying a patch
 - [x] stage some changes, tab to expand and check them. commit. after refresh, cursor is now on stashes. press p to push but it pops the stash instead
 - [x] rebase in progress/todo header sometimes doesnt seem to be highlighted properly, and if you stage something when 'editing' a commit during an interactive rebase, the actual todos disappear until refresh
+- [x] rebase up/down movement doesnt work. better to just make it a regular vim buffer?
+- [x] implement the rebase todo list as per magit
 - [ ] staging/unstaging seems a bit unreliable again
-- [ ] rebase up/down movement doesnt work. better to just make it a regular vim buffer?
 - [ ] some kind of display of queued git operations so you know git is still working underneath for slow operations?
 - [ ] hook output window should only appear if hooks are actually configured. Before implementing, consider a holistic approach: detect configured hooks and show progress/output for all git operations that may trigger them (commit, push, etc.). This may warrant a dedicated phase in PLAN.md.
-- [ ] implement the rebase todo list as per magit
