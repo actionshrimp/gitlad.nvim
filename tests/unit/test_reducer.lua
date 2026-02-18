@@ -696,6 +696,77 @@ T["extended fields"]["preserves rebase_in_progress during stage_all"] = function
   eq(new_status.sequencer_head_subject, "Rebasing commit")
 end
 
+T["extended fields"]["preserves rebase detail fields during stage_file"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local status = make_status({
+    unstaged = { { path = "mod.txt", index_status = ".", worktree_status = "M" } },
+    rebase_in_progress = true,
+    rebase_head_name = "feature",
+    rebase_onto = "abc123def456",
+    rebase_onto_abbrev = "abc123d",
+    rebase_onto_subject = "Initial commit",
+    rebase_onto_name = "main",
+    rebase_stopped_sha = "def789abc012",
+    rebase_todo = {
+      { action = "pick", hash = "aaa1111", subject = "Second commit" },
+      { action = "squash", hash = "bbb2222", subject = "Third commit" },
+    },
+    rebase_done = {
+      { action = "edit", hash = "ccc3333", subject = "First commit" },
+    },
+    rebase_done_commits = {
+      { hash = "ddd4444fff555", abbrev = "ddd4444", subject = "First commit (rebased)" },
+    },
+  })
+
+  local cmd = commands.stage_file("mod.txt", "unstaged")
+  local new_status = reducer.apply(status, cmd)
+
+  -- All rebase detail fields should be preserved
+  eq(new_status.rebase_in_progress, true)
+  eq(new_status.rebase_head_name, "feature")
+  eq(new_status.rebase_onto, "abc123def456")
+  eq(new_status.rebase_onto_abbrev, "abc123d")
+  eq(new_status.rebase_onto_subject, "Initial commit")
+  eq(new_status.rebase_onto_name, "main")
+  eq(new_status.rebase_stopped_sha, "def789abc012")
+  -- Todo and done should be preserved
+  eq(#new_status.rebase_todo, 2)
+  eq(new_status.rebase_todo[1].action, "pick")
+  eq(new_status.rebase_todo[1].hash, "aaa1111")
+  eq(new_status.rebase_todo[2].action, "squash")
+  eq(#new_status.rebase_done, 1)
+  eq(new_status.rebase_done[1].action, "edit")
+  -- Done commits should be preserved
+  eq(#new_status.rebase_done_commits, 1)
+  eq(new_status.rebase_done_commits[1].abbrev, "ddd4444")
+end
+
+T["extended fields"]["rebase detail fields are deep copied (immutable)"] = function()
+  local reducer = require("gitlad.state.reducer")
+  local commands = require("gitlad.state.commands")
+
+  local todo = {
+    { action = "pick", hash = "aaa1111", subject = "A commit" },
+  }
+  local status = make_status({
+    unstaged = { { path = "mod.txt", index_status = ".", worktree_status = "M" } },
+    rebase_in_progress = true,
+    rebase_todo = todo,
+    rebase_done = {},
+    rebase_done_commits = {},
+  })
+
+  local cmd = commands.stage_file("mod.txt", "unstaged")
+  local new_status = reducer.apply(status, cmd)
+
+  -- Mutating new_status.rebase_todo should not affect original
+  new_status.rebase_todo[1].action = "drop"
+  eq(todo[1].action, "pick")
+end
+
 -- =============================================================================
 -- Directory Collapsing Tests
 -- =============================================================================
