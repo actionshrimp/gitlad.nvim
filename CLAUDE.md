@@ -366,20 +366,20 @@ This makes the plugin more comfortable for vim/evil users.
 | `A` / `_` / `X` | Cherry-pick/Revert/Reset popups |
 
 ### Rebase Editor (when editing git-rebase-todo)
+
+The rebase editor is a normal vim buffer. Use standard vim motions to edit freely.
+Action abbreviations (e.g. `f` → `fixup`) auto-expand when you leave insert mode.
+
 | Key | Action |
 |-----|--------|
-| `p` | Pick (use commit) |
-| `r` | Reword (edit message) |
-| `e` | Edit (stop for amending) |
-| `s` | Squash (meld into previous) |
-| `f` | Fixup (meld, discard message) |
-| `d` | Drop (remove commit) |
-| `x` | Exec (insert shell command) |
-| `b` | Break (insert break line) |
-| `M-j` / `M-k` | Move commit down/up |
+| `cw f<Esc>` | Change action to fixup (auto-expands from `f`) |
+| `dd` | Delete (drop) a commit line |
+| `ddp` | Move commit down (cut + paste below) |
+| `ddkP` | Move commit up (cut + paste above) |
 | `ZZ` / `C-c C-c` | Submit (apply rebase) |
 | `ZQ` / `C-c C-k` | Abort (cancel rebase) |
 | `<CR>` | Show commit at point |
+| `q` | Close (prompts to save if modified) |
 
 ### Commit Popup Actions
 | Key | Action |

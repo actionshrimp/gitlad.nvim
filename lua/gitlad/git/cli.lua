@@ -16,7 +16,7 @@ local history = require("gitlad.git.history")
 ---@class GitCommandOptions
 ---@field cwd? string Working directory (defaults to current)
 ---@field env? table<string, string> Environment variables
----@field timeout? number Timeout in milliseconds (default: 30000)
+---@field timeout? number Timeout in milliseconds (default: 30000, 0 = no timeout)
 ---@field on_output_line? fun(line: string, is_stderr: boolean) Callback for each output line (streaming)
 ---@field internal? boolean If true, bypass cooldown marking and command history (for internal operations like git check-ignore)
 
@@ -222,14 +222,16 @@ function M.run_async(args, opts, callback)
     end,
   })
 
-  -- Set up timeout
+  -- Set up timeout (0 = no timeout, for interactive commands like rebase editor)
   local timeout = opts.timeout or 30000
-  timeout_timer = vim.fn.timer_start(timeout, function()
-    if not completed then
-      vim.fn.jobstop(job_id)
-      on_complete(-1) -- Timeout exit code
-    end
-  end)
+  if timeout > 0 then
+    timeout_timer = vim.fn.timer_start(timeout, function()
+      if not completed then
+        vim.fn.jobstop(job_id)
+        on_complete(-1) -- Timeout exit code
+      end
+    end)
+  end
 
   return job_id
 end
@@ -444,14 +446,16 @@ function M.run_async_with_stdin(args, stdin_lines, opts, callback)
     vim.fn.chanclose(job_id, "stdin")
   end
 
-  -- Set up timeout
+  -- Set up timeout (0 = no timeout, for interactive commands like rebase editor)
   local timeout = opts.timeout or 30000
-  timeout_timer = vim.fn.timer_start(timeout, function()
-    if not completed then
-      vim.fn.jobstop(job_id)
-      on_complete(-1) -- Timeout exit code
-    end
-  end)
+  if timeout > 0 then
+    timeout_timer = vim.fn.timer_start(timeout, function()
+      if not completed then
+        vim.fn.jobstop(job_id)
+        on_complete(-1) -- Timeout exit code
+      end
+    end)
+  end
 
   return job_id
 end

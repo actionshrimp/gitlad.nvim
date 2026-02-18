@@ -1,7 +1,7 @@
 ---@mod gitlad.ui.views.rebase_editor Interactive rebase editor buffer
 ---@brief [[
---- Buffer for editing git-rebase-todo with evil-collection-magit keybindings.
---- Supports pick, reword, edit, squash, fixup, drop actions with single keystrokes.
+--- Vim-native rebase editor for git-rebase-todo files.
+--- Edit with full vim motions; action abbreviations auto-expand on save.
 --- ZZ/C-c C-c to submit, ZQ/C-c C-k to abort.
 ---@brief ]]
 
@@ -21,6 +21,38 @@ local keymap = require("gitlad.utils.keymap")
 ---@type RebaseEditorState|nil
 local active_editor = nil
 
+--- Ordered list of actions for prefix matching. Earlier entries win when
+--- a prefix is ambiguous (e.g. "e" matches "edit" before "exec").
+local ACTION_WORDS = { "pick", "reword", "edit", "squash", "fixup", "drop", "exec", "break" }
+
+--- Set of full action words for quick lookup.
+local FULL_ACTIONS = {}
+for _, word in ipairs(ACTION_WORDS) do
+  FULL_ACTIONS[word] = true
+end
+
+--- Git's non-prefix aliases (e.g. "x" for "exec").
+local ACTION_ALIASES = { x = "exec" }
+
+--- Resolve a prefix (or alias) to a full action word. Returns the first
+--- action in priority order whose prefix matches, or nil if no match.
+---@param prefix string
+---@return string|nil
+function M._resolve_action_prefix(prefix)
+  if FULL_ACTIONS[prefix] then
+    return prefix
+  end
+  if ACTION_ALIASES[prefix] then
+    return ACTION_ALIASES[prefix]
+  end
+  for _, word in ipairs(ACTION_WORDS) do
+    if word:sub(1, #prefix) == prefix then
+      return word
+    end
+  end
+  return nil
+end
+
 --- Get git's comment character
 ---@return string
 local function get_comment_char()
@@ -31,122 +63,61 @@ local function get_comment_char()
   return "#"
 end
 
---- Change the action for the current line
---- Supports vim count for changing multiple lines (e.g., 3p changes 3 lines to pick)
----@param action string New action (pick, reword, edit, squash, fixup)
+--- Expand action abbreviations (any prefix) to full words in-place.
+--- Operates on the given buffer. For each todo line, if the first word is a
+--- recognized prefix of an action word, replaces it with the full word.
+--- Uses nvim_buf_set_text to avoid moving the cursor.
+---@param bufnr number Buffer number
 ---@param comment_char string Git comment character
-local function set_line_action(action, comment_char)
-  local count = vim.v.count1
-  local changed = 0
+function M._expand_action_abbreviations(bufnr, comment_char)
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local comment_pat = "^" .. vim.pesc(comment_char)
 
-  while changed < count do
-    local line = vim.api.nvim_get_current_line()
-
-    -- Remove comment if present (for uncommenting dropped commits)
-    local is_commented = line:match("^" .. vim.pesc(comment_char) .. "%s")
-    if is_commented then
-      line = line:sub(#comment_char + 2) -- Remove "# "
+  for i, line in ipairs(lines) do
+    -- Skip empty lines and comment lines
+    if line == "" or line:match(comment_pat) then
+      goto continue
     end
 
-    -- Skip break and exec lines (they don't have commits)
-    local first_word = line:match("^(%S+)")
-    if
-      first_word
-      and (
-        first_word:match("^br")
-        or first_word:match("^ex")
-        or first_word == "break"
-        or first_word == "exec"
-      )
-    then
-      vim.cmd("normal! j")
-      if changed > 0 then
-        break
+    -- Extract the first word (must be followed by space or be the entire line for "break")
+    local first_word = line:match("^(%a+)%s")
+    if first_word and not FULL_ACTIONS[first_word] then
+      local full = M._resolve_action_prefix(first_word)
+      if full then
+        vim.api.nvim_buf_set_text(bufnr, i - 1, 0, i - 1, #first_word, { full })
       end
+    end
+
+    ::continue::
+  end
+end
+
+--- Set up auto-expansion autocmds for the rebase editor buffer.
+--- Creates buffer-local InsertLeave and TextChanged autocmds that expand
+--- single-char action abbreviations to full words.
+---@param bufnr number Buffer number
+---@param comment_char string Git comment character
+local function setup_auto_expansion(bufnr, comment_char)
+  local expanding = false
+  local augroup = vim.api.nvim_create_augroup("gitlad_rebase_expand_" .. bufnr, { clear = true })
+
+  local function do_expand()
+    if expanding then
       return
     end
-
-    -- Skip comment-only lines and the help section
-    if line:match("^" .. vim.pesc(comment_char)) and not is_commented then
-      break
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      return
     end
-
-    -- Parse: "action hash subject" format
-    local old_action, hash, rest = line:match("^(%S+)%s+(%x+)%s*(.*)$")
-    if old_action and hash then
-      -- Preserve short action format if the original was short
-      local new_action = action
-      if #old_action == 1 then
-        new_action = action:sub(1, 1)
-      end
-
-      local new_line = new_action .. " " .. hash
-      if rest and rest ~= "" then
-        new_line = new_line .. " " .. rest
-      end
-      vim.api.nvim_set_current_line(new_line)
-      changed = changed + 1
-    else
-      break
-    end
-
-    vim.cmd("normal! j")
+    expanding = true
+    M._expand_action_abbreviations(bufnr, comment_char)
+    expanding = false
   end
 
-  -- Save after changes
-  if changed > 0 and active_editor then
-    vim.cmd("silent! write")
-  end
-end
-
---- Drop (comment out) the current line
----@param comment_char string Git comment character
-local function drop_line(comment_char)
-  local line = vim.api.nvim_get_current_line()
-
-  -- Skip if already commented
-  if line:match("^" .. vim.pesc(comment_char) .. "%s") then
-    vim.cmd("normal! j")
-    return
-  end
-
-  -- Skip comment lines (help section)
-  if line:match("^" .. vim.pesc(comment_char)) then
-    return
-  end
-
-  -- Comment out the line
-  vim.api.nvim_set_current_line(comment_char .. " " .. line)
-  vim.cmd("normal! j")
-
-  -- Save after change
-  if active_editor then
-    vim.cmd("silent! write")
-  end
-end
-
---- Insert an exec line below current line
-local function insert_exec_line()
-  vim.ui.input({ prompt = "Execute: " }, function(cmd)
-    if cmd and cmd ~= "" then
-      local row = vim.api.nvim_win_get_cursor(0)[1]
-      vim.api.nvim_buf_set_lines(0, row, row, false, { "exec " .. cmd })
-      vim.cmd("normal! j")
-      if active_editor then
-        vim.cmd("silent! write")
-      end
-    end
-  end)
-end
-
---- Insert a break line below current line
-local function insert_break_line()
-  local row = vim.api.nvim_win_get_cursor(0)[1]
-  vim.api.nvim_buf_set_lines(0, row, row, false, { "break" })
-  vim.cmd("normal! j")
-  if active_editor then
-    vim.cmd("silent! write")
-  end
+  vim.api.nvim_create_autocmd({ "InsertLeave", "TextChanged" }, {
+    group = augroup,
+    buffer = bufnr,
+    callback = do_expand,
+  })
 end
 
 --- Show commit at point in diffview
@@ -173,20 +144,22 @@ local function build_help_text(comment_char)
   local c = comment_char
   return {
     c .. "",
-    c .. " Commands:",
-    c .. "   p      pick   = use commit",
-    c .. "   r      reword = use commit, but edit the commit message",
-    c .. "   e      edit   = use commit, but stop for amending",
-    c .. "   s      squash = use commit, but meld into previous commit",
-    c .. '   f      fixup  = like "squash", but discard this commit\'s log message',
-    c .. "   x      exec   = run command (the rest of the line) using shell",
-    c .. "   d      drop   = remove commit (comment out line)",
-    c .. "   u      undo last change",
-    c .. "   ZZ     tell Git to make it happen",
-    c .. "   ZQ     tell Git that you changed your mind, i.e. abort",
-    c .. "   M-k    move the commit up",
-    c .. "   M-j    move the commit down",
-    c .. "   <CR>   show the commit in another buffer",
+    c .. " This is a normal vim buffer. Edit freely with vim motions.",
+    c .. "",
+    c .. " Action words (pick, reword, edit, squash, fixup, drop, exec, break)",
+    c .. " auto-expand from abbreviations: e.g. type 'f' and it becomes 'fixup'.",
+    c .. "",
+    c .. " Reorder lines:  ddp (move down), ddkP (move up), :m +1, visual mode, etc.",
+    c .. " Change action:  cw fixup<Esc>, or just cw f<Esc> (auto-expands)",
+    c .. " Remove commit:  dd (delete the line entirely)",
+    c .. "",
+    c .. " Keybindings:",
+    c .. "   ZZ          submit (save and apply rebase)",
+    c .. "   ZQ          abort (cancel rebase)",
+    c .. "   C-c C-c     submit (also works in insert mode)",
+    c .. "   C-c C-k     abort (also works in insert mode)",
+    c .. "   <CR>        show commit at point in diffview",
+    c .. "   q           close (prompts to save if modified)",
     c .. "",
     c .. " These lines can be re-ordered; they are executed from top to bottom.",
     c .. "",
@@ -199,72 +172,8 @@ end
 
 --- Set up keymaps for the rebase editor buffer
 ---@param bufnr number Buffer number
----@param comment_char string Git comment character
-local function setup_keymaps(bufnr, comment_char)
+local function setup_keymaps(bufnr)
   local opts = { nowait = true }
-
-  -- Action keys (evil-collection-magit style)
-  keymap.set(bufnr, "n", "p", function()
-    set_line_action("pick", comment_char)
-  end, "Pick", opts)
-
-  keymap.set(bufnr, "n", "r", function()
-    set_line_action("reword", comment_char)
-  end, "Reword", opts)
-
-  keymap.set(bufnr, "n", "e", function()
-    set_line_action("edit", comment_char)
-  end, "Edit", opts)
-
-  keymap.set(bufnr, "n", "s", function()
-    set_line_action("squash", comment_char)
-  end, "Squash", opts)
-
-  keymap.set(bufnr, "n", "f", function()
-    set_line_action("fixup", comment_char)
-  end, "Fixup", opts)
-
-  keymap.set(bufnr, "n", "d", function()
-    drop_line(comment_char)
-  end, "Drop", opts)
-
-  keymap.set(bufnr, "n", "x", function()
-    insert_exec_line()
-  end, "Exec", opts)
-
-  keymap.set(bufnr, "n", "b", function()
-    insert_break_line()
-  end, "Break", opts)
-
-  -- Move lines (evil-collection uses M-j/M-k)
-  keymap.set(bufnr, "n", "<M-j>", function()
-    vim.cmd("move +1")
-    if active_editor then
-      vim.cmd("silent! write")
-    end
-  end, "Move down", opts)
-
-  keymap.set(bufnr, "n", "<M-k>", function()
-    vim.cmd("move -2")
-    if active_editor then
-      vim.cmd("silent! write")
-    end
-  end, "Move up", opts)
-
-  -- Also support M-n/M-p (magit style)
-  keymap.set(bufnr, "n", "<M-n>", function()
-    vim.cmd("move +1")
-    if active_editor then
-      vim.cmd("silent! write")
-    end
-  end, "Move down", opts)
-
-  keymap.set(bufnr, "n", "<M-p>", function()
-    vim.cmd("move -2")
-    if active_editor then
-      vim.cmd("silent! write")
-    end
-  end, "Move up", opts)
 
   -- Show commit at point
   keymap.set(bufnr, "n", "<CR>", function()
@@ -397,8 +306,14 @@ function M.open(filename, on_close)
     comment_char = comment_char,
   }
 
-  -- Set up keymaps
-  setup_keymaps(bufnr, comment_char)
+  -- Set up keymaps (no conflicting single-key maps)
+  setup_keymaps(bufnr)
+
+  -- Expand any abbreviations in the initial content
+  M._expand_action_abbreviations(bufnr, comment_char)
+
+  -- Set up auto-expansion for edits
+  setup_auto_expansion(bufnr, comment_char)
 
   -- Replace git's default help text with our own
   -- Find where the help section starts and replace it

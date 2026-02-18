@@ -86,7 +86,9 @@ local function do_rebase(repo_state, target, args)
   local opts = { cwd = repo_state.repo_root }
   if is_interactive then
     -- Use our custom editor for interactive rebase
+    -- Disable timeout since user may take any amount of time editing
     opts.env = client.get_envs_git_editor()
+    opts.timeout = 0
   end
 
   vim.notify("[gitlad] Rebasing onto " .. target .. "...", vim.log.levels.INFO)
@@ -416,9 +418,11 @@ function M._rebase_continue(repo_state)
 
   -- Pass git editor environment for commit message editing during conflict resolution
   -- When conflicts are resolved, git may want to open an editor to confirm/edit the commit message
+  -- Disable timeout since user may take any amount of time editing
   local opts = {
     cwd = repo_state.repo_root,
     env = client.get_envs_git_editor(),
+    timeout = 0,
   }
 
   git.rebase_continue(opts, function(success, err)
@@ -570,6 +574,7 @@ function M._rebase_subset(repo_state, popup_data)
         local opts = { cwd = repo_state.repo_root }
         if is_interactive then
           opts.env = client.get_envs_git_editor()
+          opts.timeout = 0
         end
 
         vim.notify("[gitlad] Rebasing subset onto " .. newbase .. "...", vim.log.levels.INFO)
@@ -659,8 +664,10 @@ function M._rebase_reword(repo_state, popup_data, context)
     end
 
     -- For reword, we need to use GIT_SEQUENCE_EDITOR to change the action
+    -- Disable timeout since user may take any amount of time editing the message
     local opts = {
       cwd = repo_state.repo_root,
+      timeout = 0,
       env = vim.tbl_extend("force", client.get_envs_git_editor(), {
         GIT_SEQUENCE_EDITOR = "sed -i.bak '1s/^pick/reword/'",
       }),
