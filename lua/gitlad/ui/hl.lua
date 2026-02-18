@@ -93,6 +93,7 @@ local highlight_groups = {
   GitladWorktreePath = { link = "Comment" },
   GitladWorktreeCurrent = { link = "DiagnosticOk" }, -- * indicator for current worktree
   GitladWorktreeLocked = { link = "DiagnosticWarn" }, -- L indicator for locked worktree
+  GitladWorktreePending = { link = "DiagnosticInfo" }, -- Spinner for pending worktree operation
 
   -- File entries
   GitladFileAdded = { link = "DiffAdd" },
