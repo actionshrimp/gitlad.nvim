@@ -408,6 +408,17 @@ function Watcher:start()
   self:_watch_directory(git_dir .. "/refs", git_callback)
   self:_watch_directory(git_dir .. "/refs/heads", git_callback)
   self:_watch_directory(git_dir .. "/refs/remotes", git_callback)
+  -- Watch per-remote subdirectories (e.g. refs/remotes/origin/)
+  -- fs_event doesn't watch recursively, and git push writes to
+  -- refs/remotes/<remote>/<branch>, so we need to watch each remote dir
+  local remotes_dir = git_dir .. "/refs/remotes"
+  if vim.fn.isdirectory(remotes_dir) == 1 then
+    for name, type in vim.fs.dir(remotes_dir) do
+      if type == "directory" then
+        self:_watch_directory(remotes_dir .. "/" .. name, git_callback)
+      end
+    end
+  end
   self:_watch_directory(git_dir .. "/refs/tags", git_callback)
 
   -- Layer 2: Watch working tree with gitignore filtering

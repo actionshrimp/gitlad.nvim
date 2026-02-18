@@ -800,6 +800,60 @@ T["branch detection"]["external branch creation triggers stale indicator"] = fun
 end
 
 -- =============================================================================
+-- Push detection tests
+-- =============================================================================
+
+T["push detection"] = MiniTest.new_set()
+
+T["push detection"]["git push triggers stale indicator via remote ref update"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create a bare remote and push to establish refs/remotes/origin/
+  local bare = child.lua_get("vim.fn.tempname()")
+  child.lua(string.format([[vim.fn.system("git init --bare " .. %q)]], bare))
+  helpers.git(child, repo, string.format("remote add origin %s", bare))
+  helpers.git(child, repo, "push -u origin main")
+
+  -- Setup with watcher enabled and short cooldown
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, cooldown_ms = 100 } })]])
+
+  -- Open status buffer (watcher enumerates refs/remotes/origin/ on start)
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Wait for cooldown from initial refresh to pass
+  helpers.wait_short(child, 500)
+
+  -- Create a new commit and push (writes to .git/refs/remotes/origin/main)
+  helpers.create_file(child, repo, "new.txt", "new")
+  helpers.git(child, repo, "add new.txt")
+  helpers.git(child, repo, "commit -m 'Second commit'")
+  helpers.git(child, repo, "push")
+
+  -- Wait for the stale indicator to appear
+  local found_stale = child.lua_get([[
+    (function()
+      local ok = vim.wait(3000, function()
+        local lines = vim.api.nvim_buf_get_lines(0, 0, 1, false)
+        return lines[1] and lines[1]:match("Stale") ~= nil
+      end, 50)
+      return ok
+    end)()
+  ]])
+
+  eq(found_stale, true)
+
+  child.lua(string.format([[vim.fn.delete(%q, "rf")]], bare))
+  cleanup_test_repo(child, repo)
+end
+
+-- =============================================================================
 -- BufWritePost detection tests
 -- =============================================================================
 
