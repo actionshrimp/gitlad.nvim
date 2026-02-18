@@ -154,6 +154,16 @@ local function copy_status(status)
     am_last_patch = status.am_last_patch,
     sequencer_head_oid = status.sequencer_head_oid,
     sequencer_head_subject = status.sequencer_head_subject,
+    -- Rebase detail fields (preserved during optimistic updates)
+    rebase_head_name = status.rebase_head_name,
+    rebase_onto = status.rebase_onto,
+    rebase_onto_abbrev = status.rebase_onto_abbrev,
+    rebase_onto_subject = status.rebase_onto_subject,
+    rebase_onto_name = status.rebase_onto_name,
+    rebase_stopped_sha = status.rebase_stopped_sha,
+    rebase_todo = vim.deepcopy(status.rebase_todo),
+    rebase_done = vim.deepcopy(status.rebase_done),
+    rebase_done_commits = vim.deepcopy(status.rebase_done_commits),
     -- Merge state fields
     merge_in_progress = status.merge_in_progress,
     merge_head_oid = status.merge_head_oid,
