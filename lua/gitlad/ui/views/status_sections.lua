@@ -229,56 +229,113 @@ end
 local function render_worktrees(ctx, opts)
   local status = ctx.status
   local self = ctx.self
+  local pending_ops = require("gitlad.state.pending_ops")
+
+  -- Count pending "add" ops for this repo (they show as phantom lines)
+  local repo_root = self.repo_state.repo_root:gsub("/$", "")
+  local pending_adds = {}
+  for _, op in pairs(pending_ops.get_all()) do
+    if op.type == "add" and op.repo_root:gsub("/$", "") == repo_root then
+      -- Only count if not already in the worktree list
+      local already_listed = false
+      if status.worktrees then
+        for _, wt in ipairs(status.worktrees) do
+          if wt.path:gsub("/$", "") == op.path then
+            already_listed = true
+            break
+          end
+        end
+      end
+      if not already_listed then
+        table.insert(pending_adds, op)
+      end
+    end
+  end
 
   -- min_count controls minimum worktrees needed to show section (default: 2, like magit)
   local min_count = opts.min_count or 2
-  if not status.worktrees or #status.worktrees < min_count then
+  local worktree_count = status.worktrees and #status.worktrees or 0
+  if worktree_count + #pending_adds < min_count then
     return
   end
 
   local is_collapsed = self.collapsed_sections["worktrees"]
-  table.insert(ctx.lines, string.format("Worktrees (%d)", #status.worktrees))
+  table.insert(ctx.lines, string.format("Worktrees (%d)", worktree_count))
   self.section_lines[#ctx.lines] = { name = "Worktrees", section = "worktrees" }
   self.sign_lines[#ctx.lines] = { expanded = not is_collapsed }
 
   if not is_collapsed then
     -- Normalize repo_root path for comparison (remove trailing slash)
-    local current_repo_root = self.repo_state.repo_root:gsub("/$", "")
+    local current_repo_root = repo_root
 
     -- Compute max branch name length for tabular alignment
     local max_branch_len = 0
-    for _, worktree in ipairs(status.worktrees) do
-      local branch_info = worktree.branch or "(detached)"
-      max_branch_len = math.max(max_branch_len, #branch_info)
+    if status.worktrees then
+      for _, worktree in ipairs(status.worktrees) do
+        local branch_info = worktree.branch or "(detached)"
+        max_branch_len = math.max(max_branch_len, #branch_info)
+      end
+    end
+    -- Account for pending add phantom lines (use "(creating...)" as branch placeholder)
+    for _ in ipairs(pending_adds) do
+      max_branch_len = math.max(max_branch_len, #"(creating...)")
     end
 
-    for _, worktree in ipairs(status.worktrees) do
-      local branch_info = worktree.branch or "(detached)"
-      -- Compute relative path (cwd-relative first, fallback to home-relative)
-      local short_path = vim.fn.fnamemodify(worktree.path, ":.")
+    if status.worktrees then
+      for _, worktree in ipairs(status.worktrees) do
+        local branch_info = worktree.branch or "(detached)"
+        -- Compute relative path (cwd-relative first, fallback to home-relative)
+        local short_path = vim.fn.fnamemodify(worktree.path, ":.")
+        if short_path:sub(1, 1) == "/" then
+          short_path = vim.fn.fnamemodify(worktree.path, ":~")
+        end
+        if short_path:sub(-1) ~= "/" then
+          short_path = short_path .. "/"
+        end
+
+        local line_text = string.format("%-" .. max_branch_len .. "s  %s", branch_info, short_path)
+
+        table.insert(ctx.lines, line_text)
+        self.line_map[#ctx.lines] = {
+          type = "worktree",
+          worktree = worktree,
+          section = "worktrees",
+        }
+
+        -- Place current/locked/pending indicators in the sign column (gutter)
+        local wt_path = worktree.path:gsub("/$", "")
+        if pending_ops.is_pending(wt_path) then
+          self.sign_lines[#ctx.lines] =
+            { sign_text = pending_ops.get_spinner_char(), sign_hl = "GitladWorktreePending" }
+        elseif wt_path == current_repo_root then
+          self.sign_lines[#ctx.lines] = { sign_text = "*", sign_hl = "GitladWorktreeCurrent" }
+        elseif worktree.locked then
+          self.sign_lines[#ctx.lines] = { sign_text = "L", sign_hl = "GitladWorktreeLocked" }
+        end
+      end
+    end
+
+    -- Render phantom lines for pending "add" ops
+    for _, op in ipairs(pending_adds) do
+      local short_path = vim.fn.fnamemodify(op.path, ":.")
       if short_path:sub(1, 1) == "/" then
-        short_path = vim.fn.fnamemodify(worktree.path, ":~")
+        short_path = vim.fn.fnamemodify(op.path, ":~")
       end
       if short_path:sub(-1) ~= "/" then
         short_path = short_path .. "/"
       end
 
-      local line_text = string.format("%-" .. max_branch_len .. "s  %s", branch_info, short_path)
+      local line_text =
+        string.format("%-" .. max_branch_len .. "s  %s", "(creating...)", short_path)
 
       table.insert(ctx.lines, line_text)
       self.line_map[#ctx.lines] = {
-        type = "worktree",
-        worktree = worktree,
+        type = "worktree_pending",
+        path = op.path,
         section = "worktrees",
       }
-
-      -- Place current/locked indicators in the sign column (gutter)
-      local wt_path = worktree.path:gsub("/$", "")
-      if wt_path == current_repo_root then
-        self.sign_lines[#ctx.lines] = { sign_text = "*", sign_hl = "GitladWorktreeCurrent" }
-      elseif worktree.locked then
-        self.sign_lines[#ctx.lines] = { sign_text = "L", sign_hl = "GitladWorktreeLocked" }
-      end
+      self.sign_lines[#ctx.lines] =
+        { sign_text = pending_ops.get_spinner_char(), sign_hl = "GitladWorktreePending" }
     end
   end
   table.insert(ctx.lines, "")

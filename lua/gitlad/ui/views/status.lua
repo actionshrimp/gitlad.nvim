@@ -25,6 +25,8 @@ local status_staging = require("gitlad.ui.views.status_staging")
 local status_diffs = require("gitlad.ui.views.status_diffs")
 local status_navigation = require("gitlad.ui.views.status_navigation")
 local status_cursor = require("gitlad.ui.views.status_cursor")
+local pending_ops = require("gitlad.state.pending_ops")
+local signs_util = require("gitlad.ui.utils.signs")
 
 ---@class LineInfo
 ---@field type "file" Discriminator for union type
@@ -228,11 +230,55 @@ local function get_or_create_buffer(repo_state)
     repo_state:set_watcher(self.watcher)
   end
 
-  -- Clean up spinner and watcher when buffer is wiped
+  -- Listen for pending worktree operation changes (structural: phantom lines appear/disappear)
+  local function on_pending_change()
+    vim.schedule(function()
+      if vim.api.nvim_buf_is_valid(self.bufnr) then
+        self:render()
+      end
+    end)
+  end
+  pending_ops.on_change(on_pending_change)
+
+  -- Listen for pending operation animation ticks (lightweight sign-only update)
+  local function on_pending_tick()
+    if not vim.api.nvim_buf_is_valid(self.bufnr) then
+      return
+    end
+    -- Skip during visual/select mode to avoid disrupting selections
+    local mode = vim.fn.mode()
+    if mode:find("[vVsS\22\19]") then
+      return
+    end
+    -- Update spinner chars in sign_lines for worktree/worktree_pending entries
+    local any_updated = false
+    for line_num, info in pairs(self.line_map) do
+      if info.type == "worktree" and info.worktree then
+        local wt_path = info.worktree.path:gsub("/$", "")
+        if pending_ops.is_pending(wt_path) then
+          self.sign_lines[line_num] =
+            { sign_text = pending_ops.get_spinner_char(), sign_hl = "GitladWorktreePending" }
+          any_updated = true
+        end
+      elseif info.type == "worktree_pending" then
+        self.sign_lines[line_num] =
+          { sign_text = pending_ops.get_spinner_char(), sign_hl = "GitladWorktreePending" }
+        any_updated = true
+      end
+    end
+    if any_updated then
+      self:_place_signs()
+    end
+  end
+  pending_ops.on_tick(on_pending_tick)
+
+  -- Clean up spinner, watcher, and pending_ops callbacks when buffer is wiped
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer = self.bufnr,
     callback = function()
       self.spinner:destroy()
+      pending_ops.off_change(on_pending_change)
+      pending_ops.off_tick(on_pending_tick)
       if self.watcher then
         self.watcher:stop()
         self.watcher = nil

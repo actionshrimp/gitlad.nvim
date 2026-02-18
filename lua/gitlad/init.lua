@@ -35,6 +35,15 @@ function M.setup(opts)
     desc = "Gitlad git interface",
   })
 
+  -- Warn before quitting with pending worktree operations.
+  -- Uses QuitPre + temporarily marking the buffer as modified to prevent :q.
+  vim.api.nvim_create_autocmd("QuitPre", {
+    group = vim.api.nvim_create_augroup("gitlad_quit_guard", { clear = true }),
+    callback = function()
+      require("gitlad.state.pending_ops")._quit_guard()
+    end,
+  })
+
   -- Convenience alias
   vim.api.nvim_create_user_command("G", function(cmd_opts)
     require("gitlad.commands").execute(cmd_opts.args)

@@ -10,6 +10,7 @@ local popup = require("gitlad.ui.popup")
 local git = require("gitlad.git")
 local prompt_module = require("gitlad.utils.prompt")
 local config = require("gitlad.config")
+local pending_ops = require("gitlad.state.pending_ops")
 
 --- Format worktree entries for display in vim.ui.select
 ---@param worktrees WorktreeEntry[]
@@ -247,21 +248,35 @@ function M._add_worktree(repo_state, popup_data)
       -- Build args from popup switches
       local args = popup_data:get_arguments()
 
+      -- Duplicate guard
+      if pending_ops.is_pending(path) then
+        vim.notify("[gitlad] Operation already in progress for this path", vim.log.levels.WARN)
+        return
+      end
+
+      local done = pending_ops.register(path, "add", "Creating worktree...", repo_state.repo_root)
       vim.notify("[gitlad] Creating worktree...", vim.log.levels.INFO)
 
-      git.worktree_add(path, ref, args, { cwd = repo_state.repo_root }, function(success, err)
-        vim.schedule(function()
-          if success then
-            vim.notify("[gitlad] Worktree created at " .. path, vim.log.levels.INFO)
-            repo_state:refresh_status(true)
-          else
-            vim.notify(
-              "[gitlad] Failed to create worktree: " .. (err or "unknown error"),
-              vim.log.levels.ERROR
-            )
-          end
-        end)
-      end)
+      git.worktree_add(
+        path,
+        ref,
+        args,
+        { cwd = repo_state.repo_root, timeout = 0 },
+        function(success, err)
+          vim.schedule(function()
+            done()
+            if success then
+              vim.notify("[gitlad] Worktree created at " .. path, vim.log.levels.INFO)
+              repo_state:refresh_status(true)
+            else
+              vim.notify(
+                "[gitlad] Failed to create worktree: " .. (err or "unknown error"),
+                vim.log.levels.ERROR
+              )
+            end
+          end)
+        end
+      )
     end)
   end)
 end
@@ -314,6 +329,14 @@ function M._add_branch_and_worktree(repo_state, popup_data)
           end
         end
 
+        -- Duplicate guard
+        if pending_ops.is_pending(path) then
+          vim.notify("[gitlad] Operation already in progress for this path", vim.log.levels.WARN)
+          return
+        end
+
+        local done =
+          pending_ops.register(path, "add", "Creating branch and worktree...", repo_state.repo_root)
         vim.notify("[gitlad] Creating branch and worktree...", vim.log.levels.INFO)
 
         git.worktree_add_new_branch(
@@ -321,9 +344,10 @@ function M._add_branch_and_worktree(repo_state, popup_data)
           branch,
           sp,
           args,
-          { cwd = repo_state.repo_root },
+          { cwd = repo_state.repo_root, timeout = 0 },
           function(success, err)
             vim.schedule(function()
+              done()
               if success then
                 vim.notify(
                   "[gitlad] Created branch '" .. branch .. "' and worktree at " .. path,
@@ -419,6 +443,12 @@ function M._delete_worktree_direct(repo_state, worktree, popup_data)
     return
   end
 
+  -- Duplicate guard
+  if pending_ops.is_pending(worktree.path) then
+    vim.notify("[gitlad] Operation already in progress for this worktree", vim.log.levels.WARN)
+    return
+  end
+
   -- Check if force flag is set
   local force = false
   for _, sw in ipairs(popup_data.switches) do
@@ -444,15 +474,18 @@ function M._delete_worktree_direct(repo_state, worktree, popup_data)
     -- If locked or we need force, set force flag
     local use_force = force or worktree.locked
 
+    local done =
+      pending_ops.register(worktree.path, "delete", "Deleting worktree...", repo_state.repo_root)
     vim.notify("[gitlad] Deleting worktree...", vim.log.levels.INFO)
 
     git.worktree_remove(
       worktree.path,
       use_force,
-      { cwd = repo_state.repo_root },
+      { cwd = repo_state.repo_root, timeout = 0 },
       function(success, err)
         vim.schedule(function()
           if success then
+            done()
             vim.notify("[gitlad] Worktree deleted", vim.log.levels.INFO)
             repo_state:refresh_status(true)
           else
@@ -465,9 +498,10 @@ function M._delete_worktree_direct(repo_state, worktree, popup_data)
                   git.worktree_remove(
                     worktree.path,
                     true,
-                    { cwd = repo_state.repo_root },
+                    { cwd = repo_state.repo_root, timeout = 0 },
                     function(force_success, force_err)
                       vim.schedule(function()
+                        done()
                         if force_success then
                           vim.notify("[gitlad] Worktree force deleted", vim.log.levels.INFO)
                           repo_state:refresh_status(true)
@@ -480,9 +514,13 @@ function M._delete_worktree_direct(repo_state, worktree, popup_data)
                       end)
                     end
                   )
+                else
+                  -- User cancelled force prompt
+                  done()
                 end
               end)
             else
+              done()
               vim.notify(
                 "[gitlad] Failed to delete worktree: " .. (err or "unknown error"),
                 vim.log.levels.ERROR
