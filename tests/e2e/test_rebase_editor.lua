@@ -44,6 +44,264 @@ T["rebase_editor"]["is_active returns false initially"] = function()
   expect.equality(result, false)
 end
 
+-- Helper: create a fake rebase-todo file and open it in the rebase editor
+local function open_rebase_editor_with_content(child, lines)
+  -- Build a Lua table literal from the lines
+  local quoted = {}
+  for _, line in ipairs(lines) do
+    table.insert(quoted, string.format("%q", line))
+  end
+  local lines_literal = "{" .. table.concat(quoted, ",") .. "}"
+
+  child.lua(string.format(
+    [[
+    _G._rebase_tmpfile = vim.fn.tempname()
+    local f = io.open(_G._rebase_tmpfile, "w")
+    local lines = %s
+    f:write(table.concat(lines, "\n") .. "\n")
+    f:close()
+
+    _G._rebase_closed = nil
+    _G._rebase_success = nil
+
+    local rebase_editor = require("gitlad.ui.views.rebase_editor")
+    rebase_editor.open(_G._rebase_tmpfile, function(success)
+      _G._rebase_closed = true
+      _G._rebase_success = success
+    end)
+  ]],
+    lines_literal
+  ))
+  helpers.wait_short(child, 100)
+  return child.lua_get([[_G._rebase_tmpfile]])
+end
+
+T["rebase_editor"]["vim motions are not intercepted"] = function()
+  local child = _G.child
+  local tmpfile = open_rebase_editor_with_content(child, {
+    "pick abc1234 First commit",
+    "pick def5678 Second commit",
+    "pick ghi9012 Third commit",
+  })
+
+  -- 'f' should work as vim find-char, not as "fixup"
+  -- Go to first line, use f to find 'F' in "First"
+  child.type_keys("gg0")
+  child.type_keys("fF")
+  helpers.wait_short(child, 50)
+
+  -- Cursor should be on 'F' of "First" (column 14 with "pick abc1234 F...")
+  local cursor = child.lua_get([[vim.api.nvim_win_get_cursor(0)]])
+  local line = child.lua_get([[vim.api.nvim_get_current_line()]])
+  -- The character under cursor should be 'F'
+  local char_at_cursor = line:sub(cursor[2] + 1, cursor[2] + 1)
+  expect.equality(char_at_cursor, "F")
+
+  -- 'b' should work as vim back-word, not as "break"
+  child.type_keys("gg$")
+  helpers.wait_short(child, 50)
+  child.type_keys("b")
+  helpers.wait_short(child, 50)
+  -- Should have moved to beginning of last word, not inserted a break line
+  -- Should still have original lines + help text, no extra "break" line inserted among todo lines
+  local first_lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, 3, false)]])
+  expect.equality(first_lines[1], "pick abc1234 First commit")
+  expect.equality(first_lines[2], "pick def5678 Second commit")
+  expect.equality(first_lines[3], "pick ghi9012 Third commit")
+
+  -- 'd' should work as vim delete operator, not drop
+  -- dd on line 2 should delete that line
+  child.type_keys("2gg")
+  helpers.wait_short(child, 50)
+  child.type_keys("dd")
+  helpers.wait_short(child, 50)
+  local new_first_lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, 2, false)]])
+  expect.equality(new_first_lines[1], "pick abc1234 First commit")
+  expect.equality(new_first_lines[2], "pick ghi9012 Third commit")
+
+  -- 's' should work as vim substitute, not squash
+  -- Undo the delete first
+  child.type_keys("u")
+  helpers.wait_short(child, 50)
+
+  -- Abort to clean up
+  child.lua([[require("gitlad.ui.views.rebase_editor").abort()]])
+  helpers.wait_short(child, 100)
+
+  child.lua(string.format([[vim.fn.delete(%q)]], tmpfile))
+end
+
+T["rebase_editor"]["auto-expansion expands abbreviation on InsertLeave"] = function()
+  local child = _G.child
+  local tmpfile = open_rebase_editor_with_content(child, {
+    "pick abc1234 First commit",
+    "pick def5678 Second commit",
+  })
+
+  -- Change first line action to 'f' using cw
+  child.type_keys("gg0")
+  child.type_keys("cw")
+  child.type_keys("f")
+  child.type_keys("<Esc>")
+  helpers.wait_short(child, 100)
+
+  -- After InsertLeave, 'f' should auto-expand to 'fixup'
+  local line = child.lua_get([=[vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]]=])
+  expect.equality(line, "fixup abc1234 First commit")
+
+  -- Abort to clean up
+  child.lua([[require("gitlad.ui.views.rebase_editor").abort()]])
+  helpers.wait_short(child, 100)
+
+  child.lua(string.format([[vim.fn.delete(%q)]], tmpfile))
+end
+
+T["rebase_editor"]["auto-expansion leaves full words unchanged"] = function()
+  local child = _G.child
+  local tmpfile = open_rebase_editor_with_content(child, {
+    "pick abc1234 First commit",
+  })
+
+  -- Change to full word "reword"
+  child.type_keys("gg0")
+  child.type_keys("cw")
+  child.type_keys("reword")
+  child.type_keys("<Esc>")
+  helpers.wait_short(child, 100)
+
+  local line = child.lua_get([=[vim.api.nvim_buf_get_lines(0, 0, 1, false)[1]]=])
+  expect.equality(line, "reword abc1234 First commit")
+
+  -- Abort to clean up
+  child.lua([[require("gitlad.ui.views.rebase_editor").abort()]])
+  helpers.wait_short(child, 100)
+
+  child.lua(string.format([[vim.fn.delete(%q)]], tmpfile))
+end
+
+T["rebase_editor"]["line reordering with ddp works"] = function()
+  local child = _G.child
+  local tmpfile = open_rebase_editor_with_content(child, {
+    "pick abc1234 First commit",
+    "pick def5678 Second commit",
+    "pick ghi9012 Third commit",
+  })
+
+  -- Move first line down with ddp
+  child.type_keys("gg")
+  child.type_keys("dd")
+  child.type_keys("p")
+  helpers.wait_short(child, 100)
+
+  local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, 3, false)]])
+  expect.equality(lines[1], "pick def5678 Second commit")
+  expect.equality(lines[2], "pick abc1234 First commit")
+  expect.equality(lines[3], "pick ghi9012 Third commit")
+
+  -- Abort to clean up
+  child.lua([[require("gitlad.ui.views.rebase_editor").abort()]])
+  helpers.wait_short(child, 100)
+
+  child.lua(string.format([[vim.fn.delete(%q)]], tmpfile))
+end
+
+T["rebase_editor"]["ZZ submits and closes the editor"] = function()
+  local child = _G.child
+  local tmpfile = open_rebase_editor_with_content(child, {
+    "pick abc1234 First commit",
+  })
+
+  -- Verify editor is active
+  local is_active = child.lua_get([[require("gitlad.ui.views.rebase_editor").is_active()]])
+  expect.equality(is_active, true)
+
+  -- Submit with ZZ
+  child.type_keys("ZZ")
+  helpers.wait_short(child, 200)
+
+  -- Editor should be closed
+  local is_active_after = child.lua_get([[require("gitlad.ui.views.rebase_editor").is_active()]])
+  expect.equality(is_active_after, false)
+
+  -- Callback should have been called with success=true
+  local success = child.lua_get([[_G._rebase_success]])
+  expect.equality(success, true)
+
+  child.lua(string.format([[vim.fn.delete(%q)]], tmpfile))
+end
+
+T["rebase_editor"]["ZQ aborts and closes the editor"] = function()
+  local child = _G.child
+  local tmpfile = open_rebase_editor_with_content(child, {
+    "pick abc1234 First commit",
+  })
+
+  -- Verify editor is active
+  local is_active = child.lua_get([[require("gitlad.ui.views.rebase_editor").is_active()]])
+  expect.equality(is_active, true)
+
+  -- Abort with ZQ
+  child.type_keys("ZQ")
+  helpers.wait_short(child, 200)
+
+  -- Editor should be closed
+  local is_active_after = child.lua_get([[require("gitlad.ui.views.rebase_editor").is_active()]])
+  expect.equality(is_active_after, false)
+
+  -- Callback should have been called with success=false
+  local success = child.lua_get([[_G._rebase_success]])
+  expect.equality(success, false)
+
+  child.lua(string.format([[vim.fn.delete(%q)]], tmpfile))
+end
+
+T["rebase_editor"]["help text describes vim-native workflow"] = function()
+  local child = _G.child
+  local tmpfile = open_rebase_editor_with_content(child, {
+    "pick abc1234 First commit",
+  })
+
+  -- Check that help text contains our new workflow instructions
+  local content = child.lua_get([[table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")]])
+  expect.equality(
+    content:find("normal vim buffer") ~= nil,
+    true,
+    "Should mention normal vim buffer"
+  )
+  expect.equality(content:find("auto%-expand") ~= nil, true, "Should mention auto-expand")
+  expect.equality(content:find("ddp") ~= nil, true, "Should mention ddp for reordering")
+  expect.equality(content:find("ZZ") ~= nil, true, "Should mention ZZ for submit")
+  expect.equality(content:find("ZQ") ~= nil, true, "Should mention ZQ for abort")
+
+  -- Abort to clean up
+  child.lua([[require("gitlad.ui.views.rebase_editor").abort()]])
+  helpers.wait_short(child, 100)
+
+  child.lua(string.format([[vim.fn.delete(%q)]], tmpfile))
+end
+
+T["rebase_editor"]["initial abbreviations are expanded on open"] = function()
+  local child = _G.child
+  -- Open with abbreviated actions (as git would provide)
+  local tmpfile = open_rebase_editor_with_content(child, {
+    "p abc1234 First commit",
+    "p def5678 Second commit",
+    "p ghi9012 Third commit",
+  })
+
+  -- Actions should already be expanded
+  local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, 3, false)]])
+  expect.equality(lines[1], "pick abc1234 First commit")
+  expect.equality(lines[2], "pick def5678 Second commit")
+  expect.equality(lines[3], "pick ghi9012 Third commit")
+
+  -- Abort to clean up
+  child.lua([[require("gitlad.ui.views.rebase_editor").abort()]])
+  helpers.wait_short(child, 100)
+
+  child.lua(string.format([[vim.fn.delete(%q)]], tmpfile))
+end
+
 T["client"] = MiniTest.new_set()
 
 T["client"]["get_envs_git_editor returns valid env table"] = function()
