@@ -35,27 +35,12 @@ function M.setup(opts)
     desc = "Gitlad git interface",
   })
 
-  -- Warn before quitting with pending worktree operations
-  vim.api.nvim_create_autocmd("VimLeavePre", {
+  -- Warn before quitting with pending worktree operations.
+  -- Uses QuitPre + temporarily marking the buffer as modified to prevent :q.
+  vim.api.nvim_create_autocmd("QuitPre", {
     group = vim.api.nvim_create_augroup("gitlad_quit_guard", { clear = true }),
     callback = function()
-      local pending_ops = require("gitlad.state.pending_ops")
-      if not pending_ops.has_any() then
-        return
-      end
-      -- Build description of in-progress operations
-      local descs = {}
-      for _, op in pairs(pending_ops.get_all()) do
-        table.insert(descs, "  - " .. op.description .. " (" .. op.path .. ")")
-      end
-      local msg = "Worktree operations in progress:\n"
-        .. table.concat(descs, "\n")
-        .. "\n\nQuitting now may leave worktrees in an inconsistent state.\nQuit anyway?"
-      local choice = vim.fn.confirm(msg, "&Yes\n&No", 2)
-      if choice ~= 1 then
-        -- Abort quit — error() prevents VimLeavePre from completing
-        error("Quit aborted: pending worktree operations")
-      end
+      require("gitlad.state.pending_ops")._quit_guard()
     end,
   })
 

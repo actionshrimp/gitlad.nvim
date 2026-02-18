@@ -167,6 +167,39 @@ function M.off_tick(callback)
   end
 end
 
+--- QuitPre guard. If the user chooses not to quit, temporarily marks the
+--- current buffer as a modified normal buffer so :q aborts with E37.
+--- The original buffer state is restored on the next event loop tick.
+function M._quit_guard()
+  if not M.has_any() then
+    return
+  end
+  local descs = {}
+  for _, op in pairs(pending) do
+    table.insert(descs, "  - " .. op.description .. " (" .. op.path .. ")")
+  end
+  local msg = "Worktree operations in progress:\n"
+    .. table.concat(descs, "\n")
+    .. "\n\nQuitting now may leave worktrees in an inconsistent state.\nQuit anyway?"
+  local choice = vim.fn.confirm(msg, "&Yes\n&No", 2)
+  if choice ~= 1 then
+    -- Trick :q into aborting: temporarily make the buffer look like
+    -- a modified normal file. After :q sees E37 and aborts, we restore
+    -- the original state via vim.schedule.
+    local buf = vim.api.nvim_get_current_buf()
+    local saved_bt = vim.bo[buf].buftype
+    local saved_mod = vim.bo[buf].modified
+    vim.bo[buf].buftype = ""
+    vim.bo[buf].modified = true
+    vim.schedule(function()
+      if vim.api.nvim_buf_is_valid(buf) then
+        vim.bo[buf].buftype = saved_bt
+        vim.bo[buf].modified = saved_mod
+      end
+    end)
+  end
+end
+
 --- Reset all state (for testing)
 function M.clear_all()
   pending = {}
