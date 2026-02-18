@@ -292,7 +292,7 @@ function Watcher:_start_worktree_watcher()
   end
 
   local ok = pcall(function()
-    fs_event:start(repo_root, {}, function(watch_err, filename, _events)
+    fs_event:start(repo_root, { recursive = true }, function(watch_err, filename, _events)
       if watch_err then
         return
       end
