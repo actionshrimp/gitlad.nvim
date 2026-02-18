@@ -1,6 +1,6 @@
 # gitlad.nvim
 
-A magit-inspired git interface for Neovim, built for large monorepos.
+A performance-focused, magit-inspired git interface for Neovim.
 
 <p align="center">
   <a href="https://actionshrimp.com/gitlad.nvim/#demo">
@@ -12,13 +12,15 @@ A magit-inspired git interface for Neovim, built for large monorepos.
 
 ## Installation
 
-Using [lazy.nvim](https://github.com/folke/lazy.nvim) (use either the standard diffview.nvim, or use my fork for 3-way staging functionality like magit/ediff):
+Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
   "actionshrimp/gitlad.nvim",
   dependencies = {
     {
+      -- Fork with 3-way staging support (magit/ediff style).
+      -- The original sindrets/diffview.nvim also works if you prefer.
       "actionshrimp/diffview.nvim",
       branch = "3-way-staging",
     },
@@ -44,13 +46,16 @@ Then open any git repo and run `:Gitlad`.
 
 ## Performance
 
-In large monorepos (1M+ files), `git status` can take seconds. gitlad avoids this bottleneck with **optimistic state updates**:
+gitlad uses **optimistic state updates** to keep the UI fast regardless of repo size:
 
-1. **No automatic git syncing** - The UI never runs `git status` after operations
-2. **Instant updates** - Stage a file → run `git add` → check exit code → update UI state directly in Lua
-3. **Manual refresh** - Press `gr` when you want to resync with git
+1. **Instant updates** - Stage a file → run `git add` → check exit code → update UI state directly in Lua (no `git status` round-trip)
+2. **Manual refresh** - Press `gr` when you want to resync with git
 
-A file watcher detects external changes (terminal commands, other git clients) and shows a stale indicator. See [configuration](#configuration) for auto-refresh options.
+### File watcher (optional)
+
+An optional file watcher detects external changes (terminal commands, other editors, `git push`) and either shows a **stale indicator** or **auto-refreshes** the status buffer. Both the watcher and auto-refresh are configurable — see [configuration](#configuration).
+
+The watcher uses libuv's `fs_event` under the hood. On macOS and Windows this provides recursive directory watching with no polling overhead. On Linux, `fs_event` is non-recursive, so the watcher covers `.git/` subdirectories and the repo root, with Neovim autocmds (`BufWritePost`, `FocusGained`) as a fallback for changes in nested working tree files.
 
 ## Keybindings
 
