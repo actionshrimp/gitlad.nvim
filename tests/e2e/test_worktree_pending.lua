@@ -315,4 +315,133 @@ T["pending worktree indicators"]["spinner sign has GitladWorktreePending highlig
   helpers.cleanup_repo(child, repo)
 end
 
+T["pending worktree indicators"]["quit guard"] = MiniTest.new_set()
+
+T["pending worktree indicators"]["quit guard"][":q is prevented when user declines with pending op"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Open status (this also calls setup() which registers the QuitPre autocmd)
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
+  -- Register a pending op
+  child.lua([[
+    local pending_ops = require("gitlad.state.pending_ops")
+    local repo_state = require("gitlad.state").get()
+    _G._test_done = pending_ops.register("/tmp/test-wt", "delete", "Deleting worktree...", repo_state.repo_root)
+  ]])
+
+  -- Mock vim.fn.confirm to return 2 (No / don't quit)
+  child.lua([[
+    _G._orig_confirm = vim.fn.confirm
+    vim.fn.confirm = function() return 2 end
+  ]])
+
+  -- Try to quit — should be prevented
+  -- Use pcall-style since :q will raise E37 after our guard sets modified=true
+  child.lua([[pcall(vim.cmd, "q")]])
+  helpers.wait_short(child, 200)
+
+  -- Neovim should still be alive — verify we can still interact
+  local still_alive = child.lua_get([[type(vim.api.nvim_get_current_buf())]])
+  eq(still_alive, "number")
+
+  -- Buffer state should be restored (buftype back to nofile, not modified)
+  local buftype = child.lua_get([[vim.bo.buftype]])
+  eq(buftype, "nofile")
+  local modified = child.lua_get([[vim.bo.modified]])
+  eq(modified, false)
+
+  -- Restore confirm and clean up
+  child.lua([[
+    vim.fn.confirm = _G._orig_confirm
+    _G._test_done()
+  ]])
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pending worktree indicators"]["quit guard"]["no confirm dialog when no pending ops"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
+  -- Track whether confirm was called (it shouldn't be)
+  child.lua([[
+    _G._confirm_called = false
+    _G._orig_confirm = vim.fn.confirm
+    vim.fn.confirm = function(...)
+      _G._confirm_called = true
+      return _G._orig_confirm(...)
+    end
+  ]])
+
+  -- Open a second buffer so :q doesn't try to exit Neovim entirely
+  child.lua([[vim.cmd("new")]])
+
+  -- Quit the new window — should succeed without confirm since no pending ops
+  child.lua([[vim.cmd("q")]])
+  helpers.wait_short(child, 100)
+
+  local confirm_called = child.lua_get([[_G._confirm_called]])
+  eq(confirm_called, false)
+
+  -- Restore
+  child.lua([[vim.fn.confirm = _G._orig_confirm]])
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pending worktree indicators"]["quit guard"][":q is allowed when user confirms with pending op"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
+  -- Register a pending op
+  child.lua([[
+    local pending_ops = require("gitlad.state.pending_ops")
+    local repo_state = require("gitlad.state").get()
+    _G._test_done = pending_ops.register("/tmp/test-wt", "delete", "Deleting worktree...", repo_state.repo_root)
+  ]])
+
+  -- Mock vim.fn.confirm to return 1 (Yes / allow quit)
+  child.lua([[
+    vim.fn.confirm = function() return 1 end
+  ]])
+
+  -- Open a second window so :q closes just this window, not the whole process
+  child.lua([[vim.cmd("split")]])
+  local win_count_before = child.lua_get([[#vim.api.nvim_list_wins()]])
+
+  -- Quit the current window — should be allowed since user said Yes
+  child.lua([[vim.cmd("q")]])
+  helpers.wait_short(child, 200)
+
+  -- One fewer window
+  local win_count_after = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(win_count_after, win_count_before - 1)
+
+  -- Clean up
+  child.lua([[_G._test_done()]])
+  helpers.cleanup_repo(child, repo)
+end
+
 return T
