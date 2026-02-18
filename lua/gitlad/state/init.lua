@@ -25,6 +25,7 @@ local errors = require("gitlad.utils.errors")
 ---@field listeners table<string, fun(state: RepoState)[]> Event listeners
 ---@field watcher Watcher|nil File system watcher instance (if enabled)
 ---@field last_operation_time number Timestamp (ms) of last gitlad operation (for watcher cooldown)
+---@field _pending_optimistic_cmds StatusCommand[] Commands applied since last refresh dispatch
 local RepoState = {}
 RepoState.__index = RepoState
 
@@ -68,8 +69,20 @@ function M.get(path)
   -- Pending callback for refresh_status with callback
   state._pending_refresh_callback = nil
 
+  -- Track optimistic commands for replay on refresh completion
+  state._pending_optimistic_cmds = {}
+
   -- Create status handler that notifies listeners on update
   state.status_handler = async.new(function(result)
+    -- Replay any optimistic commands that happened during the refresh.
+    -- Commands are idempotent: if the refresh already reflects the change,
+    -- the replay is a no-op (source entry won't exist in expected section).
+    local cmds = state._pending_optimistic_cmds
+    state._pending_optimistic_cmds = {}
+    for _, cmd in ipairs(cmds) do
+      result = reducer.apply(result, cmd)
+    end
+
     state.status = result
     state.refreshing = false
     state:_notify("status")
@@ -164,6 +177,8 @@ function RepoState:apply_command(cmd)
   self.last_operation_time = vim.loop.now()
   self.status = reducer.apply(self.status, cmd)
   self.cache:invalidate("status")
+  -- Track for replay on refresh completion (prevents stale refresh overwriting)
+  table.insert(self._pending_optimistic_cmds, cmd)
   self:_notify("status")
 end
 
@@ -442,6 +457,9 @@ function RepoState:refresh_status(force, callback)
 
   -- Clear stale flag since we're refreshing
   self:clear_stale()
+
+  -- New refresh will capture current git state; clear accumulated commands
+  self._pending_optimistic_cmds = {}
 
   -- Set refreshing flag and notify UI
   self.refreshing = true
