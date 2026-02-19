@@ -31,8 +31,29 @@ done
 echo "==> Creating test repo..."
 "$SCRIPT_DIR/create-test-repo.sh" "$REPO_DIR" > /dev/null 2>&1
 
-# Warmup: bootstrap lazy.nvim + plugins, compile treesitter parsers.
-# Results are cached in /tmp/gitlad-demo-deps/ for subsequent runs.
+# Pre-clone plugins so lazy.nvim finds them on disk (lazy's headless install
+# is unreliable). Subsequent runs skip already-cached plugins.
+DEPS_DIR="/tmp/gitlad-demo-deps"
+PLUGIN_DIR="$DEPS_DIR/plugins"
+LAZY_PATH="$DEPS_DIR/lazy.nvim"
+mkdir -p "$PLUGIN_DIR"
+
+if [ ! -d "$LAZY_PATH/.git" ]; then
+  echo "  Installing lazy.nvim..."
+  rm -rf "$LAZY_PATH"
+  git clone --filter=blob:none --branch=stable \
+    https://github.com/folke/lazy.nvim.git "$LAZY_PATH" 2>/dev/null
+fi
+
+for plugin in rebelot/kanagawa.nvim sindrets/diffview.nvim nvim-treesitter/nvim-treesitter; do
+  name="${plugin##*/}"
+  if [ ! -d "$PLUGIN_DIR/$name" ]; then
+    echo "  Installing $name..."
+    git clone --depth=1 "https://github.com/$plugin" "$PLUGIN_DIR/$name" 2>/dev/null
+  fi
+done
+
+# Warmup: compile treesitter parsers (plugins are already on disk).
 echo "==> Installing demo dependencies (cached after first run)..."
 cd "$REPO_DIR"
 GITLAD_DEMO_WARMUP=1 nvim \

@@ -76,6 +76,15 @@ function M.get_nvim_remote_editor()
 
   local runtimepath_cmd =
     fn.shellescape(fmt("set runtimepath^=%s", fn.fnameescape(tostring(gitlad_path))))
+  -- Update package.path for --clean compatibility (some Neovim builds, e.g. nix,
+  -- don't add rtp dirs to the Lua search path when running with --clean)
+  local lua_path_cmd = fn.shellescape(
+    fmt(
+      'lua package.path = "%slua/?.lua;%slua/?/init.lua;" .. package.path',
+      gitlad_path,
+      gitlad_path
+    )
+  )
   local lua_cmd = fn.shellescape("lua require('gitlad.client').client()")
 
   local shell_cmd = {
@@ -87,6 +96,8 @@ function M.get_nvim_remote_editor()
     "-R",
     "-c",
     runtimepath_cmd,
+    "-c",
+    lua_path_cmd,
     "-c",
     lua_cmd,
   }

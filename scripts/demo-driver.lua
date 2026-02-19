@@ -36,21 +36,21 @@ local function run_next()
 end
 
 -- ============================================================================
--- Demo sequence
+-- Demo sequence (~60s)
 -- ============================================================================
 
--- Open gitlad status
+-- Phase 1: Status overview — shows Head + Merge with remote tracking
 keys(1200, ":Gitlad<CR>")
-step(2000, function() end)
+step(2500, function() end)
 
--- Show help first - give an overview of what's available
-keys(1000, "?")
-step(3000, function() end)
-keys(800, "q")
-step(600, function() end)
+-- Phase 2: Help popup — overview of all keybindings
+keys(800, "?")
+step(2500, function() end)
+keys(600, "q")
+step(500, function() end)
 
--- Navigate to an unstaged file with a nice diff (Button.js)
--- Layout: 4 untracked files, then unstaged: README.md, lib (submodule), Button.js
+-- Phase 3: Staging workflow
+-- Navigate to Button.js (6×gj past untracked + unstaged files)
 keys(300, "gj")
 keys(150, "gj")
 keys(150, "gj")
@@ -58,12 +58,12 @@ keys(150, "gj")
 keys(150, "gj")
 keys(150, "gj")
 
--- Expand inline diff - Button.js has a great mix of added/removed lines
-keys(800, "<Tab>")
-step(1800, function() end)
+-- Expand inline diff — Button.js has a nice mix of added/removed lines
+keys(600, "<Tab>")
+step(1500, function() end)
 
--- Scroll through the diff to see the changes
-keys(250, "j")
+-- Scroll through the diff
+keys(200, "j")
 keys(150, "j")
 keys(150, "j")
 keys(150, "j")
@@ -71,20 +71,20 @@ keys(150, "j")
 keys(150, "j")
 keys(150, "j")
 keys(150, "j")
-step(800, function() end)
+step(600, function() end)
 
 -- Collapse diff
-keys(800, "<Tab>")
-step(400, function() end)
-
--- Stage the file
-keys(600, "s")
-step(600, function() end)
-
--- Next file - expand for hunk staging
-keys(300, "gj")
 keys(600, "<Tab>")
-step(1000, function() end)
+step(300, function() end)
+
+-- Stage the whole file
+keys(500, "s")
+step(500, function() end)
+
+-- Next file — expand for hunk staging demo
+keys(300, "gj")
+keys(500, "<Tab>")
+step(800, function() end)
 
 -- Move into the diff hunk
 keys(150, "j")
@@ -93,62 +93,102 @@ keys(150, "j")
 keys(150, "j")
 
 -- Stage just this hunk
+keys(500, "s")
+step(500, function() end)
+
+-- Collapse
+keys(400, "<Tab>")
+step(300, function() end)
+
+-- Phase 4: Commit popup
+keys(800, "c")
+step(2000, function() end)
+keys(600, "q")
+step(300, function() end)
+
+-- Phase 5: Diffview integration — show staged diff side-by-side
+keys(800, "d")
+step(1500, function() end)
 keys(600, "s")
-step(600, function() end)
+step(3000, function() end)
+keys(300, ":DiffviewClose<CR>")
+step(800, function() end)
+
+-- Phase 6: Branch popup
+keys(800, "b")
+step(1500, function() end)
+keys(600, "q")
+step(300, function() end)
+
+-- Phase 7: Refs popup → refs view
+keys(800, "yr")
+step(1000, function() end)
+keys(500, "r")
+step(2000, function() end)
+keys(600, "q")
+step(300, function() end)
+
+-- Phase 8: Worktrees — navigate to section via M-n (section jump)
+-- Sections: Untracked → Unstaged → Staged → Worktrees (4th with M-n)
+keys(300, "gg")
+keys(300, "<M-n>")
+keys(200, "<M-n>")
+keys(200, "<M-n>")
+keys(200, "<M-n>")
+step(800, function() end)
+
+-- Browse worktree entries
+keys(250, "gj")
+keys(200, "gj")
+step(800, function() end)
+
+-- Worktree popup
+keys(600, "Z")
+step(2000, function() end)
+keys(600, "q")
+step(300, function() end)
+
+-- Phase 9: Log + Rebase popup
+keys(800, "l")
+step(1000, function() end)
+keys(500, "l")
+step(1500, function() end)
+
+-- Expand first commit details
+keys(600, "<Tab>")
+step(1200, function() end)
 
 -- Collapse
 keys(500, "<Tab>")
-step(300, function() end)
 
--- Show commit popup
-keys(1000, "c")
-step(2000, function() end)
-keys(800, "q")
+-- Limit controls: double with +, halve with -
+keys(600, "+")
+step(800, function() end)
+keys(600, "-")
+step(800, function() end)
 
--- Show branch popup - test repo has feature/clean-merge and feature/conflict-merge
-keys(1000, "b")
-step(1500, function() end)
-keys(800, "q")
+-- Navigate down a few commits
+keys(250, "gj")
+keys(200, "gj")
+keys(200, "gj")
+step(600, function() end)
 
--- Show refs popup and open refs view for current branch
-keys(1000, "yr")
-step(1200, function() end)
+-- Rebase popup — show all the options
 keys(600, "r")
 step(2500, function() end)
-
--- Close refs view
-keys(800, "q")
-
--- Log popup and open log view
-keys(1000, "l")
-step(1200, function() end)
-keys(600, "l")
-step(1800, function() end)
-
--- Expand commit details (cursor starts on first commit)
-keys(800, "<Tab>")
-step(1500, function() end)
-
--- Collapse and show limit controls: double with +
-keys(600, "<Tab>")
-keys(800, "+")
-step(1200, function() end)
-
--- Halve with -
-keys(800, "-")
-step(1200, function() end)
+keys(600, "q")
+step(300, function() end)
 
 -- Close log view
-keys(1000, "q")
+keys(600, "q")
+step(300, function() end)
 
--- Show git command history
-keys(1000, "$")
-step(2500, function() end)
+-- Phase 10: Git command history
+keys(800, "$")
+step(2000, function() end)
+keys(600, "q")
 
--- Close history
-keys(800, "q")
-
--- Final pause on status view
+-- Phase 11: Final pause on status
 step(1500, function() end)
 
 -- ============================================================================

@@ -5,7 +5,7 @@ set -e
 REPO_DIR="${1:-/tmp/gitlad-test-repo}"
 
 # Clean up existing repo
-rm -rf "$REPO_DIR"
+rm -rf "$REPO_DIR" "${REPO_DIR}-origin" "${REPO_DIR}-wt"
 mkdir -p "$REPO_DIR"
 cd "$REPO_DIR"
 
@@ -854,6 +854,77 @@ EOF
 git add src/components/App.js
 git commit -m "Update App component on main"
 
+# =============================================================================
+# Set up a remote so status shows origin/main tracking
+# =============================================================================
+git clone --bare "$REPO_DIR" "${REPO_DIR}-origin" 2>/dev/null
+git remote add origin "${REPO_DIR}-origin"
+git fetch origin 2>/dev/null
+git branch --set-upstream-to=origin/main main
+
+# Add 3 more commits on main (these will be "unpushed" / ahead of origin)
+cat > src/utils/format.js << 'EOF'
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function truncate(str, maxLen = 50) {
+  if (str.length <= maxLen) return str;
+  return str.slice(0, maxLen - 3) + '...';
+}
+
+function padLeft(str, len, char = ' ') {
+  return String(str).padStart(len, char);
+}
+
+module.exports = { capitalize, truncate, padLeft };
+EOF
+git add src/utils/format.js
+git commit -m "Add string formatting utilities"
+
+mkdir -p src/middleware
+cat > src/middleware/auth.js << 'EOF'
+function authenticate(req) {
+  const token = req.headers['authorization'];
+  if (!token) return { authenticated: false, error: 'No token provided' };
+
+  try {
+    const decoded = decodeToken(token.replace('Bearer ', ''));
+    return { authenticated: true, user: decoded };
+  } catch (e) {
+    return { authenticated: false, error: 'Invalid token' };
+  }
+}
+
+function decodeToken(token) {
+  // Simplified token decode for demo
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new Error('Malformed token');
+  return JSON.parse(Buffer.from(parts[1], 'base64').toString());
+}
+
+module.exports = { authenticate, decodeToken };
+EOF
+git add src/middleware/auth.js
+git commit -m "Add authentication middleware"
+
+cat > src/index.js << 'EOF'
+const { greet } = require('./utils/helpers');
+const { capitalize } = require('./utils/format');
+const { authenticate } = require('./middleware/auth');
+const App = require('./components/App');
+
+function main() {
+  console.log(greet(capitalize('world')));
+  const app = new App();
+  app.run();
+}
+
+main();
+EOF
+git add src/index.js
+git commit -m "Wire up auth middleware and formatters"
+
 git stash pop -q 2>/dev/null || true  # Restore stashed changes
 
 # --- Staged rename (added after stash pop to preserve index state) ---
@@ -901,6 +972,14 @@ exit 0
 HOOK
 chmod +x .git/hooks/pre-commit
 
+# =============================================================================
+# Create worktrees (need min_count=2 to show in status)
+# =============================================================================
+WORKTREE_DIR="${REPO_DIR}-wt"
+mkdir -p "$WORKTREE_DIR"
+git worktree add "$WORKTREE_DIR/hotfix" -b hotfix HEAD~2
+git worktree add "$WORKTREE_DIR/experiment" -b experiment HEAD~4
+
 echo ""
 echo "=========================================="
 echo "Test repository created at: $REPO_DIR"
@@ -908,6 +987,13 @@ echo "=========================================="
 echo ""
 echo "Status:"
 git status --short
+echo ""
+echo "Remote tracking:"
+echo "  origin → ${REPO_DIR}-origin"
+echo "  Unpushed commits: $(git rev-list --count origin/main..HEAD)"
+echo ""
+echo "Worktrees:"
+git worktree list
 echo ""
 echo "Submodule status:"
 git submodule status
