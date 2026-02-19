@@ -19,6 +19,7 @@ if not vim.uv.fs_stat(lazy_path) then
   })
 end
 vim.opt.rtp:prepend(lazy_path)
+package.path = lazy_path .. "/lua/?.lua;" .. lazy_path .. "/lua/?/init.lua;" .. package.path
 
 -- ---------------------------------------------------------------------------
 -- Neovim options - clean UI for recording
@@ -41,6 +42,7 @@ vim.g.mapleader = " "
 require("lazy").setup({
   { dir = plugin_root }, -- gitlad.nvim itself
   { "rebelot/kanagawa.nvim" },
+  { "sindrets/diffview.nvim" },
   {
     "nvim-treesitter/nvim-treesitter",
     build = ":TSUpdate",
@@ -54,7 +56,7 @@ require("lazy").setup({
 -- ---------------------------------------------------------------------------
 -- Colorscheme
 -- ---------------------------------------------------------------------------
-vim.cmd("colorscheme kanagawa")
+pcall(vim.cmd, "colorscheme kanagawa")
 
 -- ---------------------------------------------------------------------------
 -- gitlad
