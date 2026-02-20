@@ -321,9 +321,10 @@ local function render(self)
     self.sign_lines[#lines] = { expanded = not self.collapsed_sections["rebase_sequence"] }
 
     if not self.collapsed_sections["rebase_sequence"] then
-      -- 1. Todo lines (pending actions, in original order - first item is next to be applied)
+      -- 1. Todo lines (pending actions, reversed so next-to-apply is at bottom near stop/done)
       if status.rebase_todo then
-        for _, entry in ipairs(status.rebase_todo) do
+        for i = #status.rebase_todo, 1, -1 do
+          local entry = status.rebase_todo[i]
           local todo_line
           if entry.action == "break" then
             todo_line = "break"
@@ -375,13 +376,23 @@ local function render(self)
       end
 
       -- 3. Done commits (from git log onto..HEAD, most recent first)
-      -- Skip the stopped commit (already shown as "stop" above)
+      -- For edit stops, the commit is applied before stopping, so it appears in
+      -- both the "stop" line and in git log onto..HEAD. Skip the last done commit
+      -- in that case to avoid duplicates. For conflict stops (pick/squash/fixup),
+      -- the commit isn't applied, so no skip needed.
       if status.rebase_done_commits and #status.rebase_done_commits > 0 then
+        local skip_last = false
+        if status.rebase_stopped_sha and status.rebase_done then
+          local last_done = status.rebase_done[#status.rebase_done]
+          if last_done and last_done.action == "edit" then
+            skip_last = true
+          end
+        end
         local stopped_sha = status.rebase_stopped_sha
         for i = #status.rebase_done_commits, 1, -1 do
           local commit = status.rebase_done_commits[i]
-          -- Skip if this is the stopped commit (already shown as "stop")
-          if not stopped_sha or not commit.hash:find(stopped_sha, 1, true) then
+          -- Skip the last done commit for edit stops (already shown as "stop")
+          if not (skip_last and i == #status.rebase_done_commits) then
             local done_line = string.format("done %s %s", commit.abbrev, commit.subject)
             table.insert(lines, done_line)
             self.line_map[#lines] = {
