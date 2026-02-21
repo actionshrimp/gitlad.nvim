@@ -174,11 +174,11 @@ local highlight_groups = {
   -- Blame view
   GitladBlameHash = { link = "Constant" },
   GitladBlameAuthor = { link = "String" },
-  GitladBlameDate = { link = "Comment" },
-  GitladBlameSummary = { link = "Comment" },
+  GitladBlameDate = { link = "Number" },
+  GitladBlameSummary = { link = "Normal" },
   GitladBlameUncommitted = { link = "DiagnosticWarn" },
   GitladBlameBoundary = { link = "DiagnosticHint" },
-  GitladBlameChunkEven = { bg = "#1e1e2e" }, -- Subtle dark background
+  GitladBlameChunkEven = { link = "CursorLine" }, -- Universal alternating chunk background
   GitladBlameChunkOdd = {}, -- Default background (no change)
 
   -- Rebase sequence (matching magit-sequence faces)
