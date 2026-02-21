@@ -72,13 +72,13 @@ local function build_command(args)
   return cmd
 end
 
---- Run a git command asynchronously
+--- Internal: run a git command asynchronously with optional stdin
 ---@param args string[] Git command arguments (without 'git' prefix)
----@param opts? GitCommandOptions Options
+---@param opts GitCommandOptions Options
 ---@param callback fun(result: GitCommandResult) Callback with result
+---@param stdin_lines? string[] Optional lines to send to stdin
 ---@return number job_id Job ID for cancellation
-function M.run_async(args, opts, callback)
-  opts = opts or {}
+local function _run_job(args, opts, callback, stdin_lines)
   local cmd = build_command(args)
   local cwd = opts.cwd or vim.fn.getcwd()
   local start_time = vim.loop.hrtime()
@@ -156,71 +156,63 @@ function M.run_async(args, opts, callback)
     end)
   end
 
+  --- Handle streaming or buffered data for a channel
+  local function make_data_handler(partial_ref, data_table, is_stderr)
+    return function(_, data)
+      if not data then
+        return
+      end
+      if streaming then
+        -- Manual line buffering for real-time streaming
+        for i, chunk in ipairs(data) do
+          if i == 1 then
+            partial_ref.value = partial_ref.value .. chunk
+          else
+            if partial_ref.value ~= "" then
+              table.insert(data_table, partial_ref.value)
+              local line = partial_ref.value
+              vim.schedule(function()
+                opts.on_output_line(line, is_stderr)
+              end)
+            end
+            partial_ref.value = chunk
+          end
+        end
+      else
+        -- Buffered mode - data arrives as complete lines
+        if #data > 0 and data[#data] == "" then
+          table.remove(data)
+        end
+        vim.list_extend(data_table, data)
+      end
+    end
+  end
+
+  -- Wrap partials in tables so the handler can mutate them
+  local stdout_ref = { value = stdout_partial }
+  local stderr_ref = { value = stderr_partial }
+
   job_id = vim.fn.jobstart(cmd, {
-    cwd = opts.cwd or vim.fn.getcwd(),
+    cwd = cwd,
     env = opts.env,
     stdout_buffered = not streaming,
     stderr_buffered = not streaming,
-    on_stdout = function(_, data)
-      if data then
-        if streaming then
-          -- Manual line buffering for real-time streaming
-          for i, chunk in ipairs(data) do
-            if i == 1 then
-              -- First chunk continues the previous partial line
-              stdout_partial = stdout_partial .. chunk
-            else
-              -- Previous partial is now complete
-              if stdout_partial ~= "" then
-                table.insert(stdout_data, stdout_partial)
-                local line = stdout_partial
-                vim.schedule(function()
-                  opts.on_output_line(line, false)
-                end)
-              end
-              stdout_partial = chunk
-            end
-          end
-        else
-          -- Buffered mode - data arrives as complete lines
-          if #data > 0 and data[#data] == "" then
-            table.remove(data)
-          end
-          vim.list_extend(stdout_data, data)
-        end
-      end
-    end,
-    on_stderr = function(_, data)
-      if data then
-        if streaming then
-          -- Manual line buffering for real-time streaming
-          for i, chunk in ipairs(data) do
-            if i == 1 then
-              stderr_partial = stderr_partial .. chunk
-            else
-              if stderr_partial ~= "" then
-                table.insert(stderr_data, stderr_partial)
-                local line = stderr_partial
-                vim.schedule(function()
-                  opts.on_output_line(line, true)
-                end)
-              end
-              stderr_partial = chunk
-            end
-          end
-        else
-          -- Buffered mode
-          if #data > 0 and data[#data] == "" then
-            table.remove(data)
-          end
-          vim.list_extend(stderr_data, data)
-        end
-      end
-    end,
+    on_stdout = make_data_handler(stdout_ref, stdout_data, false),
+    on_stderr = make_data_handler(stderr_ref, stderr_data, true),
     on_exit = function(_, code)
+      -- Sync partial refs back before completing
+      stdout_partial = stdout_ref.value
+      stderr_partial = stderr_ref.value
       on_complete(code)
     end,
   })
+
+  -- Send stdin data and close
+  if stdin_lines and job_id > 0 then
+    local stdin_content = table.concat(stdin_lines, "\n") .. "\n"
+    vim.fn.chansend(job_id, stdin_content)
+    vim.fn.chanclose(job_id, "stdin")
+  end
 
   -- Set up timeout (0 = no timeout, for interactive commands like rebase editor)
   local timeout = opts.timeout or 30000
@@ -234,6 +226,15 @@ function M.run_async(args, opts, callback)
   end
 
   return job_id
+end
+
+--- Run a git command asynchronously
+---@param args string[] Git command arguments (without 'git' prefix)
+---@param opts? GitCommandOptions Options
+---@param callback fun(result: GitCommandResult) Callback with result
+---@return number job_id Job ID for cancellation
+function M.run_async(args, opts, callback)
+  return _run_job(args, opts or {}, callback)
 end
 
 --- Run a git command synchronously (blocking)
@@ -295,169 +296,7 @@ end
 ---@param callback fun(result: GitCommandResult) Callback with result
 ---@return number job_id Job ID for cancellation
 function M.run_async_with_stdin(args, stdin_lines, opts, callback)
-  opts = opts or {}
-  local cmd = build_command(args)
-  local cwd = opts.cwd or vim.fn.getcwd()
-  local start_time = vim.loop.hrtime()
-  local internal = opts.internal or false
-
-  -- Mark operation time for watcher cooldown (lazy require to avoid circular deps)
-  if not internal then
-    local state = require("gitlad.state")
-    state.mark_operation_time(cwd)
-  end
-
-  local stdout_data = {}
-  local stderr_data = {}
-  local job_id
-
-  local timeout_timer = nil
-  local completed = false
-
-  -- Use unbuffered mode when streaming is requested for real-time output
-  local streaming = opts.on_output_line ~= nil
-  local stdout_partial = ""
-  local stderr_partial = ""
-
-  local function on_complete(code)
-    if completed then
-      return
-    end
-    completed = true
-
-    if timeout_timer then
-      vim.fn.timer_stop(timeout_timer)
-    end
-
-    -- Emit any remaining partial lines when streaming
-    if streaming then
-      if stdout_partial ~= "" then
-        table.insert(stdout_data, stdout_partial)
-        vim.schedule(function()
-          opts.on_output_line(stdout_partial, false)
-        end)
-      end
-      if stderr_partial ~= "" then
-        table.insert(stderr_data, stderr_partial)
-        vim.schedule(function()
-          opts.on_output_line(stderr_partial, true)
-        end)
-      end
-    end
-
-    -- Calculate duration
-    local end_time = vim.loop.hrtime()
-    local duration_ms = (end_time - start_time) / 1e6
-
-    -- Log to history (skip for internal operations)
-    if not internal then
-      history.add({
-        cmd = args[1] or "git",
-        args = args,
-        cwd = cwd,
-        exit_code = code,
-        stdout = stdout_data,
-        stderr = stderr_data,
-        timestamp = os.time(),
-        duration_ms = duration_ms,
-      })
-    end
-
-    -- Schedule callback to ensure we're in main loop
-    vim.schedule(function()
-      callback({
-        stdout = stdout_data,
-        stderr = stderr_data,
-        code = code,
-      })
-    end)
-  end
-
-  job_id = vim.fn.jobstart(cmd, {
-    cwd = opts.cwd or vim.fn.getcwd(),
-    env = opts.env,
-    stdout_buffered = not streaming,
-    stderr_buffered = not streaming,
-    on_stdout = function(_, data)
-      if data then
-        if streaming then
-          -- Manual line buffering for real-time streaming
-          for i, chunk in ipairs(data) do
-            if i == 1 then
-              -- First chunk continues the previous partial line
-              stdout_partial = stdout_partial .. chunk
-            else
-              -- Previous partial is now complete
-              if stdout_partial ~= "" then
-                table.insert(stdout_data, stdout_partial)
-                local line = stdout_partial
-                vim.schedule(function()
-                  opts.on_output_line(line, false)
-                end)
-              end
-              stdout_partial = chunk
-            end
-          end
-        else
-          -- Buffered mode - data arrives as complete lines
-          if #data > 0 and data[#data] == "" then
-            table.remove(data)
-          end
-          vim.list_extend(stdout_data, data)
-        end
-      end
-    end,
-    on_stderr = function(_, data)
-      if data then
-        if streaming then
-          -- Manual line buffering for real-time streaming
-          for i, chunk in ipairs(data) do
-            if i == 1 then
-              stderr_partial = stderr_partial .. chunk
-            else
-              if stderr_partial ~= "" then
-                table.insert(stderr_data, stderr_partial)
-                local line = stderr_partial
-                vim.schedule(function()
-                  opts.on_output_line(line, true)
-                end)
-              end
-              stderr_partial = chunk
-            end
-          end
-        else
-          -- Buffered mode
-          if #data > 0 and data[#data] == "" then
-            table.remove(data)
-          end
-          vim.list_extend(stderr_data, data)
-        end
-      end
-    end,
-    on_exit = function(_, code)
-      on_complete(code)
-    end,
-  })
-
-  -- Send stdin data and close
-  if job_id > 0 then
-    local stdin_content = table.concat(stdin_lines, "\n") .. "\n"
-    vim.fn.chansend(job_id, stdin_content)
-    vim.fn.chanclose(job_id, "stdin")
-  end
-
-  -- Set up timeout (0 = no timeout, for interactive commands like rebase editor)
-  local timeout = opts.timeout or 30000
-  if timeout > 0 then
-    timeout_timer = vim.fn.timer_start(timeout, function()
-      if not completed then
-        vim.fn.jobstop(job_id)
-        on_complete(-1) -- Timeout exit code
-      end
-    end)
-  end
-
-  return job_id
+  return _run_job(args, opts or {}, callback, stdin_lines)
 end
 
 return M
