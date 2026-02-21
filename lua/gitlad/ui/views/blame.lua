@@ -276,17 +276,23 @@ end
 function BlameBuffer:refresh()
   vim.notify("[gitlad] Blaming...", vim.log.levels.INFO)
 
-  git.blame(self.file, self.revision, self.extra_args, { cwd = self.repo_state.repo_root }, function(result, err)
-    vim.schedule(function()
-      if err then
-        vim.notify("[gitlad] Blame failed: " .. err, vim.log.levels.ERROR)
-        return
-      end
+  git.blame(
+    self.file,
+    self.revision,
+    self.extra_args,
+    { cwd = self.repo_state.repo_root },
+    function(result, err)
+      vim.schedule(function()
+        if err then
+          vim.notify("[gitlad] Blame failed: " .. err, vim.log.levels.ERROR)
+          return
+        end
 
-      self.blame_result = result
-      self:render()
-    end)
-  end)
+        self.blame_result = result
+        self:render()
+      end)
+    end
+  )
 end
 
 --- Render the blame view (both annotation and file buffers)
@@ -306,27 +312,23 @@ function BlameBuffer:render()
 
   for i, bl in ipairs(blame.lines) do
     local commit = blame.commits[bl.hash]
-    if not commit then
-      goto continue
+    if commit then
+      -- Track chunk boundaries
+      if bl.hash ~= prev_hash then
+        chunk_index = chunk_index + 1
+        table.insert(self.chunk_boundaries, i)
+        prev_hash = bl.hash
+      end
+
+      table.insert(annotation_lines, format_annotation_line(bl, commit))
+      table.insert(file_lines, bl.content)
+
+      self.line_map[i] = {
+        type = "blame",
+        hash = bl.hash,
+        commit = commit,
+      }
     end
-
-    -- Track chunk boundaries
-    if bl.hash ~= prev_hash then
-      chunk_index = chunk_index + 1
-      table.insert(self.chunk_boundaries, i)
-      prev_hash = bl.hash
-    end
-
-    table.insert(annotation_lines, format_annotation_line(bl, commit))
-    table.insert(file_lines, bl.content)
-
-    self.line_map[i] = {
-      type = "blame",
-      hash = bl.hash,
-      commit = commit,
-    }
-
-    ::continue::
   end
 
   -- Populate annotation buffer
@@ -383,68 +385,77 @@ function BlameBuffer:_apply_highlights()
 
   for i, bl in ipairs(blame.lines) do
     local commit = blame.commits[bl.hash]
-    if not commit then
-      goto continue
-    end
+    if commit then
+      local line_idx = i - 1 -- 0-indexed
 
-    local line_idx = i - 1 -- 0-indexed
-
-    -- Track chunks for alternating backgrounds
-    if bl.hash ~= prev_hash then
-      chunk_index = chunk_index + 1
-      prev_hash = bl.hash
-    end
-
-    -- Alternating chunk backgrounds
-    local chunk_hl = (chunk_index % 2 == 0) and "GitladBlameChunkEven" or "GitladBlameChunkOdd"
-    hl.set_line(self.annotation_bufnr, ns, line_idx, chunk_hl)
-
-    -- Get the annotation line text for positioning highlights
-    local lines = vim.api.nvim_buf_get_lines(self.annotation_bufnr, line_idx, line_idx + 1, false)
-    if #lines == 0 then
-      goto continue
-    end
-
-    if is_uncommitted(bl.hash) then
-      -- Highlight entire line as uncommitted
-      hl.set(self.annotation_bufnr, ns, line_idx, 0, #lines[1], "GitladBlameUncommitted")
-    else
-      -- Hash (first 7 chars)
-      hl.set(self.annotation_bufnr, ns, line_idx, 0, 7, "GitladBlameHash")
-
-      -- Author (cols 8-17)
-      local author_start = 8
-      local author_text = truncate(commit.author, 10)
-      hl.set(self.annotation_bufnr, ns, line_idx, author_start, author_start + #author_text, "GitladBlameAuthor")
-
-      -- Date (cols 20-25)
-      local date_text = format_date(commit.author_time)
-      if date_text ~= "" then
-        local date_start = 20
-        hl.set(self.annotation_bufnr, ns, line_idx, date_start, date_start + #date_text, "GitladBlameDate")
+      -- Track chunks for alternating backgrounds
+      if bl.hash ~= prev_hash then
+        chunk_index = chunk_index + 1
+        prev_hash = bl.hash
       end
 
-      -- Summary (cols 28+)
-      local summary_start = 28
-      local summary_text = truncate(commit.summary, 20)
-      if #lines[1] > summary_start then
-        hl.set(
-          self.annotation_bufnr,
-          ns,
-          line_idx,
-          summary_start,
-          math.min(summary_start + #summary_text, #lines[1]),
-          "GitladBlameSummary"
-        )
-      end
+      -- Alternating chunk backgrounds
+      local chunk_hl = (chunk_index % 2 == 0) and "GitladBlameChunkEven" or "GitladBlameChunkOdd"
+      hl.set_line(self.annotation_bufnr, ns, line_idx, chunk_hl)
 
-      -- Boundary indicator
-      if commit.boundary then
-        hl.set(self.annotation_bufnr, ns, line_idx, 0, 7, "GitladBlameBoundary")
+      -- Get the annotation line text for positioning highlights
+      local ann_lines =
+        vim.api.nvim_buf_get_lines(self.annotation_bufnr, line_idx, line_idx + 1, false)
+      if #ann_lines > 0 then
+        if is_uncommitted(bl.hash) then
+          -- Highlight entire line as uncommitted
+          hl.set(self.annotation_bufnr, ns, line_idx, 0, #ann_lines[1], "GitladBlameUncommitted")
+        else
+          -- Hash (first 7 chars)
+          hl.set(self.annotation_bufnr, ns, line_idx, 0, 7, "GitladBlameHash")
+
+          -- Author (cols 8-17)
+          local author_start = 8
+          local author_text = truncate(commit.author, 10)
+          hl.set(
+            self.annotation_bufnr,
+            ns,
+            line_idx,
+            author_start,
+            author_start + #author_text,
+            "GitladBlameAuthor"
+          )
+
+          -- Date (cols 20-25)
+          local date_text = format_date(commit.author_time)
+          if date_text ~= "" then
+            local date_start = 20
+            hl.set(
+              self.annotation_bufnr,
+              ns,
+              line_idx,
+              date_start,
+              date_start + #date_text,
+              "GitladBlameDate"
+            )
+          end
+
+          -- Summary (cols 28+)
+          local summary_start = 28
+          local summary_text = truncate(commit.summary, 20)
+          if #ann_lines[1] > summary_start then
+            hl.set(
+              self.annotation_bufnr,
+              ns,
+              line_idx,
+              summary_start,
+              math.min(summary_start + #summary_text, #ann_lines[1]),
+              "GitladBlameSummary"
+            )
+          end
+
+          -- Boundary indicator
+          if commit.boundary then
+            hl.set(self.annotation_bufnr, ns, line_idx, 0, 7, "GitladBlameBoundary")
+          end
+        end
       end
     end
-
-    ::continue::
   end
 end
 

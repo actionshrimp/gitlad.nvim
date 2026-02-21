@@ -26,7 +26,12 @@ local function create_blame_repo(child)
   helpers.git(child, repo, "commit -m 'initial commit'")
 
   -- Add more lines in a second commit
-  helpers.create_file(child, repo, "file.lua", "local M = {}\n\nfunction M.hello()\n  return 'hi'\nend\n\nreturn M\n")
+  helpers.create_file(
+    child,
+    repo,
+    "file.lua",
+    "local M = {}\n\nfunction M.hello()\n  return 'hi'\nend\n\nreturn M\n"
+  )
   helpers.git(child, repo, "add file.lua")
   helpers.git(child, repo, "commit -m 'add hello function'")
 
@@ -264,7 +269,12 @@ T["blame view from status"]["B opens blame for file at cursor"] = function()
   local repo = create_blame_repo(child)
 
   -- Modify a file to get it in unstaged section
-  helpers.create_file(child, repo, "file.lua", "local M = {}\n\nfunction M.hello()\n  return 'hello'\nend\n\nreturn M\n")
+  helpers.create_file(
+    child,
+    repo,
+    "file.lua",
+    "local M = {}\n\nfunction M.hello()\n  return 'hello'\nend\n\nreturn M\n"
+  )
 
   -- Open status view
   helpers.open_gitlad(child, repo)

@@ -18,7 +18,12 @@ function M.open(repo_state, context)
     .builder()
     :name("Blame")
     -- Switches (short flags for blame)
-    :switch("w", "w", "Ignore whitespace", { cli_prefix = "-" })
+    :switch(
+      "w",
+      "w",
+      "Ignore whitespace",
+      { cli_prefix = "-" }
+    )
     :switch("M", "M", "Detect moved lines", { cli_prefix = "-" })
     :switch("C", "C", "Detect copied lines", { cli_prefix = "-" })
     -- Actions
