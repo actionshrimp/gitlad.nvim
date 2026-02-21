@@ -23,6 +23,7 @@ local git_reflog = require("gitlad.git.git_reflog")
 local git_remotes = require("gitlad.git.git_remotes")
 local git_worktree = require("gitlad.git.git_worktree")
 local git_patch = require("gitlad.git.git_patch")
+local git_blame = require("gitlad.git.git_blame")
 
 -- Branch operations
 M.branches = git_branches.branches
@@ -92,6 +93,9 @@ M.worktree_prune = git_worktree.worktree_prune
 
 -- Reflog operations
 M.reflog = git_reflog.reflog
+
+-- Blame operations
+M.blame = git_blame.blame
 
 -- Patch operations
 M.format_patch = git_patch.format_patch

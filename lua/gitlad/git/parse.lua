@@ -992,4 +992,101 @@ function M.parse_worktree_list(lines)
   return worktrees
 end
 
+---@class BlameCommitInfo
+---@field hash string Full commit hash (40 chars)
+---@field author string Author name
+---@field author_time number Author timestamp (epoch seconds)
+---@field summary string Commit subject line
+---@field previous_hash? string Parent commit hash (for blame-on-blame)
+---@field previous_filename? string Filename in parent commit
+---@field boundary boolean Whether this is a boundary commit
+---@field filename string Filename in this commit
+
+---@class BlameLine
+---@field hash string Full commit hash
+---@field orig_line number Original line number in the commit
+---@field final_line number Line number in the current file
+---@field content string Line content (without leading tab)
+
+---@class BlameResult
+---@field commits table<string, BlameCommitInfo> Map of hash to commit info
+---@field lines BlameLine[] Ordered blame lines
+---@field file string File path that was blamed
+
+--- Parse git blame --porcelain output
+--- See: https://git-scm.com/docs/git-blame#_the_porcelain_format
+---@param output string[] Lines from git blame --porcelain
+---@return BlameResult
+function M.parse_blame_porcelain(output)
+  local result = {
+    commits = {},
+    lines = {},
+    file = "",
+  }
+
+  local current_hash = nil
+  local current_orig_line = nil
+  local current_final_line = nil
+
+  for _, line in ipairs(output) do
+    -- Commit header line: <hash> <orig_line> <final_line> [<num_lines>]
+    local hash, orig, final = line:match("^(%x%x%x%x%x%x%x+)%s+(%d+)%s+(%d+)")
+    if hash then
+      current_hash = hash
+      current_orig_line = tonumber(orig)
+      current_final_line = tonumber(final)
+
+      -- Initialize commit info if first time seeing this hash
+      if not result.commits[hash] then
+        result.commits[hash] = {
+          hash = hash,
+          author = "",
+          author_time = 0,
+          summary = "",
+          boundary = false,
+          filename = "",
+        }
+      end
+    elseif current_hash then
+      -- Content line (starts with tab)
+      if line:sub(1, 1) == "\t" then
+        table.insert(result.lines, {
+          hash = current_hash,
+          orig_line = current_orig_line,
+          final_line = current_final_line,
+          content = line:sub(2),
+        })
+      else
+        -- Metadata line for current commit
+        local commit = result.commits[current_hash]
+        if commit then
+          local key, value = line:match("^(%S+)%s?(.*)")
+          if key == "author" then
+            commit.author = value
+          elseif key == "author-time" then
+            commit.author_time = tonumber(value) or 0
+          elseif key == "summary" then
+            commit.summary = value
+          elseif key == "previous" then
+            local prev_hash, prev_file = value:match("^(%x+)%s+(.+)")
+            if prev_hash then
+              commit.previous_hash = prev_hash
+              commit.previous_filename = prev_file
+            end
+          elseif key == "boundary" then
+            commit.boundary = true
+          elseif key == "filename" then
+            commit.filename = value
+            if result.file == "" then
+              result.file = value
+            end
+          end
+        end
+      end
+    end
+  end
+
+  return result
+end
+
 return M
