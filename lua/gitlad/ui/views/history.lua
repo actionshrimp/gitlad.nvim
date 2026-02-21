@@ -69,7 +69,7 @@ function HistoryBuffer:_setup_keymaps()
   end, "Toggle expand entry")
 
   -- Refresh
-  keymap.set(bufnr, "n", "g", function()
+  keymap.set(bufnr, "n", "gr", function()
     self:refresh()
   end, "Refresh history")
 
