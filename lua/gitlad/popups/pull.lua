@@ -43,10 +43,19 @@ end
 ---@param repo_state RepoState
 ---@param args string[]
 local function do_pull(repo_state, args)
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Pull", command = "git pull " .. table.concat(args, " ") })
+
   vim.notify("[gitlad] Pulling...", vim.log.levels.INFO)
 
-  git.pull(args, { cwd = repo_state.repo_root }, function(success, _, err)
+  git.pull(args, {
+    cwd = repo_state.repo_root,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
+  }, function(success, _, err)
     vim.schedule(function()
+      viewer:complete(success and 0 or 1)
       if success then
         vim.notify("[gitlad] Pull complete", vim.log.levels.INFO)
         repo_state:refresh_status(true)

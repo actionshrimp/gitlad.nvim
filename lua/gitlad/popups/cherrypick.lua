@@ -117,10 +117,22 @@ function M._cherry_pick(repo_state, popup_data, context, no_commit)
       table.insert(args, "--no-commit")
     end
 
+    local output_mod = require("gitlad.ui.views.output")
+    local viewer = output_mod.create({
+      title = "Cherry-pick",
+      command = "git cherry-pick " .. table.concat(args, " ") .. " " .. table.concat(commits, " "),
+    })
+
     vim.notify("[gitlad] Cherry-picking...", vim.log.levels.INFO)
 
-    git.cherry_pick(commits, args, { cwd = repo_state.repo_root }, function(success, output, err)
+    git.cherry_pick(commits, args, {
+      cwd = repo_state.repo_root,
+      on_output_line = function(line, is_stderr)
+        viewer:append(line, is_stderr)
+      end,
+    }, function(success, output, err)
       vim.schedule(function()
+        viewer:complete(success and 0 or 1)
         if success then
           local msg = no_commit and "Cherry-picked (staged)" or "Cherry-picked commit"
           vim.notify("[gitlad] " .. msg, vim.log.levels.INFO)
@@ -148,10 +160,20 @@ end
 --- Continue an in-progress cherry-pick
 ---@param repo_state RepoState
 function M._cherry_pick_continue(repo_state)
+  local output_mod = require("gitlad.ui.views.output")
+  local viewer =
+    output_mod.create({ title = "Cherry-pick", command = "git cherry-pick --continue" })
+
   vim.notify("[gitlad] Continuing cherry-pick...", vim.log.levels.INFO)
 
-  git.cherry_pick_continue({ cwd = repo_state.repo_root }, function(success, err)
+  git.cherry_pick_continue({
+    cwd = repo_state.repo_root,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
+  }, function(success, err)
     vim.schedule(function()
+      viewer:complete(success and 0 or 1)
       if success then
         vim.notify("[gitlad] Cherry-pick continued", vim.log.levels.INFO)
         repo_state:refresh_status(true)

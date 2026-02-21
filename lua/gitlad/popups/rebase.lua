@@ -42,11 +42,22 @@ end
 ---@param target string Target ref to rebase onto
 ---@param args string[]
 local function do_rebase(repo_state, target, args)
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({
+    title = "Rebase",
+    command = "git rebase " .. table.concat(args, " ") .. " " .. target,
+  })
+
   -- Check if interactive mode is enabled
   local is_interactive = vim.tbl_contains(args, "--interactive") or vim.tbl_contains(args, "-i")
 
   -- Build options with potential custom editor env for interactive rebase
-  local opts = { cwd = repo_state.repo_root }
+  local opts = {
+    cwd = repo_state.repo_root,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
+  }
   if is_interactive then
     -- Use our custom editor for interactive rebase
     -- Disable timeout since user may take any amount of time editing
@@ -56,8 +67,9 @@ local function do_rebase(repo_state, target, args)
 
   vim.notify("[gitlad] Rebasing onto " .. target .. "...", vim.log.levels.INFO)
 
-  git.rebase(target, args, opts, function(success, output, err)
+  git.rebase(target, args, opts, function(success, _, err)
     vim.schedule(function()
+      viewer:complete(success and 0 or 1)
       -- Open/focus the status buffer first
       open_status_buffer(repo_state)
 
@@ -377,6 +389,9 @@ end
 --- Continue an in-progress rebase
 ---@param repo_state RepoState
 function M._rebase_continue(repo_state)
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Rebase", command = "git rebase --continue" })
+
   vim.notify("[gitlad] Continuing rebase...", vim.log.levels.INFO)
 
   -- Pass git editor environment for commit message editing during conflict resolution
@@ -386,10 +401,14 @@ function M._rebase_continue(repo_state)
     cwd = repo_state.repo_root,
     env = client.get_envs_git_editor(),
     timeout = 0,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
   }
 
   git.rebase_continue(opts, function(success, err)
     vim.schedule(function()
+      viewer:complete(success and 0 or 1)
       if success then
         -- Check if rebase is complete or still in progress
         if git.rebase_in_progress({ cwd = repo_state.repo_root }) then
@@ -534,7 +553,18 @@ function M._rebase_subset(repo_state, popup_data)
         local is_interactive = vim.tbl_contains(args, "--interactive")
           or vim.tbl_contains(args, "-i")
 
-        local opts = { cwd = repo_state.repo_root }
+        local output_mod = require("gitlad.ui.views.output")
+        local viewer = output_mod.create({
+          title = "Rebase",
+          command = "git rebase " .. table.concat(args, " ") .. " " .. end_commit,
+        })
+
+        local opts = {
+          cwd = repo_state.repo_root,
+          on_output_line = function(line, is_stderr)
+            viewer:append(line, is_stderr)
+          end,
+        }
         if is_interactive then
           opts.env = client.get_envs_git_editor()
           opts.timeout = 0
@@ -542,8 +572,9 @@ function M._rebase_subset(repo_state, popup_data)
 
         vim.notify("[gitlad] Rebasing subset onto " .. newbase .. "...", vim.log.levels.INFO)
 
-        git.rebase(end_commit, args, opts, function(success, output, err)
+        git.rebase(end_commit, args, opts, function(success, _, err)
           vim.schedule(function()
+            viewer:complete(success and 0 or 1)
             open_status_buffer(repo_state)
 
             if success then
@@ -628,12 +659,21 @@ function M._rebase_reword(repo_state, popup_data, context)
 
     -- For reword, we need to use GIT_SEQUENCE_EDITOR to change the action
     -- Disable timeout since user may take any amount of time editing the message
+    local output_mod = require("gitlad.ui.views.output")
+    local viewer = output_mod.create({
+      title = "Rebase",
+      command = "git rebase --interactive " .. commit:sub(1, 7) .. " (reword)",
+    })
+
     local opts = {
       cwd = repo_state.repo_root,
       timeout = 0,
       env = vim.tbl_extend("force", client.get_envs_git_editor(), {
         GIT_SEQUENCE_EDITOR = "sed -i.bak '1s/^pick/reword/'",
       }),
+      on_output_line = function(line, is_stderr)
+        viewer:append(line, is_stderr)
+      end,
     }
 
     vim.notify(
@@ -641,8 +681,9 @@ function M._rebase_reword(repo_state, popup_data, context)
       vim.log.levels.INFO
     )
 
-    git.rebase(M._include_commit_in_rebase(commit), args, opts, function(success, output, err)
+    git.rebase(M._include_commit_in_rebase(commit), args, opts, function(success, _, err)
       vim.schedule(function()
+        viewer:complete(success and 0 or 1)
         open_status_buffer(repo_state)
 
         if success then
@@ -690,11 +731,20 @@ function M._rebase_remove(repo_state, popup_data, context)
       table.insert(args, "--interactive")
     end
 
+    local output_mod = require("gitlad.ui.views.output")
+    local viewer = output_mod.create({
+      title = "Rebase",
+      command = "git rebase --interactive " .. commit:sub(1, 7) .. " (drop)",
+    })
+
     local opts = {
       cwd = repo_state.repo_root,
       env = {
         GIT_SEQUENCE_EDITOR = "sed -i.bak '1s/^pick/drop/'",
       },
+      on_output_line = function(line, is_stderr)
+        viewer:append(line, is_stderr)
+      end,
     }
 
     vim.notify(
@@ -702,8 +752,9 @@ function M._rebase_remove(repo_state, popup_data, context)
       vim.log.levels.INFO
     )
 
-    git.rebase(M._include_commit_in_rebase(commit), args, opts, function(success, output, err)
+    git.rebase(M._include_commit_in_rebase(commit), args, opts, function(success, _, err)
       vim.schedule(function()
+        viewer:complete(success and 0 or 1)
         open_status_buffer(repo_state)
 
         if success then
@@ -765,18 +816,28 @@ function M._rebase_autosquash(repo_state, popup_data)
       table.insert(args, "--interactive")
     end
 
+    local output_mod = require("gitlad.ui.views.output")
+    local viewer = output_mod.create({
+      title = "Rebase",
+      command = "git rebase --autosquash --interactive " .. ref,
+    })
+
     local opts = {
       cwd = repo_state.repo_root,
       env = {
         -- Use true to auto-accept the todo list (non-interactive autosquash)
         GIT_SEQUENCE_EDITOR = "true",
       },
+      on_output_line = function(line, is_stderr)
+        viewer:append(line, is_stderr)
+      end,
     }
 
     vim.notify("[gitlad] Running autosquash rebase...", vim.log.levels.INFO)
 
-    git.rebase(M._include_commit_in_rebase(ref), args, opts, function(success, output, err)
+    git.rebase(M._include_commit_in_rebase(ref), args, opts, function(success, _, err)
       vim.schedule(function()
+        viewer:complete(success and 0 or 1)
         open_status_buffer(repo_state)
 
         if success then

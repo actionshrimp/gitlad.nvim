@@ -114,4 +114,145 @@ T["output viewer"]["uses default title when not provided"] = function()
   viewer:close()
 end
 
+-- =============================================================================
+-- Lazy Output Viewer
+-- =============================================================================
+
+T["lazy output viewer"] = MiniTest.new_set({
+  hooks = {
+    pre_case = function()
+      -- Reset config for each test
+      require("gitlad.config").reset()
+    end,
+  },
+})
+
+T["lazy output viewer"]["is_open returns false before any output"] = function()
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  eq(viewer:is_open(), false)
+
+  viewer:close()
+end
+
+T["lazy output viewer"]["opens on first append"] = function()
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  eq(viewer:is_open(), false)
+
+  viewer:append("Hello from hook", false)
+
+  eq(viewer:is_open(), true)
+
+  viewer:close()
+end
+
+T["lazy output viewer"]["does not open on complete(0) with no output"] = function()
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  viewer:complete(0)
+
+  eq(viewer:is_open(), false)
+end
+
+T["lazy output viewer"]["does not open on complete(1) with no output"] = function()
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  viewer:complete(1)
+
+  eq(viewer:is_open(), false)
+end
+
+T["lazy output viewer"]["delegates close to inner viewer"] = function()
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  viewer:append("line", false)
+  eq(viewer:is_open(), true)
+
+  viewer:close()
+  eq(viewer:is_open(), false)
+end
+
+T["lazy output viewer"]["close is safe when no inner viewer"] = function()
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  -- Should not error
+  viewer:close()
+  viewer:close()
+  eq(viewer:is_open(), false)
+end
+
+T["lazy output viewer"]["delegates complete to inner viewer after append"] = function()
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  viewer:append("hook output", false)
+  eq(viewer:is_open(), true)
+
+  viewer:complete(0)
+  -- Auto-close is delayed, so should still be open
+  eq(viewer:is_open(), true)
+
+  viewer:close()
+end
+
+-- =============================================================================
+-- Factory (M.create)
+-- =============================================================================
+
+T["output factory"] = MiniTest.new_set({
+  hooks = {
+    pre_case = function()
+      require("gitlad.config").reset()
+    end,
+  },
+})
+
+T["output factory"]["returns lazy viewer by default"] = function()
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  -- Lazy viewer: is_open is false before append
+  eq(viewer:is_open(), false)
+
+  viewer:close()
+end
+
+T["output factory"]["returns immediate viewer when config is always"] = function()
+  local config = require("gitlad.config")
+  config.setup({ output = { hook_output = "always" } })
+
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  -- Always mode: viewer is open immediately
+  eq(viewer:is_open(), true)
+
+  viewer:close()
+end
+
+T["output factory"]["returns noop viewer when config is never"] = function()
+  local config = require("gitlad.config")
+  config.setup({ output = { hook_output = "never" } })
+
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Test" })
+
+  -- Noop viewer: always reports false
+  eq(viewer:is_open(), false)
+
+  -- Should not error
+  viewer:append("test", false)
+  viewer:complete(0)
+  viewer:close()
+
+  eq(viewer:is_open(), false)
+end
+
 return T
