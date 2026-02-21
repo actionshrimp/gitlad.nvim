@@ -214,8 +214,8 @@ T["blame view"]["yank hash with y"] = function()
   child.type_keys("y")
   helpers.wait_short(child, 200)
 
-  -- Check that clipboard has a hash-like value
-  local yanked = child.lua_get([[vim.fn.getreg('+')]])
+  -- Check that unnamed register has a hash-like value (use " not + for CI compatibility)
+  local yanked = child.lua_get([[vim.fn.getreg('"')]])
   expect.no_equality(yanked, "")
   -- Should be 7 hex characters
   local is_hash = yanked:match("^%x%x%x%x%x%x%x$") ~= nil
