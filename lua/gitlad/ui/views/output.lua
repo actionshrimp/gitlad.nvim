@@ -4,6 +4,8 @@
 --- Uses nvim_open_term() to render ANSI escape codes (colors) from git hooks.
 ---@brief ]]
 
+local keymap = require("gitlad.utils.keymap")
+
 local M = {}
 
 ---@class OutputViewerOptions
@@ -102,13 +104,13 @@ function M.open(opts)
   vim.wo[self._winnr].signcolumn = "no"
 
   -- Set up keymaps (works on terminal buffers too)
-  vim.keymap.set("n", "q", function()
+  keymap.set(self._bufnr, "n", "q", function()
     self:close()
-  end, { buffer = self._bufnr, nowait = true, desc = "Close output viewer" })
+  end, "Close output viewer", { nowait = true })
 
-  vim.keymap.set("n", "<Esc>", function()
+  keymap.set(self._bufnr, "n", "<Esc>", function()
     self:close()
-  end, { buffer = self._bufnr, nowait = true, desc = "Close output viewer" })
+  end, "Close output viewer", { nowait = true })
 
   -- Clean up on buffer wipe
   vim.api.nvim_create_autocmd("BufWipeout", {

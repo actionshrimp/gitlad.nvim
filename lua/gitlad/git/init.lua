@@ -807,24 +807,29 @@ end
 ---@param opts? GitCommandOptions
 ---@param callback fun(sha: string|nil, err: string|nil)
 function M.submodule_recorded_sha(path, staged, opts, callback)
-  local args
   if staged then
-    -- Get SHA from index
-    args = { "ls-tree", "-d", "HEAD", "--", path }
+    -- Get SHA from the index (staging area)
+    cli.run_async({ "ls-files", "--stage", "--", path }, opts, function(result)
+      if result.code ~= 0 then
+        callback(nil, table.concat(result.stderr, "\n"))
+        return
+      end
+      -- Format: "160000 <sha> 0\t<path>"
+      local sha = result.stdout[1] and result.stdout[1]:match("^%d+%s+(%x+)")
+      callback(sha, nil)
+    end)
   else
     -- Get SHA from HEAD (committed)
-    args = { "ls-tree", "-d", "HEAD", "--", path }
+    cli.run_async({ "ls-tree", "-d", "HEAD", "--", path }, opts, function(result)
+      if result.code ~= 0 then
+        callback(nil, table.concat(result.stderr, "\n"))
+        return
+      end
+      -- Format: "160000 commit <sha>\t<path>"
+      local sha = result.stdout[1] and result.stdout[1]:match("^%d+%s+%w+%s+(%x+)")
+      callback(sha, nil)
+    end)
   end
-
-  cli.run_async(args, opts, function(result)
-    if result.code ~= 0 then
-      callback(nil, table.concat(result.stderr, "\n"))
-      return
-    end
-    -- Format: "160000 commit <sha>\t<path>"
-    local sha = result.stdout[1] and result.stdout[1]:match("^%d+%s+%w+%s+(%x+)")
-    callback(sha, nil)
-  end)
 end
 
 --- Get the current SHA for a submodule (what it's actually at)
