@@ -181,6 +181,16 @@ local highlight_groups = {
   GitladBlameChunkEven = { link = "CursorLine" }, -- Universal alternating chunk background
   GitladBlameChunkOdd = {}, -- Default background (no change)
 
+  -- Forge (GitHub PRs)
+  GitladForgePRNumber = { link = "Constant" },
+  GitladForgePRAuthor = { link = "String" },
+  GitladForgePRAdditions = { link = "DiffAdd" },
+  GitladForgePRDeletions = { link = "DiffDelete" },
+  GitladForgePRApproved = { link = "DiagnosticOk" },
+  GitladForgePRChangesRequested = { link = "DiagnosticError" },
+  GitladForgePRReviewRequired = { link = "DiagnosticWarn" },
+  GitladForgePRDraft = { link = "Comment" },
+
   -- Rebase sequence (matching magit-sequence faces)
   GitladSequencePick = { link = "Normal" }, -- Pending actions (default fg)
   GitladSequenceDone = { link = "Comment" }, -- Completed commits (muted)
