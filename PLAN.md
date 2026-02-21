@@ -416,11 +416,33 @@ This feature is implemented in **3 PRs** for incremental delivery:
 **Magit parity notes:**
 - Magit's "absorb", "preview", and "dissolve" actions are advanced features that even neogit hasn't implemented - skipped initially
 
-### 4.3 Blame View
-- [ ] `:Gitlad blame` or `B` from file
-- [ ] Show blame annotations inline
-- [ ] Navigate to commit from blame line
-- [ ] Blame at specific revision
+### 4.3 Blame View - COMPLETE
+- [x] `:Gitlad blame` opens side-by-side blame view (annotations left, file content right)
+- [x] `B` from status view opens blame for file at cursor
+- [x] `git blame --porcelain` parser and async wrapper
+- [x] Blame popup (`B` in blame view) with switches: `-w`, `-M`, `-C`
+- [x] Blame at revision via popup (`r` action)
+- [x] Blame-on-blame (`b` key) recursively blames at parent revision
+- [x] Chunk navigation (`gj`/`gk`), same-commit chunk navigation (`gJ`/`gK`)
+- [x] Yank hash (`y`), show commit diff (`<CR>`), close (`q`), refresh (`gr`)
+- [x] Colorscheme-compatible highlights (CursorLine for chunk alternation)
+- [x] Boundary commit detection and warnings
+
+**Files created:**
+- `lua/gitlad/git/git_blame.lua` - Async blame wrapper
+- `lua/gitlad/ui/views/blame.lua` - Side-by-side blame view
+- `lua/gitlad/popups/blame.lua` - Blame popup with switches
+- `tests/unit/test_blame_parse.lua` - Parser unit tests (9 tests)
+- `tests/unit/test_blame_popup.lua` - Popup unit tests (3 tests)
+- `tests/e2e/test_blame.lua` - E2E tests (12 tests)
+
+**Files modified:**
+- `lua/gitlad/git/parse.lua` - Added blame types and parse_blame_porcelain()
+- `lua/gitlad/git/init.lua` - Re-export blame()
+- `lua/gitlad/ui/hl.lua` - Added blame highlight groups
+- `lua/gitlad/commands.lua` - Added blame subcommand
+- `lua/gitlad/ui/views/status_keymaps.lua` - Added B keybinding
+- `lua/gitlad/popups/help.lua` - Added B (Blame) entry
 
 ### 4.4 Cherry-pick & Revert (COMPLETE)
 - [x] `A` cherry-pick popup
@@ -494,17 +516,21 @@ This feature is implemented in **3 PRs** for incremental delivery:
 
 ## Phase 5: Polish & Optional Features
 
-### 5.1 Optional File Watcher (Disabled by Default)
+### 5.1 Optional File Watcher (Disabled by Default) - COMPLETE
 For users who want auto-refresh and don't have large repo concerns.
 
-- [ ] Config option: `auto_refresh = false` (default off)
-- [ ] When enabled: watch `.git/` directory using `vim.loop.new_fs_event()`
-- [ ] Debounce events (500ms) to coalesce rapid changes
-- [ ] Ignore noise: `*.lock`, `ORIG_HEAD`, temp files
-- [ ] Clear warning in docs about performance implications
+- [x] Config option: `auto_refresh = false` (default off)
+- [x] When enabled: watch `.git/` directory using `vim.loop.new_fs_event()`
+- [x] Debounce events (500ms) to coalesce rapid changes
+- [x] Ignore noise: `*.lock`, `ORIG_HEAD`, temp files
+- [x] Clear warning in docs about performance implications
+- [x] Three detection layers: fs_event on .git/ dirs, fs_event on repo root, Neovim autocmds
+- [x] Gitignore cache filtering for working tree events
+- [x] Cooldown mechanism to avoid false positives from gitlad's own operations
+- [x] Stale indicator mode (default) and auto-refresh mode
 
-**Files to create:**
-- `lua/gitlad/watcher.lua` (new)
+**Files created:**
+- `lua/gitlad/watcher.lua`
 
 ### 5.2 Submodule Support - COMPLETE
 - [x] Show submodule status in status buffer (with status indicators)
