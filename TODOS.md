@@ -39,6 +39,27 @@
 - [x] rebase in progress/todo header sometimes doesnt seem to be highlighted properly, and if you stage something when 'editing' a commit during an interactive rebase, the actual todos disappear until refresh
 - [x] rebase up/down movement doesnt work. better to just make it a regular vim buffer?
 - [x] implement the rebase todo list as per magit
-- [ ] staging/unstaging seems a bit unreliable again
+- [x] staging/unstaging seems a bit unreliable again (fixed via fuzz testing)
 - [ ] some kind of display of queued git operations so you know git is still working underneath for slow operations?
 - [ ] hook output window should only appear if hooks are actually configured. Before implementing, consider a holistic approach: detect configured hooks and show progress/output for all git operations that may trigger them (commit, push, etc.). This may warrant a dedicated phase in PLAN.md.
+
+## Unfinished from earlier phases
+
+### Core Git
+- [ ] Tag popup (`t` keybinding)
+- [ ] Run git command popup (`!` keybinding)
+
+### Polish
+- [ ] Persistent popup switch state between sessions
+- [ ] Customizable keybindings / per-popup overrides
+- [ ] Color scheme / highlight customization
+- [ ] Integration hooks (on_commit, on_push, etc.)
+- [ ] Hunk headers clickable/navigable
+
+### Documentation
+- [ ] Vimdoc (`:help gitlad`)
+- [ ] README with screenshots
+- [ ] Example configurations
+
+### Architecture
+- [ ] BufferBase class extraction (~300 lines boilerplate reduction)

@@ -1,23 +1,12 @@
 # gitlad.nvim Development Guide
 
-## ⚠️ Kaizen: Continuous Improvement
+## Kaizen: Continuous Improvement
 
-**This is a living document.** Our development practices should evolve as we learn.
-
-When you notice something that could be improved—whether it's a process that's too slow, documentation that's unclear, a pattern that keeps causing bugs, or a tool that could help—**speak up and suggest changes** to this guide and PLAN.md.
-
-Examples of improvements to watch for:
-- Repetitive manual steps that could be automated
-- Test patterns that are brittle or hard to maintain
-- Documentation gaps that caused confusion
-- Better ways to structure code or tests
-- Tools or plugins that could speed up development
-
-**Don't just follow the process—help improve it.**
+**This is a living document.** When you notice something that could be improved—a process that's too slow, documentation that's unclear, a pattern that keeps causing bugs—**speak up and suggest changes** to this guide and PLAN.md.
 
 ---
 
-**Important**: If TODOs are mentioned, make sure to check in the TODOS.md file.
+**Important**: Check TODOS.md for known issues and outstanding work items.
 
 ## Project Vision
 
@@ -25,8 +14,10 @@ A fast, well-tested git interface for Neovim inspired by magit, fugitive, and la
 
 - **Performance-first**: Optimistic state updates, no automatic git syncing (critical for large monorepos)
 - **Properly tested**: Comprehensive automated tests are mandatory, not optional
-- **Magit UX**: Transient-style popup menus and magit keybindings
+- **Magit UX**: Transient-style popup menus and evil-collection-magit keybindings
 - **Transparent**: Git command history shows exactly what commands are running
+- **GitHub-integrated**: Forge features for PR management and code review (via `N` popup)
+- **Native diff viewer**: Built-in side-by-side diff replaces external dependencies
 
 ### Core Performance Principle
 
@@ -36,23 +27,45 @@ A fast, well-tested git interface for Neovim inspired by magit, fugitive, and la
 2. **Optimistic updates** - When staging/unstaging, run git command, check exit code, update Lua state directly
 3. **Git command history** - `$` shows all git commands run, their output, and exit codes
 
-### Leverage diffview.nvim for Full-Buffer Diffs
+### Diff Viewing Strategy
 
-**Don't reinvent the wheel.** For full-buffer diff views, delegate to `diffview.nvim`:
+gitlad.nvim is building a **native diff viewer** to replace the diffview.nvim dependency:
 
 | What | Who handles it |
 |------|----------------|
-| **Status buffer inline diffs** (hunk preview, hunk staging) | gitlad.nvim (our own implementation) |
-| **Full-buffer diff views** (side-by-side, commit diffs, file history) | diffview.nvim |
-| **3-way merge conflict resolution** | diffview.nvim |
+| **Status buffer inline diffs** (hunk preview, hunk staging) | gitlad.nvim (existing) |
+| **Full-buffer diff views** (side-by-side, commit diffs, file history) | gitlad.nvim native diff viewer (in progress, currently delegates to diffview.nvim) |
+| **PR review diffs** (inline comments, review threads) | gitlad.nvim native diff viewer + forge module |
+| **3-way merge conflict resolution** | Currently diffview.nvim, migrating to native |
 
-This keeps gitlad.nvim focused on the status/staging workflow while leveraging diffview.nvim's mature diff rendering.
+See PLAN.md Milestone 3 for the native diff viewer design.
+
+## Current Status
+
+**What's built (core git workflow is complete):**
+- Async git CLI wrapper with porcelain v2 parsing
+- Elm Architecture (Commands/Reducer) for predictable state updates
+- Optimistic state updates - instant UI response without git status refresh
+- Status buffer with full staging workflow (file, hunk, visual selection)
+- Inline diff expansion with syntax highlighting
+- Git command history view (`$` keybinding)
+- Transient-style popup system (PopupBuilder)
+- All git operation popups: Commit, Push, Pull, Fetch, Branch, Log, Diff, Stash, Rebase, Cherry-pick, Revert, Reset, Merge
+- Interactive rebase editor (evil-collection style)
+- Instant fixup/squash (`c F` / `c S`)
+- Sequencer state detection (cherry-pick/revert in progress)
+- Submodule popup, Refs popup/view, Reflog view, Blame view
+- Streaming output viewer for git hook output
+- File watcher with stale indicator
+- 970+ tests across 75+ test files, CI configured
+
+**Current focus: GitHub forge integration + native diff viewer** — See PLAN.md.
 
 ## Golden Rule: Automated Testing
 
 **Every change MUST include automated tests. No exceptions.**
 
-This is the most important rule in this codebase. Code without tests is incomplete code.
+Code without tests is incomplete code.
 
 ### Non-Negotiable Requirements
 
@@ -88,9 +101,9 @@ This is the most important rule in this codebase. Code without tests is incomple
 
 - Tests must be deterministic (no flaky tests)
 - Tests must be isolated (no shared state between tests)
-- Unit tests must be very fast (unit tests < 1s each)
-- **Important**: E2E tests should aim to be cover as many user-facing scenarios as possible.
-- **Important**: E2E tests should use condition based waits where possible - see the `helpers.wait_for_*` functions
+- Unit tests must be very fast (< 1s each)
+- **E2E tests are cheap in this project** — don't shy away from writing them. They catch real integration issues that unit tests miss. When in doubt, write an E2E test.
+- E2E tests should use condition-based waits where possible — see `helpers.wait_for_*` functions
 - Test names must describe the expected behavior
 - Use `before_each` hooks to reset state
 
@@ -112,7 +125,8 @@ make test-e2e
 # Run a single test file for a feature that's being iterated on
 make test-file FILE=tests/e2e/test_rebase.lua
 ```
-**Important:** If iterating on a particular feature, consider running just that test file directly, rather than the whole suite - this will speed up iteration times considerably. However, once the whole task appears to be done, make sure you run `make test` to verify everything passes.
+
+**Important:** When iterating on a specific feature, run just that test file directly — this speeds up iteration considerably. Once the task appears done, run `make test` to verify everything passes.
 
 ### Local Development
 
@@ -123,15 +137,14 @@ make dev
 # Then use :Gitlad to open status view
 ```
 
-### Writing lua
+### Writing Lua
 
-If you need to try out any isolated snippets of lua that don't require the vim
-environment, the `lua` CLI command is available for a lua interpreter.
+If you need to try out any isolated snippets of lua that don't require the vim environment, the `lua` CLI command is available for a lua interpreter.
 
 ### Test Structure
 
 - `tests/unit/` - Pure Lua unit tests (fast, isolated)
-- `tests/e2e/` - Full Neovim integration tests (slower, comprehensive)
+- `tests/e2e/` - Full Neovim integration tests (comprehensive, condition-based waits)
 - `tests/helpers.lua` - Shared test utilities
 - `tests/minimal_init.lua` - Test environment setup
 
@@ -183,6 +196,15 @@ lua/gitlad/
 │   ├── cli.lua           # Async job execution (vim.fn.jobstart)
 │   ├── parse.lua         # Git output parsers (porcelain v2)
 │   └── history.lua       # Git command history ring buffer
+├── forge/                # GitHub/forge integration (in progress)
+│   ├── init.lua          # Provider detection from remote URL, auth check
+│   ├── http.lua          # Async HTTP client (curl + jobstart)
+│   ├── types.lua         # Shared forge types (PR, Review, Comment)
+│   └── github/
+│       ├── init.lua      # GitHub provider implementation
+│       ├── graphql.lua   # GraphQL queries and response parsing
+│       ├── pr.lua        # PR operations
+│       └── review.lua    # Review/comment operations
 ├── state/
 │   ├── init.lua          # RepoState coordinator + optimistic updates
 │   ├── commands.lua      # Elm-style command definitions
@@ -198,8 +220,9 @@ lua/gitlad/
 │   ├── branch.lua        # Branch popup (checkout, create, delete, rename)
 │   ├── cherrypick.lua    # Cherry-pick popup with conflict detection
 │   ├── commit.lua        # Commit popup with switches/options/actions
-│   ├── diff.lua          # Diff popup (integrates with diffview.nvim)
+│   ├── diff.lua          # Diff popup (migrating from diffview.nvim to native)
 │   ├── fetch.lua         # Fetch popup
+│   ├── forge.lua         # Forge popup (N keybinding, GitHub PRs)
 │   ├── help.lua          # Help popup showing all keybindings
 │   ├── log.lua           # Log popup and view
 │   ├── merge.lua         # Merge popup with conflict resolution
@@ -215,16 +238,27 @@ lua/gitlad/
     ├── popup/
     │   └── init.lua      # PopupBuilder - transient-style popup system
     ├── components/
-    │   └── log_list.lua  # Reusable commit list component
+    │   ├── log_list.lua  # Reusable commit list component
+    │   ├── pr_list.lua   # Reusable PR list component
+    │   └── comment.lua   # Comment/thread rendering component
     ├── hl.lua            # Highlight groups and namespace management
     └── views/
         ├── status.lua        # Main status buffer view
         ├── log.lua           # Log view buffer
         ├── refs.lua          # References view buffer
+        ├── blame.lua         # Side-by-side blame view
         ├── commit_editor.lua # Commit message editor buffer
         ├── rebase_editor.lua # Interactive rebase todo editor
         ├── output.lua        # Streaming output viewer (git hooks)
-        └── history.lua       # Git command history view
+        ├── history.lua       # Git command history view
+        ├── pr_list.lua       # PR list buffer
+        ├── pr_detail.lua     # PR detail/discussion buffer
+        └── diff/             # Native diff viewer (in progress)
+            ├── init.lua      # DiffView coordinator
+            ├── panel.lua     # File panel sidebar
+            ├── buffer.lua    # Diff buffer pair management
+            ├── hunk.lua      # Hunk parsing, side-by-side alignment
+            └── review.lua    # Review comment overlay
 ```
 
 ### Key Patterns
@@ -263,25 +297,31 @@ lua/gitlad/
 7. **PopupBuilder** (`ui/popup/init.lua`)
    - Fluent API for building transient-style popups
    - Switches (boolean), options (key-value), actions (callbacks)
+   - Choice options with `vim.ui.select`, mutually exclusive switches
    - Used by all git operation popups (commit, push, pull, etc.)
 
 8. **Reusable Components** (`ui/components/`)
+   - Stateless render functions: take data + options, return `{ lines, line_info, ranges }`
    - `log_list.lua`: Renders commit lists with expandable details
    - Used by both status view (unpushed/unpulled sections) and log view
-   - Configurable via options (indent, hash length, author/date display)
+   - **New components should follow this same pattern**
 
-9. **Utility Modules** (`utils/`)
-   - `errors.lua`: Centralized error handling (`result_to_callback`, `notify`)
-   - `keymap.lua`: Simplified buffer-local keymap setup
-   - Reduces duplication and ensures consistent patterns across codebase
+9. **Singleton Buffer Views** (`ui/views/log.lua`, `ui/views/refs.lua`, etc.)
+   - One buffer instance per repo root, keyed by `repo_root`
+   - `buftype=nofile`, `bufhidden=hide`, cleanup via `BufWipeout` autocmd
+   - `line_map` table mapping line numbers to metadata for context-aware actions
+   - Standard keymaps: `gj`/`gk` navigate, `gr` refresh, `q` close, `?` help
 
 10. **Ref Prompts with Picker/Completion** (`utils/prompt.lua`)
     - Three-tier picker with graceful fallback: snacks.nvim → mini.pick → vim.ui.input
     - Shows suggestions (branches, tags, recent commits) while accepting arbitrary input
-    - Matches magit's `completing-read` with `require-match = 'any'` behavior
     - **Preferred pattern** for any feature needing user to select a ref, commit, or branch
-    - No forced dependencies - works with whatever picker the user has installed
-    - Example: `prompt.prompt_for_ref({ prompt = "Rebase onto: " }, callback)`
+
+11. **Async HTTP Client** (`forge/http.lua`)
+    - `curl` + `vim.fn.jobstart` (same async pattern as `git/cli.lua`)
+    - Auth token from `gh auth token` — no custom OAuth
+    - Used for GitHub GraphQL/REST API calls
+    - `gh` CLI only for: auth, `gh pr checkout`, `gh pr create`, `gh pr merge`
 
 ## Keybindings (evil-collection-magit Style)
 
@@ -291,6 +331,8 @@ lua/gitlad/
 - Push uses `p` (lowercase) instead of `P`
 
 This makes the plugin more comfortable for vim/evil users.
+
+**Important:** When adding new keybindings, always update the relevant sections below AND the help popup (`popups/help.lua`). Keybinding documentation must stay in sync with the implementation.
 
 ### Navigation
 | Key | Action |
@@ -328,6 +370,8 @@ This makes the plugin more comfortable for vim/evil users.
 | `X` | Reset |
 | `'` | Submodule |
 | `yr` | References |
+| `N` | Forge (GitHub PRs) |
+| `B` | Blame (from status view) |
 | `t` | Tag (not yet implemented) |
 | `!` | Run git command (not yet implemented) |
 
@@ -364,6 +408,18 @@ This makes the plugin more comfortable for vim/evil users.
 | `q` | Close |
 | `b` / `c` / `r` / `d` | Branch/Commit/Rebase/Diff popups |
 | `A` / `_` / `X` | Cherry-pick/Revert/Reset popups |
+
+### Blame View
+| Key | Action |
+|-----|--------|
+| `gj` / `gk` | Next/previous blame chunk |
+| `gJ` / `gK` | Next/previous same-commit chunk |
+| `<CR>` | Show commit diff |
+| `b` | Blame at parent (blame-on-blame) |
+| `y` | Yank commit hash |
+| `B` | Blame popup (switches: -w, -M, -C) |
+| `gr` | Refresh |
+| `q` | Close |
 
 ### Rebase Editor (when editing git-rebase-todo)
 
@@ -409,56 +465,33 @@ Action abbreviations (e.g. `f` → `fixup`) auto-expand when you leave insert mo
 
 ## Development Plan
 
-See **PLAN.md** for the detailed development roadmap with specific tasks, files to create/modify, and implementation notes.
+See **PLAN.md** for the detailed development roadmap. Current focus:
 
-### Current Status: Phase 4 Nearly Complete
+1. **Milestone 1**: Forge foundation — HTTP client, GitHub GraphQL, forge popup (`N`), PR list
+2. **Milestone 2**: PR management — detail view, comments, actions
+3. **Milestone 3**: Native diff viewer — replacing diffview.nvim
+4. **Milestone 4**: PR review — inline comments in native diff viewer
+5. **Milestone 5**: Polish — 3-way merge, PR creation, notifications
 
-**What's built:**
-- Async git CLI wrapper with porcelain v2 parsing
-- Elm Architecture (Commands/Reducer) for predictable state updates
-- Optimistic state updates - instant UI response without git status refresh
-- Status buffer with full staging workflow (file, hunk, visual selection)
-- Inline diff expansion with syntax highlighting
-- Git command history view (`$` keybinding)
-- Transient-style popup system (PopupBuilder)
-- Log view with expandable commit details, reusable log_list component
-- All Phase 3 popups: Commit, Push, Pull, Fetch, Branch, Log, Diff, Stash
-- Phase 4 popups: Rebase, Cherry-pick, Revert, Reset, Merge
-- Interactive rebase editor with p/r/e/s/f/d keybindings (evil-collection style)
-- Instant fixup/squash (`c F` / `c S`) - creates fixup commit and rebases immediately
-- Sequencer state detection (shows cherry-pick/revert in progress)
-- Submodule popup (`'` keybinding) - init, update, add, deinit
-- Refs popup and view (`yr` keybinding) - branch/tag comparison
-- Streaming output viewer for git hook output
-- 940+ tests across 73 test files, CI configured
-
-**Next up:**
-- Tag popup
-- Blame view
-
-See PLAN.md for the detailed roadmap.
+Milestones 1-2 (forge) and Milestone 3 (diff viewer) are independent and can proceed in parallel.
 
 ## Reference Projects
 
 Cloned in parent directory for reference:
 
-- `dev/magit/` - Popup system architecture, comprehensive features
+- `dev/magit/` - Popup system architecture, comprehensive features, forge integration
 - `dev/evil-collection/` - Canonical keybindings reference
 - `dev/vim-fugitive/` - Performance patterns, vim-way design
-- `dev//lazygit/` - AsyncHandler pattern, loader architecture
-- `dev/neogit/` - Useful for any neovim or neogit specific details, but strongly prefer magit for any overarching design or git integration!
-
-External dependency (integrate, don't reinvent):
-
-- `diffview.nvim` - Full-buffer diff views, side-by-side diffs, 3-way merge conflict resolution
+- `dev/lazygit/` - AsyncHandler pattern, loader architecture
+- `dev/neogit/` - Useful for neovim-specific details, but strongly prefer magit for overarching design!
 
 ## Development Workflow
 
 ### Starting a New Feature
 
-> **⚠️ CRITICAL: Always start from an up-to-date main branch!**
+> **CRITICAL: Always start from an up-to-date main branch!**
 >
-> Before starting ANY new work, you MUST fetch and update main first. Failing to do this causes merge conflicts and wastes time rebasing later.
+> Before starting ANY new work, you MUST fetch and update main first.
 
 ```bash
 git checkout main
@@ -466,11 +499,6 @@ git fetch origin
 git reset --hard origin/main   # Ensure local main matches remote
 git checkout -b feature/your-feature-name
 ```
-
-This ensures:
-- You're building on the latest code
-- No conflicts from stale branches
-- Clean git history
 
 **Never skip this step.** Even if you think main hasn't changed, always verify.
 
@@ -507,57 +535,41 @@ Each logical step from the plan should be committed as a complete unit. A commit
 | Component | Description |
 |-----------|-------------|
 | **Tests** | Both unit tests and e2e tests for the new functionality |
-| **CI updates** | Any changes to workflow files needed for the feature |
-| **Plan updates** | Update PLAN.md or goal-level docs with progress |
 | **Implementation** | The feature/fix code itself |
-| **Keybindings** | Any new mappings and their tests |
+| **Keybindings** | Any new mappings, their tests, AND updates to help popup and CLAUDE.md keybinding docs |
+| **Documentation** | Update keybinding tables, PLAN.md progress, help popup entries |
 
 **Every commit must pass all checks:**
 ```bash
-make format   # Format code
+make format   # Format code (runs automatically via hook on file changes)
 make lint     # Check formatting
 make test     # Run all tests (unit + e2e)
 ```
 
 Do not move to the next logical step until the current commit is complete and green.
 
+### Documentation Maintenance
+
+**Keep keybinding documentation in sync.** When adding or changing keybindings:
+
+1. Update the **help popup** (`popups/help.lua`) — this is what users see with `?`
+2. Update the **keybinding tables in this file** (CLAUDE.md) — this is the developer reference
+3. Add **tests** that verify the keybinding exists and triggers the correct action
+
+Stale documentation is worse than no documentation. If you notice keybindings that are documented but don't match the implementation (or vice versa), fix the discrepancy.
+
 ### PR-Based Workflow
 
-Once you have a commit or sequence of commits for a higher-level goal, follow this workflow:
+Once you have a commit or sequence of commits for a higher-level goal:
 
-#### 1. Local Review
-```
-- Use a sub-agent to review all changes locally (review-local skill)
-- Address any feedback from the local review
-- Ensure all commits are clean and well-structured
-```
-
-#### 2. Submit PR
-```
-- Push the branch and create a PR
-- Wait for CI workflows to complete
-- All checks must pass before proceeding
-```
-
-#### 3. PR Review
-```
-- Use a sub-agent to review the PR
-- Address any feedback from the review
-- Push fixes and ensure CI remains green
-```
-
-#### 4. Human Approval
-```
-- Once everything is green, notify a human
-- Request manual testing and final review
-- Only merge after human approval
-```
-
-**Never merge a PR without human sign-off.**
+1. **Local Review** - Use a sub-agent to review all changes locally
+2. **Submit PR** - Push the branch and create a PR, wait for CI
+3. **PR Review** - Use a sub-agent to review the PR, address feedback
+4. **Human Approval** - Once everything is green, notify the human. **Never merge without human sign-off.**
 
 ## Code Style
 
-- Format with stylua (`make format`)
+- Format with stylua (`make format`) — runs automatically via PostToolUse hook
 - 2-space indentation
 - 100 character line width
 - Use LuaCATS annotations for types (`---@param`, `---@return`, etc.)
@@ -574,7 +586,7 @@ All PRs must pass:
 When tests fail:
 
 1. Read the error message carefully
-2. Run the specific failing test in isolation
+2. Run the specific failing test in isolation: `make test-file FILE=<path>`
 3. Add print statements if needed (remove before committing)
-4. Check if it's a timing issue (async tests may need `vim.wait`)
+4. Check if it's a timing issue (async tests may need condition-based waits via `helpers.wait_for_*`)
 5. Never mark a task complete with failing tests
