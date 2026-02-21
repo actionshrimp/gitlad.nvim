@@ -412,6 +412,7 @@ local function create_sections(status_buffer)
             require("gitlad.popups.refs").open(repo_state)
           end,
         },
+        { key = "B", desc = "Blame" },
       },
     },
 

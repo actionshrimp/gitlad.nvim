@@ -258,4 +258,71 @@ T["blame view"]["navigates chunks with gj/gk"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+T["blame view from status"] = MiniTest.new_set()
+
+T["blame view from status"]["B opens blame for file at cursor"] = function()
+  local repo = create_blame_repo(child)
+
+  -- Modify a file to get it in unstaged section
+  helpers.create_file(child, repo, "file.lua", "local M = {}\n\nfunction M.hello()\n  return 'hello'\nend\n\nreturn M\n")
+
+  -- Open status view
+  helpers.open_gitlad(child, repo)
+  helpers.wait_for_status_content(child, "file.lua")
+
+  -- Navigate to the file
+  helpers.goto_line_with(child, "file.lua")
+
+  -- Press B to open blame
+  child.type_keys("B")
+
+  -- Wait for blame buffer to appear
+  local found_blame = child.lua_get([[(function()
+    local ok = vim.wait(3000, function()
+      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.bo[buf].filetype == "gitlad-blame" then
+          return true
+        end
+      end
+      return false
+    end, 50)
+    return ok
+  end)()]])
+  eq(found_blame, true)
+
+  -- Should have 2 windows (blame split)
+  local win_count = child.lua_get([[vim.fn.winnr('$')]])
+  eq(win_count, 2)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["blame view from status"]["B warns on untracked file"] = function()
+  local repo = create_blame_repo(child)
+
+  -- Create an untracked file
+  helpers.create_file(child, repo, "new_file.lua", "new content\n")
+
+  -- Open status view
+  helpers.open_gitlad(child, repo)
+  helpers.wait_for_status_content(child, "new_file.lua")
+
+  -- Navigate to the untracked file
+  helpers.goto_line_with(child, "new_file.lua")
+
+  -- Press B
+  child.type_keys("B")
+  helpers.wait_short(child, 300)
+
+  -- Should show warning
+  local warned = helpers.wait_for_message(child, "Cannot blame untracked")
+  eq(warned, true)
+
+  -- Should still have 1 window (no blame opened)
+  local win_count = child.lua_get([[vim.fn.winnr('$')]])
+  eq(win_count, 1)
+
+  helpers.cleanup_repo(child, repo)
+end
+
 return T

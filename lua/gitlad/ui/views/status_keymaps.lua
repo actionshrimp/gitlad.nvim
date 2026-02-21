@@ -479,6 +479,23 @@ local function setup_keymaps(self)
     am_popup.open(self.repo_state)
   end, "Apply patches popup")
 
+  -- Blame (fugitive-style: B for blame file at cursor)
+  keymap.set(bufnr, "n", "B", function()
+    local file_path = get_current_file(self)
+    if not file_path then
+      vim.notify("[gitlad] No file at cursor", vim.log.levels.WARN)
+      return
+    end
+    -- Check for untracked file
+    local info = self.line_map[vim.api.nvim_win_get_cursor(0)[1]]
+    if info and info.section == "untracked" then
+      vim.notify("[gitlad] Cannot blame untracked file", vim.log.levels.WARN)
+      return
+    end
+    local blame_view = require("gitlad.ui.views.blame")
+    blame_view.open_file(self.repo_state, file_path)
+  end, "Blame file")
+
   -- Worktree popup (evil-collection-magit style: Z default, % also works)
   local function open_worktree_popup()
     local worktree_popup = require("gitlad.popups.worktree")
