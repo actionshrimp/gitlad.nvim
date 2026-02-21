@@ -8,48 +8,11 @@ local M = {}
 
 local popup = require("gitlad.ui.popup")
 local git = require("gitlad.git")
+local remote_util = require("gitlad.utils.remote")
 
 ---@class PushPopupContext
 ---@field repo_state RepoState
 ---@field popup PopupData
-
---- Extract remote name from ref (e.g., "origin/main" -> "origin")
----@param ref string|nil
----@return string|nil
-local function get_remote_from_ref(ref)
-  if not ref then
-    return nil
-  end
-  return ref:match("^([^/]+)/")
-end
-
---- Get the effective push target for the current branch
---- This returns the same push_remote that the status view displays
----@param status GitStatusResult|nil
----@return string|nil push_ref Full ref like "origin/feature-branch"
----@return string|nil remote Remote name like "origin"
-local function get_push_target(status)
-  if not status then
-    return nil, nil
-  end
-
-  -- Use explicitly calculated push_remote if available
-  if status.push_remote then
-    local remote = get_remote_from_ref(status.push_remote)
-    return status.push_remote, remote
-  end
-
-  -- Fall back to computing it the same way state/init.lua does
-  -- Push goes to <remote>/<branch> where remote is derived from upstream
-  if status.upstream then
-    local remote = get_remote_from_ref(status.upstream)
-    if remote then
-      return remote .. "/" .. status.branch, remote
-    end
-  end
-
-  return nil, nil
-end
 
 --- Check if push can proceed (has push target or remote specified)
 ---@param repo_state RepoState
@@ -68,7 +31,7 @@ local function can_push(repo_state, remote)
   end
 
   -- Check if we have a push target (either explicit or derived from upstream)
-  local push_ref, _ = get_push_target(status)
+  local push_ref, _ = remote_util.get_push_target(status)
   if not push_ref then
     return false, "No push target. Set a remote with =r or use 'e' to push elsewhere."
   end
@@ -139,7 +102,7 @@ function M.open(repo_state, context)
 
   if status then
     -- Get the effective push target (handles fallback from push_remote to upstream-derived)
-    local push_ref, _ = get_push_target(status)
+    local push_ref, _ = remote_util.get_push_target(status)
     if push_ref then
       pushremote_label = push_ref
     end

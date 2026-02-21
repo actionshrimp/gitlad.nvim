@@ -8,42 +8,11 @@ local M = {}
 
 local popup = require("gitlad.ui.popup")
 local git = require("gitlad.git")
+local remote_util = require("gitlad.utils.remote")
 
 ---@class FetchPopupContext
 ---@field repo_state RepoState
 ---@field popup PopupData
-
---- Extract remote name from ref (e.g., "origin/main" -> "origin")
----@param ref string|nil
----@return string|nil
-local function get_remote_from_ref(ref)
-  if not ref then
-    return nil
-  end
-  return ref:match("^([^/]+)/")
-end
-
---- Get the push remote for the current branch
---- Returns the remote that would be used for pushing (may differ from upstream)
----@param status GitStatusResult|nil
----@return string|nil remote Remote name like "origin"
-local function get_push_remote(status)
-  if not status then
-    return nil
-  end
-
-  -- Use explicitly calculated push_remote if available
-  if status.push_remote then
-    return get_remote_from_ref(status.push_remote)
-  end
-
-  -- Fall back to deriving from upstream
-  if status.upstream then
-    return get_remote_from_ref(status.upstream)
-  end
-
-  return nil
-end
 
 --- Build fetch arguments from popup state
 ---@param popup_data PopupData
@@ -86,7 +55,7 @@ end
 ---@param repo_state RepoState
 function M.open(repo_state)
   local status = repo_state.status
-  local default_remote = status and get_remote_from_ref(status.upstream) or ""
+  local default_remote = status and remote_util.get_remote_from_ref(status.upstream) or ""
 
   local fetch_popup = popup
     .builder()
@@ -120,7 +89,7 @@ end
 ---@param popup_data PopupData
 function M._fetch_pushremote(repo_state, popup_data)
   local status = repo_state.status
-  local remote = get_push_remote(status)
+  local remote = remote_util.get_push_remote(status)
 
   if not remote or remote == "" then
     vim.notify(
@@ -152,7 +121,7 @@ function M._fetch_upstream(repo_state, popup_data)
     end
   end
 
-  local remote = status and get_remote_from_ref(status.upstream) or nil
+  local remote = status and remote_util.get_remote_from_ref(status.upstream) or nil
 
   -- Validate
   if not remote or remote == "" then
