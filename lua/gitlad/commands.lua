@@ -6,10 +6,22 @@ local subcommands = {
     -- Always force refresh when user explicitly runs :Gitlad command
     require("gitlad.ui.views.status").open(nil, { force_refresh = true })
   end,
-  -- Future commands:
-  -- log = function() ... end,
-  -- branch = function() ... end,
-  -- stash = function() ... end,
+  blame = function()
+    -- Blame the current file at the cursor line
+    local file = vim.fn.expand("%:.")
+    if file == "" then
+      vim.notify("[gitlad] No file to blame", vim.log.levels.WARN)
+      return
+    end
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    if not repo_state then
+      vim.notify("[gitlad] Not in a git repository", vim.log.levels.WARN)
+      return
+    end
+    local blame_view = require("gitlad.ui.views.blame")
+    blame_view.open_file(repo_state, file)
+  end,
 }
 
 --- Execute a gitlad command

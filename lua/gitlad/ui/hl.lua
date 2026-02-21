@@ -171,6 +171,16 @@ local highlight_groups = {
   GitladReflogPull = { link = "DiagnosticHint" }, -- Cyan: pull, clone
   GitladReflogSelector = { link = "Comment" }, -- For HEAD@{0} selectors
 
+  -- Blame view
+  GitladBlameHash = { link = "Constant" },
+  GitladBlameAuthor = { link = "String" },
+  GitladBlameDate = { link = "Comment" },
+  GitladBlameSummary = { link = "Comment" },
+  GitladBlameUncommitted = { link = "DiagnosticWarn" },
+  GitladBlameBoundary = { link = "DiagnosticHint" },
+  GitladBlameChunkEven = { bg = "#1e1e2e" }, -- Subtle dark background
+  GitladBlameChunkOdd = {}, -- Default background (no change)
+
   -- Rebase sequence (matching magit-sequence faces)
   GitladSequencePick = { link = "Normal" }, -- Pending actions (default fg)
   GitladSequenceDone = { link = "Comment" }, -- Completed commits (muted)
