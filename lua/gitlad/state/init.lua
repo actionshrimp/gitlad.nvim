@@ -182,67 +182,108 @@ function RepoState:apply_command(cmd)
   self:_notify("status")
 end
 
---- Fetch extended status data (commit messages, unpushed/unpulled lists)
----@param result GitStatusResult The base status result to extend
----@param callback fun(result: GitStatusResult) Callback with extended result
-function RepoState:_fetch_extended_status(result, callback)
-  -- Use internal=true so refresh commands don't mark cooldown or pollute history
-  local opts = { cwd = self.repo_root, internal = true }
+--- Fetch upstream info (commit message, unpulled/unpushed lists)
+---@param result GitStatusResult
+---@param opts GitCommandOptions
+---@param start_op fun()
+---@param complete_one fun()
+local function _fetch_upstream_info(result, opts, start_op, complete_one)
+  if not result.upstream then
+    return
+  end
 
-  -- Counter to track parallel operations
-  local pending = 0
-  local function complete_one()
-    pending = pending - 1
-    if pending == 0 then
-      callback(result)
+  start_op()
+  git.get_commit_subject(result.upstream, opts, function(subject, _err)
+    result.merge_commit_msg = subject
+    complete_one()
+  end)
+
+  start_op()
+  git.get_commits_between("HEAD", result.upstream, opts, function(commits, _err)
+    result.unpulled_upstream = commits or {}
+    complete_one()
+  end)
+
+  start_op()
+  git.get_commits_between(result.upstream, "HEAD", opts, function(commits, _err)
+    result.unpushed_upstream = commits or {}
+    complete_one()
+  end)
+end
+
+--- Fetch additional rebase info (onto commit, done commits, branch name)
+---@param result GitStatusResult
+---@param seq_state table Sequencer state
+---@param opts GitCommandOptions
+---@param start_op fun()
+---@param complete_one fun()
+local function _fetch_rebase_details(result, seq_state, opts, start_op, complete_one)
+  if not (seq_state.rebase_in_progress and seq_state.rebase_onto) then
+    return
+  end
+
+  -- Fetch onto commit info (abbreviated hash + subject)
+  start_op()
+  cli.run_async(
+    { "log", "-1", "--format=%h%n%s", seq_state.rebase_onto },
+    opts,
+    function(log_result)
+      if log_result.code == 0 then
+        result.rebase_onto_abbrev = log_result.stdout[1]
+        result.rebase_onto_subject = log_result.stdout[2]
+      end
+      complete_one()
     end
-  end
+  )
 
-  -- Helper to start a parallel operation
-  local function start_op()
-    pending = pending + 1
-  end
-
-  -- 1. Fetch HEAD commit message
+  -- Fetch done commits (new commits created during rebase: onto..HEAD)
   start_op()
-  git.get_commit_subject("HEAD", opts, function(subject, _err)
-    result.head_commit_msg = subject
-    complete_one()
-  end)
-
-  -- 2. If upstream exists, fetch upstream commit message and commit lists
-  if result.upstream then
-    -- Fetch upstream commit message
-    start_op()
-    git.get_commit_subject(result.upstream, opts, function(subject, _err)
-      result.merge_commit_msg = subject
+  cli.run_async(
+    { "log", "--format=%H%x1e%h%x1e%s", "--reverse", seq_state.rebase_onto .. "..HEAD" },
+    opts,
+    function(log_result)
+      if log_result.code == 0 then
+        result.rebase_done_commits = {}
+        for _, line in ipairs(log_result.stdout) do
+          if line ~= "" then
+            local parts = vim.split(line, "\30")
+            table.insert(result.rebase_done_commits, {
+              hash = parts[1],
+              abbrev = parts[2],
+              subject = parts[3] or "",
+            })
+          end
+        end
+      end
       complete_one()
-    end)
+    end
+  )
 
-    -- Fetch unpulled commits (commits in upstream but not in HEAD)
-    start_op()
-    git.get_commits_between("HEAD", result.upstream, opts, function(commits, _err)
-      result.unpulled_upstream = commits or {}
-      complete_one()
-    end)
-
-    -- Fetch unpushed commits (commits in HEAD but not in upstream)
-    start_op()
-    git.get_commits_between(result.upstream, "HEAD", opts, function(commits, _err)
-      result.unpushed_upstream = commits or {}
-      complete_one()
-    end)
-  end
-
-  -- 3. Fetch recent commits (shown when no unpushed commits exist, like magit)
-  -- Always fetch these so they're available as a fallback
+  -- Try to resolve onto to a meaningful branch name
   start_op()
-  git.log({ "-10" }, opts, function(commits, _err)
-    result.recent_commits = commits or {}
-    complete_one()
-  end)
+  cli.run_async(
+    { "name-rev", "--name-only", "--no-undefined", seq_state.rebase_onto },
+    opts,
+    function(nr_result)
+      if nr_result.code == 0 and nr_result.stdout[1] then
+        local name = vim.trim(nr_result.stdout[1])
+        -- Clean up name-rev output (e.g., "main~2" -> "main")
+        local clean_name = name:match("^([^~^]+)")
+        if clean_name and clean_name ~= "" then
+          result.rebase_onto_name = clean_name
+        end
+      end
+      complete_one()
+    end
+  )
+end
 
-  -- 4. Fetch sequencer state (cherry-pick/revert/rebase in progress)
+--- Fetch sequencer state (cherry-pick/revert/rebase in progress)
+---@param result GitStatusResult
+---@param opts GitCommandOptions
+---@param start_op fun()
+---@param complete_one fun()
+local function _fetch_sequencer_info(result, opts, start_op, complete_one)
   start_op()
   git.get_sequencer_state(opts, function(seq_state)
     result.cherry_pick_in_progress = seq_state.cherry_pick_in_progress
@@ -252,15 +293,12 @@ function RepoState:_fetch_extended_status(result, callback)
     result.am_current_patch = seq_state.am_current_patch
     result.am_last_patch = seq_state.am_last_patch
     result.sequencer_head_oid = seq_state.sequencer_head_oid
-
-    -- Copy rebase-specific state
     result.rebase_head_name = seq_state.rebase_head_name
     result.rebase_onto = seq_state.rebase_onto
     result.rebase_stopped_sha = seq_state.rebase_stopped_sha
     result.rebase_todo = seq_state.rebase_todo
     result.rebase_done = seq_state.rebase_done
 
-    -- If there's a sequencer operation in progress, fetch the commit subject
     if seq_state.sequencer_head_oid then
       start_op()
       git.get_commit_subject(seq_state.sequencer_head_oid, opts, function(subject, _err)
@@ -269,76 +307,23 @@ function RepoState:_fetch_extended_status(result, callback)
       end)
     end
 
-    -- If rebase is in progress with onto, fetch additional info
-    if seq_state.rebase_in_progress and seq_state.rebase_onto then
-      -- Fetch onto commit info (abbreviated hash + subject)
-      start_op()
-      cli.run_async(
-        { "log", "-1", "--format=%h%n%s", seq_state.rebase_onto },
-        opts,
-        function(log_result)
-          if log_result.code == 0 then
-            result.rebase_onto_abbrev = log_result.stdout[1]
-            result.rebase_onto_subject = log_result.stdout[2]
-          end
-          complete_one()
-        end
-      )
-
-      -- Fetch done commits (new commits created during rebase: onto..HEAD)
-      -- Use record separator %x1e to split fields (safe in commit subjects)
-      start_op()
-      cli.run_async(
-        { "log", "--format=%H%x1e%h%x1e%s", "--reverse", seq_state.rebase_onto .. "..HEAD" },
-        opts,
-        function(log_result)
-          if log_result.code == 0 then
-            result.rebase_done_commits = {}
-            for _, line in ipairs(log_result.stdout) do
-              if line ~= "" then
-                local parts = vim.split(line, "\30")
-                table.insert(result.rebase_done_commits, {
-                  hash = parts[1],
-                  abbrev = parts[2],
-                  subject = parts[3] or "",
-                })
-              end
-            end
-          end
-          complete_one()
-        end
-      )
-
-      -- Try to resolve onto to a meaningful branch name
-      start_op()
-      cli.run_async(
-        { "name-rev", "--name-only", "--no-undefined", seq_state.rebase_onto },
-        opts,
-        function(nr_result)
-          if nr_result.code == 0 and nr_result.stdout[1] then
-            local name = vim.trim(nr_result.stdout[1])
-            -- Clean up name-rev output (e.g., "main~2" -> "main")
-            -- Only use it if it's a clean branch/tag name
-            local clean_name = name:match("^([^~^]+)")
-            if clean_name and clean_name ~= "" then
-              result.rebase_onto_name = clean_name
-            end
-          end
-          complete_one()
-        end
-      )
-    end
+    _fetch_rebase_details(result, seq_state, opts, start_op, complete_one)
 
     complete_one()
   end)
+end
 
-  -- 5. Fetch merge state (merge in progress)
+--- Fetch merge state (merge in progress)
+---@param result GitStatusResult
+---@param opts GitCommandOptions
+---@param start_op fun()
+---@param complete_one fun()
+local function _fetch_merge_info(result, opts, start_op, complete_one)
   start_op()
   git.get_merge_state(opts, function(merge_state)
     result.merge_in_progress = merge_state.merge_in_progress
     result.merge_head_oid = merge_state.merge_head_oid
 
-    -- If a merge is in progress, fetch the commit subject
     if merge_state.merge_head_oid then
       start_op()
       git.get_commit_subject(merge_state.merge_head_oid, opts, function(subject, _err)
@@ -349,78 +334,50 @@ function RepoState:_fetch_extended_status(result, callback)
 
     complete_one()
   end)
+end
 
-  -- 6. Fetch recent stashes
-  start_op()
-  git.stash_list(opts, function(stashes, _err)
-    -- Limit to 10 stashes to avoid cluttering the status view
-    result.stashes = stashes and vim.list_slice(stashes, 1, 10) or {}
-    complete_one()
-  end)
-
-  -- 7. Fetch submodule status
-  start_op()
-  git.submodule_status(opts, function(submodules, _err)
-    result.submodules = submodules or {}
-    complete_one()
-  end)
-
-  -- 8. Fetch worktree list
-  start_op()
-  git.worktree_list(opts, function(worktrees, _err)
-    result.worktrees = worktrees or {}
-    complete_one()
-  end)
-
-  -- 9. Determine push destination
-  -- Push goes to <push-remote>/<branch-name> where push-remote is:
-  --   1. branch.<name>.pushRemote (explicit config)
-  --   2. remote.pushDefault (global default)
-  --   3. branch.<name>.remote (derived from upstream, e.g., "origin/main" -> "origin")
+--- Determine push destination and fetch push commit info
+---@param result GitStatusResult
+---@param opts GitCommandOptions
+---@param start_op fun()
+---@param complete_one fun()
+local function _fetch_push_info(result, opts, start_op, complete_one)
   start_op()
   git.get_push_remote(result.branch, opts, function(explicit_push_remote, _err)
     local push_remote_name = explicit_push_remote
 
-    -- If no explicit push remote, derive from upstream remote
     if (not push_remote_name or push_remote_name == "") and result.upstream then
-      -- Extract remote name from upstream (e.g., "origin/main" -> "origin")
       push_remote_name = result.upstream:match("^([^/]+)/")
     end
 
     if not push_remote_name or push_remote_name == "" then
-      -- No way to determine push remote
       complete_one()
       return
     end
 
-    -- Construct push ref (e.g., "origin/feature-branch")
     local push_ref = push_remote_name .. "/" .. result.branch
 
-    -- Only show Push line if it differs from upstream
     if result.upstream and push_ref == result.upstream then
-      -- Same as upstream, no need to show separately
       complete_one()
       return
     end
 
     result.push_remote = push_ref
 
-    -- Check if the push ref exists on remote (branch might not be pushed yet)
     start_op()
     git.get_commit_subject(push_ref, opts, function(subject, err)
       if not err and subject and subject ~= "" then
         result.push_commit_msg = subject
 
-        -- Only fetch ahead/behind if the remote branch exists
         start_op()
-        git.get_commits_between("HEAD", push_ref, opts, function(commits, _err)
+        git.get_commits_between("HEAD", push_ref, opts, function(commits, _err2)
           result.unpulled_push = commits or {}
           result.push_behind = #(commits or {})
           complete_one()
         end)
 
         start_op()
-        git.get_commits_between(push_ref, "HEAD", opts, function(commits, _err)
+        git.get_commits_between(push_ref, "HEAD", opts, function(commits, _err2)
           result.unpushed_push = commits or {}
           result.push_ahead = #(commits or {})
           complete_one()
@@ -431,6 +388,71 @@ function RepoState:_fetch_extended_status(result, callback)
 
     complete_one()
   end)
+end
+
+--- Fetch extended status data (commit messages, unpushed/unpulled lists)
+---@param result GitStatusResult The base status result to extend
+---@param callback fun(result: GitStatusResult) Callback with extended result
+function RepoState:_fetch_extended_status(result, callback)
+  local opts = { cwd = self.repo_root, internal = true }
+
+  local pending = 0
+  local function complete_one()
+    pending = pending - 1
+    if pending == 0 then
+      callback(result)
+    end
+  end
+  local function start_op()
+    pending = pending + 1
+  end
+
+  -- 1. HEAD commit message
+  start_op()
+  git.get_commit_subject("HEAD", opts, function(subject, _err)
+    result.head_commit_msg = subject
+    complete_one()
+  end)
+
+  -- 2. Upstream info
+  _fetch_upstream_info(result, opts, start_op, complete_one)
+
+  -- 3. Recent commits
+  start_op()
+  git.log({ "-10" }, opts, function(commits, _err)
+    result.recent_commits = commits or {}
+    complete_one()
+  end)
+
+  -- 4. Sequencer state
+  _fetch_sequencer_info(result, opts, start_op, complete_one)
+
+  -- 5. Merge state
+  _fetch_merge_info(result, opts, start_op, complete_one)
+
+  -- 6. Stashes
+  start_op()
+  git.stash_list(opts, function(stashes, _err)
+    result.stashes = stashes and vim.list_slice(stashes, 1, 10) or {}
+    complete_one()
+  end)
+
+  -- 7. Submodule status
+  start_op()
+  git.submodule_status(opts, function(submodules, _err)
+    result.submodules = submodules or {}
+    complete_one()
+  end)
+
+  -- 8. Worktree list
+  start_op()
+  git.worktree_list(opts, function(worktrees, _err)
+    result.worktrees = worktrees or {}
+    complete_one()
+  end)
+
+  -- 9. Push destination
+  _fetch_push_info(result, opts, start_op, complete_one)
 end
 
 --- Refresh status (async with request ordering)
