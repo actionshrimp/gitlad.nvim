@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && make format 2>/dev/null; make lint 2>&1 | tail -5"
+          }
+        ]
+      }
+    ]
+  }
+}

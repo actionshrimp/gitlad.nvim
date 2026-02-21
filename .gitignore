@@ -18,8 +18,8 @@ luarocks/
 .vscode/
 *.code-workspace
 
-.claude
-.claude/
+# Claude Code (settings.json is shared, settings.local.json is personal)
+.claude/settings.local.json
 
 # direnv (contains account-specific config)
 .envrc
