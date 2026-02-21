@@ -525,19 +525,7 @@ end
 
 --- Close the log buffer
 function LogBuffer:close()
-  if not self.winnr or not vim.api.nvim_win_is_valid(self.winnr) then
-    self.winnr = nil
-    return
-  end
-
-  -- Go back to previous buffer or close window
-  local prev_buf = vim.fn.bufnr("#")
-  if prev_buf ~= -1 and vim.api.nvim_buf_is_valid(prev_buf) then
-    vim.api.nvim_set_current_buf(prev_buf)
-  else
-    vim.cmd("quit")
-  end
-  self.winnr = nil
+  utils.close_view_buffer(self)
 end
 
 --- Open log view (module-level entry point)
@@ -549,10 +537,13 @@ function M.open(repo_state, commits, args)
   buf:open_with_commits(repo_state, commits, args)
 end
 
---- Close log view
-function M.close()
-  if log_buffer then
-    log_buffer:close()
+--- Close log view for a specific repo
+---@param repo_state? RepoState
+function M.close(repo_state)
+  local key = repo_state and repo_state.repo_root or "default"
+  local buf = log_buffers[key]
+  if buf then
+    buf:close()
   end
 end
 
