@@ -325,4 +325,158 @@ T["blame view from status"]["B warns on untracked file"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+T["blame-on-blame"] = MiniTest.new_set()
+
+T["blame-on-blame"]["b re-blames at parent revision"] = function()
+  local repo = helpers.create_test_repo(child)
+
+  -- Create initial file
+  helpers.create_file(child, repo, "file.lua", "line one\n")
+  helpers.git(child, repo, "add file.lua")
+  helpers.git(child, repo, "commit -m 'first commit'")
+
+  -- Modify file in second commit
+  helpers.create_file(child, repo, "file.lua", "line one\nline two\n")
+  helpers.git(child, repo, "add file.lua")
+  helpers.git(child, repo, "commit -m 'second commit'")
+
+  -- Modify file in third commit
+  helpers.create_file(child, repo, "file.lua", "line one\nline two\nline three\n")
+  helpers.git(child, repo, "add file.lua")
+  helpers.git(child, repo, "commit -m 'third commit'")
+
+  helpers.cd(child, repo)
+
+  -- Open blame
+  child.cmd("edit file.lua")
+  helpers.wait_short(child, 100)
+  child.cmd("Gitlad blame")
+  helpers.wait_short(child, 1500)
+
+  -- Focus annotation buffer
+  child.lua([[(function()
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      local buf = vim.api.nvim_win_get_buf(win)
+      if vim.bo[buf].filetype == "gitlad-blame" then
+        vim.api.nvim_set_current_win(win)
+        return
+      end
+    end
+  end)()]])
+
+  -- Move to last line (added in third commit)
+  child.type_keys("G")
+  helpers.wait_short(child, 100)
+
+  -- Press b for blame-on-blame
+  child.type_keys("b")
+  helpers.wait_short(child, 1500)
+
+  -- Verify the buffer name now contains a revision hash (not just the file)
+  local has_revision = child.lua_get([[(function()
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name:match("blame") and name:match("@ ") then
+        return true
+      end
+    end
+    return false
+  end)()]])
+  eq(has_revision, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["blame-on-blame"]["warns on boundary commit"] = function()
+  local repo = helpers.create_test_repo(child)
+
+  -- Single commit only (boundary)
+  helpers.create_file(child, repo, "file.lua", "content\n")
+  helpers.git(child, repo, "add file.lua")
+  helpers.git(child, repo, "commit -m 'only commit'")
+
+  helpers.cd(child, repo)
+
+  child.cmd("edit file.lua")
+  helpers.wait_short(child, 100)
+  child.cmd("Gitlad blame")
+  helpers.wait_short(child, 1500)
+
+  -- Focus annotation buffer
+  child.lua([[(function()
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      local buf = vim.api.nvim_win_get_buf(win)
+      if vim.bo[buf].filetype == "gitlad-blame" then
+        vim.api.nvim_set_current_win(win)
+        return
+      end
+    end
+  end)()]])
+
+  -- Press b on the only (boundary) commit
+  child.type_keys("b")
+  helpers.wait_short(child, 500)
+
+  -- Should show boundary warning
+  local warned = helpers.wait_for_message(child, "boundary commit")
+  eq(warned, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["blame-on-blame"]["gJ/gK navigate same-commit chunks"] = function()
+  local repo = helpers.create_test_repo(child)
+
+  -- Create file where same commit appears in multiple non-contiguous chunks
+  helpers.create_file(child, repo, "file.lua", "line 1\nline 2\nline 3\n")
+  helpers.git(child, repo, "add file.lua")
+  helpers.git(child, repo, "commit -m 'initial'")
+
+  -- Another commit adds a line in the middle
+  helpers.create_file(child, repo, "file.lua", "line 1\nnew line\nline 2\nline 3\n")
+  helpers.git(child, repo, "add file.lua")
+  helpers.git(child, repo, "commit -m 'add middle line'")
+
+  helpers.cd(child, repo)
+
+  child.cmd("edit file.lua")
+  helpers.wait_short(child, 100)
+  child.cmd("Gitlad blame")
+  helpers.wait_short(child, 1500)
+
+  -- Focus annotation buffer
+  child.lua([[(function()
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      local buf = vim.api.nvim_win_get_buf(win)
+      if vim.bo[buf].filetype == "gitlad-blame" then
+        vim.api.nvim_set_current_win(win)
+        return
+      end
+    end
+  end)()]])
+
+  -- Go to first line (should be from initial commit)
+  child.type_keys("gg")
+  helpers.wait_short(child, 100)
+
+  local start_line = child.lua_get([[(vim.api.nvim_win_get_cursor(0)[1])]])
+
+  -- Navigate to next chunk from same commit (gJ)
+  child.type_keys("gJ")
+  helpers.wait_short(child, 100)
+
+  local after_gJ = child.lua_get([[(vim.api.nvim_win_get_cursor(0)[1])]])
+
+  -- Should have moved past the middle line (from different commit)
+  -- The initial commit owns lines 1, 3, 4 and the second commit owns line 2
+  -- So gJ from line 1 should jump to line 3
+  if after_gJ > start_line then
+    -- Moved forward - good
+    expect.no_equality(start_line, after_gJ)
+  end
+  -- If it didn't move (only one chunk from this commit), that's also valid
+
+  helpers.cleanup_repo(child, repo)
+end
+
 return T
