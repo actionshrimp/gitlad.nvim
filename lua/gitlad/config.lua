@@ -29,12 +29,16 @@ local M = {}
 ---@field auto_refresh_debounce_ms number Debounce period in ms before triggering auto-refresh (default: 500)
 ---@field watch_worktree boolean Whether to watch working tree files for changes (default: true)
 
+---@class GitladOutputConfig
+---@field hook_output "lazy"|"always"|"never" How to show hook output ("lazy" = only when output arrives, "always" = immediately, "never" = disabled)
+
 ---@class GitladConfig
 ---@field signs GitladSigns
 ---@field commit_editor GitladCommitEditorConfig
 ---@field status GitladStatusConfig
 ---@field worktree GitladWorktreeConfig
 ---@field watcher GitladWatcherConfig
+---@field output GitladOutputConfig
 ---@field show_tags_in_refs boolean Whether to show tags alongside branch names in refs (default: false)
 local defaults = {
   signs = {
@@ -57,6 +61,9 @@ local defaults = {
     cooldown_ms = 1000, -- Ignore events for 1s after gitlad operations
     auto_refresh_debounce_ms = 500, -- Debounce for auto_refresh
     watch_worktree = true, -- Watch working tree files for changes
+  },
+  output = {
+    hook_output = "lazy", -- "lazy", "always", or "never"
   },
   show_tags_in_refs = false,
 }

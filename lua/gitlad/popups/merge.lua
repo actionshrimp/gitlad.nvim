@@ -191,10 +191,22 @@ function M._merge(repo_state, popup_data, context, opts)
       table.insert(args, "--squash")
     end
 
+    local output_mod = require("gitlad.ui.views.output")
+    local viewer = output_mod.create({
+      title = "Merge",
+      command = "git merge " .. table.concat(args, " ") .. " " .. branch,
+    })
+
     vim.notify("[gitlad] Merging " .. branch .. "...", vim.log.levels.INFO)
 
-    git.merge(branch, args, { cwd = repo_state.repo_root }, function(success, output, err)
+    git.merge(branch, args, {
+      cwd = repo_state.repo_root,
+      on_output_line = function(line, is_stderr)
+        viewer:append(line, is_stderr)
+      end,
+    }, function(success, output, err)
       vim.schedule(function()
+        viewer:complete(success and 0 or 1)
         if success then
           local msg
           if opts.squash then
@@ -226,10 +238,19 @@ end
 --- Continue/finish a merge by committing
 ---@param repo_state RepoState
 function M._merge_continue(repo_state)
+  local output_mod = require("gitlad.ui.views.output")
+  local viewer = output_mod.create({ title = "Merge", command = "git commit --no-edit" })
+
   vim.notify("[gitlad] Committing merge...", vim.log.levels.INFO)
 
-  git.merge_continue({ cwd = repo_state.repo_root }, function(success, err)
+  git.merge_continue({
+    cwd = repo_state.repo_root,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
+  }, function(success, err)
     vim.schedule(function()
+      viewer:complete(success and 0 or 1)
       if success then
         vim.notify("[gitlad] Merge committed", vim.log.levels.INFO)
         repo_state:refresh_status(true)

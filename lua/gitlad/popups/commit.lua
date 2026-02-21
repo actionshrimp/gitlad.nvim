@@ -159,6 +159,7 @@ end
 ---@param is_squash boolean Whether this is squash (true) or fixup (false)
 local function execute_instant_operation(repo_state, target_hash, args, is_squash)
   local git = require("gitlad.git")
+  local output_mod = require("gitlad.ui.views.output")
 
   -- Determine commit flag
   local commit_flag = is_squash and ("--squash=" .. target_hash) or ("--fixup=" .. target_hash)
@@ -167,13 +168,24 @@ local function execute_instant_operation(repo_state, target_hash, args, is_squas
 
   local operation_name = is_squash and "squash" or "fixup"
 
+  local viewer = output_mod.create({
+    title = operation_name:sub(1, 1):upper() .. operation_name:sub(2),
+    command = "git commit " .. commit_flag,
+  })
+
   vim.notify("[gitlad] Creating " .. operation_name .. " commit...", vim.log.levels.INFO)
 
   -- Step 1: Create the fixup/squash commit
   -- Use commit_fixup which doesn't pass -F (--fixup generates its own message)
-  git.commit_fixup(commit_args, { cwd = repo_state.repo_root }, function(success, err)
+  git.commit_fixup(commit_args, {
+    cwd = repo_state.repo_root,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
+  }, function(success, err)
     vim.schedule(function()
       if not success then
+        viewer:complete(1)
         vim.notify(
           "[gitlad] Failed to create " .. operation_name .. " commit: " .. (err or "unknown"),
           vim.log.levels.ERROR
@@ -185,39 +197,40 @@ local function execute_instant_operation(repo_state, target_hash, args, is_squas
 
       -- Step 2: Instant rebase to apply the fixup/squash
       -- Rebase from target's parent
-      git.rebase_instantly(
-        target_hash .. "~1",
-        {},
-        { cwd = repo_state.repo_root },
-        function(rebase_success, output, rebase_err)
-          vim.schedule(function()
-            if rebase_success then
+      git.rebase_instantly(target_hash .. "~1", {}, {
+        cwd = repo_state.repo_root,
+        on_output_line = function(line, is_stderr)
+          viewer:append(line, is_stderr)
+        end,
+      }, function(rebase_success, _, rebase_err)
+        vim.schedule(function()
+          viewer:complete(rebase_success and 0 or 1)
+          if rebase_success then
+            vim.notify(
+              "[gitlad] "
+                .. operation_name:sub(1, 1):upper()
+                .. operation_name:sub(2)
+                .. " applied successfully",
+              vim.log.levels.INFO
+            )
+            repo_state:refresh_status(true)
+          else
+            -- Check if rebase is in progress (conflicts)
+            if git.rebase_in_progress({ cwd = repo_state.repo_root }) then
               vim.notify(
-                "[gitlad] "
-                  .. operation_name:sub(1, 1):upper()
-                  .. operation_name:sub(2)
-                  .. " applied successfully",
-                vim.log.levels.INFO
+                "[gitlad] Rebase stopped due to conflicts - resolve and use rebase popup to continue",
+                vim.log.levels.WARN
               )
-              repo_state:refresh_status(true)
             else
-              -- Check if rebase is in progress (conflicts)
-              if git.rebase_in_progress({ cwd = repo_state.repo_root }) then
-                vim.notify(
-                  "[gitlad] Rebase stopped due to conflicts - resolve and use rebase popup to continue",
-                  vim.log.levels.WARN
-                )
-              else
-                vim.notify(
-                  "[gitlad] Rebase failed: " .. (rebase_err or "unknown"),
-                  vim.log.levels.ERROR
-                )
-              end
-              repo_state:refresh_status(true)
+              vim.notify(
+                "[gitlad] Rebase failed: " .. (rebase_err or "unknown"),
+                vim.log.levels.ERROR
+              )
             end
-          end)
-        end
-      )
+            repo_state:refresh_status(true)
+          end
+        end)
+      end)
     end)
   end)
 end

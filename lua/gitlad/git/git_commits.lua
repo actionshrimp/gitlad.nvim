@@ -64,7 +64,7 @@ function M.commit_streaming(message_lines, args, opts, callback)
   -- Build display command for the viewer
   local display_cmd = "git commit " .. table.concat(args, " ")
 
-  local viewer = output_viewer.open({
+  local viewer = output_viewer.create({
     title = "Commit",
     command = display_cmd,
   })
@@ -95,7 +95,7 @@ function M.commit_amend_no_edit_streaming(args, opts, callback)
   -- Build display command for the viewer
   local display_cmd = "git commit --amend --no-edit " .. table.concat(args, " ")
 
-  local viewer = output_viewer.open({
+  local viewer = output_viewer.create({
     title = "Amend",
     command = display_cmd,
   })

@@ -116,10 +116,22 @@ function M._revert(repo_state, popup_data, context, no_commit)
       table.insert(args, "--no-commit")
     end
 
+    local output_mod = require("gitlad.ui.views.output")
+    local viewer = output_mod.create({
+      title = "Revert",
+      command = "git revert " .. table.concat(args, " ") .. " " .. table.concat(commits, " "),
+    })
+
     vim.notify("[gitlad] Reverting...", vim.log.levels.INFO)
 
-    git.revert(commits, args, { cwd = repo_state.repo_root }, function(success, output, err)
+    git.revert(commits, args, {
+      cwd = repo_state.repo_root,
+      on_output_line = function(line, is_stderr)
+        viewer:append(line, is_stderr)
+      end,
+    }, function(success, output, err)
       vim.schedule(function()
+        viewer:complete(success and 0 or 1)
         if success then
           local msg = no_commit and "Reverted (staged)" or "Reverted commit"
           vim.notify("[gitlad] " .. msg, vim.log.levels.INFO)
@@ -144,10 +156,19 @@ end
 --- Continue an in-progress revert
 ---@param repo_state RepoState
 function M._revert_continue(repo_state)
+  local output_mod = require("gitlad.ui.views.output")
+  local viewer = output_mod.create({ title = "Revert", command = "git revert --continue" })
+
   vim.notify("[gitlad] Continuing revert...", vim.log.levels.INFO)
 
-  git.revert_continue({ cwd = repo_state.repo_root }, function(success, err)
+  git.revert_continue({
+    cwd = repo_state.repo_root,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
+  }, function(success, err)
     vim.schedule(function()
+      viewer:complete(success and 0 or 1)
       if success then
         vim.notify("[gitlad] Revert continued", vim.log.levels.INFO)
         repo_state:refresh_status(true)

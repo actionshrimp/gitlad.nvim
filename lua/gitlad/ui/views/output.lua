@@ -11,6 +11,7 @@ local M = {}
 ---@class OutputViewerOptions
 ---@field title? string Window title (default: "Output")
 ---@field command? string Command being run (shown in title)
+---@field focus? boolean Whether to focus the window on open (default: true)
 
 ---@class OutputViewer
 ---@field private _bufnr number Buffer number
@@ -82,8 +83,9 @@ function M.open(opts)
   local col = math.floor((vim.o.columns - width) / 2)
   local row = math.floor((vim.o.lines - height) / 2)
 
-  -- Create floating window (enter=true to focus it for keymaps)
-  self._winnr = vim.api.nvim_open_win(self._bufnr, true, {
+  -- Create floating window
+  local focus = opts.focus ~= false -- default true
+  self._winnr = vim.api.nvim_open_win(self._bufnr, focus, {
     relative = "editor",
     width = width,
     height = height,
@@ -192,6 +194,110 @@ end
 ---@return boolean
 function OutputViewer:is_open()
   return self._winnr ~= nil and vim.api.nvim_win_is_valid(self._winnr)
+end
+
+-- =============================================================================
+-- LazyOutputViewer - defers window creation until output actually arrives
+-- =============================================================================
+
+---@class LazyOutputViewer
+---@field private _opts OutputViewerOptions Saved options for deferred open
+---@field private _inner OutputViewer|nil Real viewer (created on first append)
+local LazyOutputViewer = {}
+LazyOutputViewer.__index = LazyOutputViewer
+
+--- Create a new lazy output viewer
+---@param opts? OutputViewerOptions
+---@return LazyOutputViewer
+function LazyOutputViewer.new(opts)
+  local self = setmetatable({}, LazyOutputViewer)
+  self._opts = opts or {}
+  self._inner = nil
+  return self
+end
+
+--- Append output text. On first call, creates the real viewer.
+---@param line string The line to append
+---@param is_stderr boolean|nil Whether this is stderr
+function LazyOutputViewer:append(line, is_stderr)
+  if not self._inner then
+    -- Open without stealing focus since we're opening mid-operation
+    local opts = vim.tbl_extend("force", self._opts, { focus = false })
+    self._inner = M.open(opts)
+  end
+  self._inner:append(line, is_stderr)
+end
+
+--- Mark the command as complete.
+--- If no viewer was created and exit_code == 0, do nothing (no output, success).
+--- If viewer exists, delegate.
+---@param exit_code number The exit code
+function LazyOutputViewer:complete(exit_code)
+  if self._inner then
+    self._inner:complete(exit_code)
+  end
+  -- No viewer created = no output was produced, nothing to show
+end
+
+--- Close the output viewer
+function LazyOutputViewer:close()
+  if self._inner then
+    self._inner:close()
+  end
+end
+
+--- Check if the viewer is still open
+---@return boolean
+function LazyOutputViewer:is_open()
+  if self._inner then
+    return self._inner:is_open()
+  end
+  return false
+end
+
+-- =============================================================================
+-- NoopViewer - discards everything (for "never" config)
+-- =============================================================================
+
+---@class NoopViewer
+local NoopViewer = {}
+NoopViewer.__index = NoopViewer
+
+--- Create a new noop viewer
+---@return NoopViewer
+function NoopViewer.new()
+  return setmetatable({}, NoopViewer)
+end
+
+function NoopViewer:append(_, _) end
+function NoopViewer:complete(_) end
+function NoopViewer:close() end
+
+---@return boolean
+function NoopViewer:is_open()
+  return false
+end
+
+-- =============================================================================
+-- Factory function
+-- =============================================================================
+
+--- Create an output viewer based on config.
+--- Returns a LazyOutputViewer (default), OutputViewer ("always"), or NoopViewer ("never").
+---@param opts? OutputViewerOptions
+---@return OutputViewer|LazyOutputViewer|NoopViewer
+function M.create(opts)
+  local config = require("gitlad.config")
+  local mode = config.get().output and config.get().output.hook_output or "lazy"
+
+  if mode == "never" then
+    return NoopViewer.new()
+  elseif mode == "always" then
+    return M.open(opts)
+  else
+    -- "lazy" (default)
+    return LazyOutputViewer.new(opts)
+  end
 end
 
 return M

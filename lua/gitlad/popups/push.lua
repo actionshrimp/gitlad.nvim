@@ -66,10 +66,19 @@ end
 ---@param repo_state RepoState
 ---@param args string[]
 local function do_push(repo_state, args)
+  local output = require("gitlad.ui.views.output")
+  local viewer = output.create({ title = "Push", command = "git push " .. table.concat(args, " ") })
+
   vim.notify("[gitlad] Pushing...", vim.log.levels.INFO)
 
-  git.push(args, { cwd = repo_state.repo_root }, function(success, _, err)
+  git.push(args, {
+    cwd = repo_state.repo_root,
+    on_output_line = function(line, is_stderr)
+      viewer:append(line, is_stderr)
+    end,
+  }, function(success, _, err)
     vim.schedule(function()
+      viewer:complete(success and 0 or 1)
       if success then
         vim.notify("[gitlad] Push complete", vim.log.levels.INFO)
         repo_state:refresh_status(true)

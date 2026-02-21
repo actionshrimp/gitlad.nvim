@@ -568,4 +568,26 @@ function M.wait_for_git_status(child, repo_path, expected, timeout)
   return success
 end
 
+--- Create a git hook script in the test repo
+---@param child table MiniTest child process
+---@param repo_path string Repository path
+---@param hook_name string Hook name (e.g., "pre-commit", "pre-push")
+---@param script string Shell script content (without shebang)
+function M.create_hook(child, repo_path, hook_name, script)
+  child.lua(string.format(
+    [[
+    local hooks_dir = %q .. "/.git/hooks"
+    vim.fn.mkdir(hooks_dir, "p")
+    local hook_path = hooks_dir .. "/" .. %q
+    local f = io.open(hook_path, "w")
+    f:write("#!/bin/sh\n" .. %q)
+    f:close()
+    vim.fn.system("chmod +x " .. hook_path)
+  ]],
+    repo_path,
+    hook_name,
+    script
+  ))
+end
+
 return M
