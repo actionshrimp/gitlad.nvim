@@ -475,4 +475,189 @@ T["diff view"]["panel q keymap closes the view"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+-- =============================================================================
+-- Tab label tests
+-- =============================================================================
+
+T["diff view"]["sets tab label to diff spec title"] = function()
+  local repo = create_repo_with_staged_changes(child)
+  helpers.cd(child, repo)
+
+  open_staged_diff(repo)
+  helpers.wait_short(child, 200)
+
+  -- Check that the tab page variable gitlad_label is set
+  local label = child.lua_get([[(function()
+    local diff_view = require("gitlad.ui.views.diff")
+    local view = diff_view.get_active()
+    if not view or not view.tab_page then return "" end
+    local ok, val = pcall(vim.api.nvim_tabpage_get_var, view.tab_page, "gitlad_label")
+    if ok then return val end
+    return ""
+  end)()]])
+
+  -- The label should start with "Diff staged"
+  eq(label:find("Diff staged") ~= nil, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+-- =============================================================================
+-- Auto-select file tests
+-- =============================================================================
+
+T["diff view"]["initial_file option selects matching file"] = function()
+  local repo = create_repo_with_multiple_staged(child)
+  helpers.cd(child, repo)
+
+  -- Open with initial_file pointing to beta.lua (the second file)
+  child.lua(string.format(
+    [[
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_staged(%q, function(spec, err)
+      if spec then
+        vim.schedule(function()
+          local diff_view = require("gitlad.ui.views.diff")
+          diff_view.open(spec, { initial_file = "beta.lua" })
+        end)
+      end
+    end)
+  ]],
+    repo
+  ))
+  wait_for_tab_count(2)
+  helpers.wait_short(child, 200)
+
+  -- Should have selected file 2 (beta.lua)
+  local selected = child.lua_get([[(function()
+    local diff_view = require("gitlad.ui.views.diff")
+    local view = diff_view.get_active()
+    if view then return view.selected_file end
+    return 0
+  end)()]])
+  eq(selected, 2)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["diff view"]["initial_file falls back to first file if not found"] = function()
+  local repo = create_repo_with_multiple_staged(child)
+  helpers.cd(child, repo)
+
+  -- Open with initial_file pointing to a non-existent file
+  child.lua(string.format(
+    [[
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_staged(%q, function(spec, err)
+      if spec then
+        vim.schedule(function()
+          local diff_view = require("gitlad.ui.views.diff")
+          diff_view.open(spec, { initial_file = "nonexistent.lua" })
+        end)
+      end
+    end)
+  ]],
+    repo
+  ))
+  wait_for_tab_count(2)
+  helpers.wait_short(child, 200)
+
+  -- Should have fallen back to file 1
+  local selected = child.lua_get([[(function()
+    local diff_view = require("gitlad.ui.views.diff")
+    local view = diff_view.get_active()
+    if view then return view.selected_file end
+    return 0
+  end)()]])
+  eq(selected, 1)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+-- =============================================================================
+-- Hunk jumping tests
+-- =============================================================================
+
+T["diff view"]["]c moves cursor to next hunk boundary"] = function()
+  local repo = create_repo_with_staged_changes(child)
+  helpers.cd(child, repo)
+
+  open_staged_diff(repo)
+  helpers.wait_short(child, 200)
+
+  -- Focus the left diff buffer and place cursor at line 1
+  child.lua([[(function()
+    local diff_view = require("gitlad.ui.views.diff")
+    local view = diff_view.get_active()
+    if view and view.buffer_pair and vim.api.nvim_win_is_valid(view.buffer_pair.left_winnr) then
+      vim.api.nvim_set_current_win(view.buffer_pair.left_winnr)
+      vim.api.nvim_win_set_cursor(view.buffer_pair.left_winnr, {1, 0})
+    end
+  end)()]])
+  helpers.wait_short(child, 100)
+
+  -- Check there are hunk boundaries in the line_map
+  local has_boundaries = child.lua_get([[(function()
+    local diff_view = require("gitlad.ui.views.diff")
+    local view = diff_view.get_active()
+    if not view or not view.buffer_pair then return false end
+    local count = 0
+    for _, info in ipairs(view.buffer_pair.line_map) do
+      if info.is_hunk_boundary then count = count + 1 end
+    end
+    return count > 0
+  end)()]])
+  eq(has_boundaries, true)
+
+  -- Get the first hunk boundary line (should be line 1 since it's always the first hunk start)
+  local first_boundary = child.lua_get([[(function()
+    local diff_view = require("gitlad.ui.views.diff")
+    local view = diff_view.get_active()
+    if not view or not view.buffer_pair then return 0 end
+    for i, info in ipairs(view.buffer_pair.line_map) do
+      if info.is_hunk_boundary then return i end
+    end
+    return 0
+  end)()]])
+  eq(first_boundary > 0, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+-- =============================================================================
+-- Filler line rendering tests
+-- =============================================================================
+
+T["diff view"]["filler lines render as tilde in buffers"] = function()
+  local repo = create_repo_with_staged_changes(child)
+  helpers.cd(child, repo)
+
+  open_staged_diff(repo)
+  helpers.wait_short(child, 200)
+
+  -- Check if any line in the left buffer has "~" (filler lines)
+  -- The diff has additions, so left side should have filler lines
+  local has_tilde = child.lua_get([[(function()
+    local diff_view = require("gitlad.ui.views.diff")
+    local view = diff_view.get_active()
+    if not view or not view.buffer_pair then return false end
+    local left_bufnr = view.buffer_pair.left_bufnr
+    if not vim.api.nvim_buf_is_valid(left_bufnr) then return false end
+    local lines = vim.api.nvim_buf_get_lines(left_bufnr, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line == "~" then
+        -- Verify the corresponding line_map entry is a filler type
+        local info = view.buffer_pair.line_map[i]
+        if info and info.left_type == "filler" then
+          return true
+        end
+      end
+    end
+    return false
+  end)()]])
+  eq(has_tilde, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
 return T

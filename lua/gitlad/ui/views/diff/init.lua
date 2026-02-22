@@ -53,6 +53,9 @@ function DiffView:_setup_layout()
   vim.cmd("tabnew")
   self.tab_page = vim.api.nvim_get_current_tabpage()
 
+  -- Set tab label to the diff spec title
+  vim.api.nvim_tabpage_set_var(self.tab_page, "gitlad_label", self.diff_spec.title)
+
   -- We start with a single window. Split it to create 3 panes:
   -- [panel | left | right]
   local right_winnr = vim.api.nvim_get_current_win()
@@ -111,8 +114,25 @@ function DiffView:_setup_layout()
   })
 end
 
---- Render the panel and select the first file (or show empty message).
-function DiffView:_render_initial()
+--- Find the file index matching a given path
+---@param file_pairs DiffFilePair[] File pairs to search
+---@param path string File path to match
+---@return number|nil index 1-based index of the matching file, or nil if not found
+function DiffView._find_file_index(file_pairs, path)
+  if not path or path == "" then
+    return nil
+  end
+  for i, pair in ipairs(file_pairs) do
+    if pair.new_path == path or pair.old_path == path then
+      return i
+    end
+  end
+  return nil
+end
+
+--- Render the panel and select the initial file (or show empty message).
+---@param initial_file string|nil Optional file path to auto-select
+function DiffView:_render_initial(initial_file)
   local file_pairs = self.diff_spec.file_pairs
   local source = self.diff_spec.source
 
@@ -122,8 +142,15 @@ function DiffView:_render_initial()
   self.panel:render(file_pairs, pr_info, selected_commit)
 
   if #file_pairs > 0 then
-    -- Select the first file
-    self:select_file(1)
+    -- Determine which file to select
+    local target_index = 1
+    if initial_file then
+      local found = DiffView._find_file_index(file_pairs, initial_file)
+      if found then
+        target_index = found
+      end
+    end
+    self:select_file(target_index)
   else
     -- No files: show a message in the diff buffers
     self:_show_empty_message()
@@ -510,8 +537,11 @@ end
 --- Creates a new tab page with file panel + side-by-side diff buffers.
 --- Closes any existing diff view first.
 ---@param diff_spec DiffSpec The diff specification to display
+---@param opts? { initial_file?: string } Options: initial_file selects that file in the panel
 ---@return DiffView
-function M.open(diff_spec)
+function M.open(diff_spec, opts)
+  opts = opts or {}
+
   -- Close any existing diff view
   if active_view then
     active_view:close()
@@ -519,7 +549,7 @@ function M.open(diff_spec)
 
   local view = DiffView._new(diff_spec)
   view:_setup_layout()
-  view:_render_initial()
+  view:_render_initial(opts.initial_file)
 
   active_view = view
   return view
@@ -545,5 +575,11 @@ function M._clear()
   end
   active_view = nil
 end
+
+--- Expose _find_file_index for testing
+---@param file_pairs DiffFilePair[] File pairs to search
+---@param path string File path to match
+---@return number|nil index 1-based index
+M._find_file_index = DiffView._find_file_index
 
 return M

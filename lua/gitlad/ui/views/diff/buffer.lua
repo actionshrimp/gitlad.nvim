@@ -101,6 +101,22 @@ function M.new(left_winnr, right_winnr)
   return self
 end
 
+--- Replace filler-line content with tilde characters (like vim's empty-buffer lines).
+--- Modifies left_lines/right_lines in place based on the line_map types.
+---@param left_lines string[] Left buffer lines (modified in place)
+---@param right_lines string[] Right buffer lines (modified in place)
+---@param line_map AlignedLineInfo[] Line metadata
+function M._apply_filler_content(left_lines, right_lines, line_map)
+  for i, info in ipairs(line_map) do
+    if info.left_type == "filler" then
+      left_lines[i] = "~"
+    end
+    if info.right_type == "filler" then
+      right_lines[i] = "~"
+    end
+  end
+end
+
 --- Set the content of both buffers from aligned side-by-side data.
 --- Unlocks buffers, sets lines, applies filetype for treesitter,
 --- applies diff highlights, and re-locks buffers.
@@ -112,13 +128,16 @@ function DiffBufferPair:set_content(aligned, file_path)
   self.right_lines = aligned.right_lines
   self.file_path = file_path
 
+  -- Replace filler lines with ~ characters
+  M._apply_filler_content(self.left_lines, self.right_lines, self.line_map)
+
   -- Unlock both buffers
   vim.bo[self.left_bufnr].modifiable = true
   vim.bo[self.right_bufnr].modifiable = true
 
   -- Set lines in both buffers
-  vim.api.nvim_buf_set_lines(self.left_bufnr, 0, -1, false, aligned.left_lines)
-  vim.api.nvim_buf_set_lines(self.right_bufnr, 0, -1, false, aligned.right_lines)
+  vim.api.nvim_buf_set_lines(self.left_bufnr, 0, -1, false, self.left_lines)
+  vim.api.nvim_buf_set_lines(self.right_bufnr, 0, -1, false, self.right_lines)
 
   -- Set filetype from extension for treesitter highlighting
   local ft = vim.filetype.match({ filename = file_path }) or ""

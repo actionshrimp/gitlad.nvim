@@ -22,6 +22,7 @@ T["diff_buffer"]["module loads and exports expected functions"] = function()
   eq(type(buffer.new), "function")
   eq(type(buffer._hl_for_type), "table")
   eq(type(buffer._format_lineno), "function")
+  eq(type(buffer._apply_filler_content), "function")
 end
 
 -- =============================================================================
@@ -214,11 +215,11 @@ T["diff_buffer"]["set_content populates both buffers"] = function()
 
   pair:set_content(aligned, "test.lua")
 
-  -- Check buffer contents
+  -- Check buffer contents (filler lines show "~")
   local left_lines = vim.api.nvim_buf_get_lines(pair.left_bufnr, 0, -1, false)
   local right_lines = vim.api.nvim_buf_get_lines(pair.right_bufnr, 0, -1, false)
 
-  eq(left_lines, { "line 1", "line 2", "" })
+  eq(left_lines, { "line 1", "line 2", "~" })
   eq(right_lines, { "line 1", "LINE 2", "line 3" })
 
   -- Check line_map is stored
@@ -492,6 +493,179 @@ T["diff_buffer"]["set_content highlights change type on both sides"] = function(
   if vim.api.nvim_win_is_valid(left_winnr) and left_winnr ~= right_winnr then
     vim.api.nvim_win_close(left_winnr, true)
   end
+end
+
+-- =============================================================================
+-- Filler line content tests
+-- =============================================================================
+
+T["diff_buffer"]["_apply_filler_content"] = MiniTest.new_set()
+
+T["diff_buffer"]["_apply_filler_content"]["replaces filler lines with tilde on left"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+
+  local left = { "hello", "" }
+  local right = { "hello", "world" }
+  local line_map = {
+    { left_type = "context", right_type = "context" },
+    { left_type = "filler", right_type = "add" },
+  }
+
+  buffer._apply_filler_content(left, right, line_map)
+
+  eq(left, { "hello", "~" })
+  eq(right, { "hello", "world" })
+end
+
+T["diff_buffer"]["_apply_filler_content"]["replaces filler lines with tilde on right"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+
+  local left = { "hello", "world" }
+  local right = { "hello", "" }
+  local line_map = {
+    { left_type = "context", right_type = "context" },
+    { left_type = "delete", right_type = "filler" },
+  }
+
+  buffer._apply_filler_content(left, right, line_map)
+
+  eq(left, { "hello", "world" })
+  eq(right, { "hello", "~" })
+end
+
+T["diff_buffer"]["_apply_filler_content"]["handles both sides filler"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+
+  local left = { "" }
+  local right = { "" }
+  local line_map = {
+    { left_type = "filler", right_type = "filler" },
+  }
+
+  buffer._apply_filler_content(left, right, line_map)
+
+  eq(left, { "~" })
+  eq(right, { "~" })
+end
+
+T["diff_buffer"]["_apply_filler_content"]["does not modify non-filler lines"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+
+  local left = { "context", "old line", "" }
+  local right = { "context", "new line", "added" }
+  local line_map = {
+    { left_type = "context", right_type = "context" },
+    { left_type = "change", right_type = "change" },
+    { left_type = "filler", right_type = "add" },
+  }
+
+  buffer._apply_filler_content(left, right, line_map)
+
+  eq(left, { "context", "old line", "~" })
+  eq(right, { "context", "new line", "added" })
+end
+
+T["diff_buffer"]["set_content renders filler lines as tilde in buffers"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+  local hl = require("gitlad.ui.hl")
+  hl.setup()
+
+  vim.cmd("vsplit")
+  local left_winnr = vim.api.nvim_get_current_win()
+  vim.cmd("wincmd l")
+  local right_winnr = vim.api.nvim_get_current_win()
+
+  local pair = buffer.new(left_winnr, right_winnr)
+
+  local aligned = {
+    left_lines = { "hello", "" },
+    right_lines = { "hello", "world" },
+    line_map = {
+      {
+        left_type = "context",
+        right_type = "context",
+        left_lineno = 1,
+        right_lineno = 1,
+        hunk_index = 1,
+        is_hunk_boundary = true,
+      },
+      {
+        left_type = "filler",
+        right_type = "add",
+        left_lineno = nil,
+        right_lineno = 2,
+        hunk_index = 1,
+        is_hunk_boundary = false,
+      },
+    },
+  }
+
+  pair:set_content(aligned, "test.lua")
+
+  -- Left filler line should be "~"
+  local left_lines = vim.api.nvim_buf_get_lines(pair.left_bufnr, 0, -1, false)
+  eq(left_lines[2], "~")
+
+  -- Right non-filler line should remain as "world"
+  local right_lines = vim.api.nvim_buf_get_lines(pair.right_bufnr, 0, -1, false)
+  eq(right_lines[2], "world")
+
+  pair:destroy()
+  if vim.api.nvim_win_is_valid(left_winnr) and left_winnr ~= right_winnr then
+    vim.api.nvim_win_close(left_winnr, true)
+  end
+end
+
+-- =============================================================================
+-- _find_file_index tests (from init.lua)
+-- =============================================================================
+
+T["diff_buffer"]["_find_file_index"] = MiniTest.new_set()
+
+T["diff_buffer"]["_find_file_index"]["finds matching file by new_path"] = function()
+  local diff_view = require("gitlad.ui.views.diff")
+
+  local file_pairs = {
+    { old_path = "alpha.lua", new_path = "alpha.lua", status = "M" },
+    { old_path = "beta.lua", new_path = "beta.lua", status = "M" },
+    { old_path = "gamma.lua", new_path = "gamma.lua", status = "A" },
+  }
+
+  eq(diff_view._find_file_index(file_pairs, "alpha.lua"), 1)
+  eq(diff_view._find_file_index(file_pairs, "beta.lua"), 2)
+  eq(diff_view._find_file_index(file_pairs, "gamma.lua"), 3)
+end
+
+T["diff_buffer"]["_find_file_index"]["returns nil for non-matching path"] = function()
+  local diff_view = require("gitlad.ui.views.diff")
+
+  local file_pairs = {
+    { old_path = "alpha.lua", new_path = "alpha.lua", status = "M" },
+  }
+
+  eq(diff_view._find_file_index(file_pairs, "missing.lua"), nil)
+end
+
+T["diff_buffer"]["_find_file_index"]["returns nil for nil or empty path"] = function()
+  local diff_view = require("gitlad.ui.views.diff")
+
+  local file_pairs = {
+    { old_path = "alpha.lua", new_path = "alpha.lua", status = "M" },
+  }
+
+  eq(diff_view._find_file_index(file_pairs, nil), nil)
+  eq(diff_view._find_file_index(file_pairs, ""), nil)
+end
+
+T["diff_buffer"]["_find_file_index"]["matches old_path for renamed files"] = function()
+  local diff_view = require("gitlad.ui.views.diff")
+
+  local file_pairs = {
+    { old_path = "old_name.lua", new_path = "new_name.lua", status = "R" },
+  }
+
+  eq(diff_view._find_file_index(file_pairs, "old_name.lua"), 1)
+  eq(diff_view._find_file_index(file_pairs, "new_name.lua"), 1)
 end
 
 return T
