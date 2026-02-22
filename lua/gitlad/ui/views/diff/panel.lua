@@ -7,6 +7,18 @@
 
 local M = {}
 
+--- Try to get a file type icon from nvim-web-devicons (optional dependency)
+---@param filename string
+---@return string|nil icon
+---@return string|nil hl_name Highlight group name
+local function get_devicon(filename)
+  local ok, devicons = pcall(require, "nvim-web-devicons")
+  if not ok then
+    return nil, nil
+  end
+  return devicons.get_icon(filename, nil, { default = true })
+end
+
 -- =============================================================================
 -- Type Definitions
 -- =============================================================================
@@ -21,9 +33,13 @@ local M = {}
 ---@field is_binary boolean
 
 ---@class DiffPanelLineInfo
----@field type "header"|"separator"|"file"|"commit_all"|"commit"
+---@field type "header"|"separator"|"file"|"commit_all"|"commit"|"dir"
 ---@field file_index number|nil Index into file_pairs (for "file" type)
 ---@field commit_index number|nil Index into pr_info.commits (for "commit" type)
+---@field icon_hl string|nil Highlight group for file type icon (from nvim-web-devicons)
+---@field icon_byte_offset number|nil Byte offset of the icon in the line
+---@field dir_path string|nil For "dir" type, path used as collapse key
+---@field depth number|nil Tree depth for file entries (used for highlight offsets)
 
 ---@class DiffPanelRenderResult
 ---@field lines string[]
@@ -47,6 +63,7 @@ local M = {}
 ---@field width number Panel width
 ---@field pr_info DiffPRInfo|nil PR info for commit section
 ---@field selected_commit number|nil Currently selected commit index (nil = all changes)
+---@field collapsed_dirs table<string, boolean> Map of dir paths to collapsed state
 local DiffPanel = {}
 DiffPanel.__index = DiffPanel
 
@@ -95,14 +112,19 @@ local function format_stats(pair)
   return table.concat(parts, " ")
 end
 
---- Get the display path for a file pair
+--- Get the display name for a file in tree mode (basename, or old_base -> new_base for renames)
 ---@param pair DiffFilePair
----@return string path
-local function get_display_path(pair)
+---@param entry_name string Basename from tree entry
+---@return string
+local function get_tree_display_name(pair, entry_name)
   if pair.status == "R" and pair.old_path ~= pair.new_path then
-    return pair.old_path .. " -> " .. pair.new_path
+    local old_base = pair.old_path:match("[^/]+$") or pair.old_path
+    local new_base = pair.new_path:match("[^/]+$") or pair.new_path
+    if old_base ~= new_base then
+      return old_base .. " -> " .. new_base
+    end
   end
-  return pair.new_path ~= "" and pair.new_path or pair.old_path
+  return entry_name
 end
 
 --- Format diff stats for a commit
@@ -139,8 +161,18 @@ end
 ---@param width number Panel width
 ---@param pr_info DiffPRInfo|nil PR info for commit section (nil = no commit section)
 ---@param selected_commit number|nil Currently selected commit index (nil = all changes)
+---@param icon_fn (fun(filename: string): string|nil, string|nil)|nil Returns icon, hl_name
+---@param collapsed_dirs table<string, boolean>|nil Map of dir paths to collapsed state
 ---@return DiffPanelRenderResult
-function M._render_file_list(file_pairs, selected_index, width, pr_info, selected_commit)
+function M._render_file_list(
+  file_pairs,
+  selected_index,
+  width,
+  pr_info,
+  selected_commit,
+  icon_fn,
+  collapsed_dirs
+)
   local lines = {}
   local line_info = {}
 
@@ -218,47 +250,89 @@ function M._render_file_list(file_pairs, selected_index, width, pr_info, selecte
   table.insert(lines, separator)
   line_info[#lines] = { type = "separator" }
 
-  -- File lines
-  for i, pair in ipairs(file_pairs) do
-    -- Indicator: triangle for selected, space for others
-    local indicator = (i == selected_index) and "\xe2\x96\xb8" or " "
+  -- File lines (tree-structured)
+  local diff_tree = require("gitlad.ui.views.diff.tree")
+  local root = diff_tree.build_tree(file_pairs)
+  local flat_entries = diff_tree.flatten(root, collapsed_dirs or {})
 
-    -- Status character
-    local status = pair.status
+  for _, entry in ipairs(flat_entries) do
+    if entry.type == "dir" then
+      -- Render directory line: [space][indent][fold_icon] [dirname]
+      local indent = string.rep("  ", entry.depth)
+      local fold_icon = entry.is_collapsed and "\xe2\x96\xb8" or "\xe2\x96\xbe"
+      local dir_line = " " .. indent .. fold_icon .. " " .. entry.name
+      table.insert(lines, dir_line)
+      line_info[#lines] = { type = "dir", dir_path = entry.path }
+    else
+      -- Render file line: [indicator][indent][status] [icon ][name][padding][stats]
+      local pair = file_pairs[entry.file_index]
+      local indent = string.rep("  ", entry.depth)
+      local indent_width = entry.depth * 2
 
-    -- Stats
-    local stats = format_stats(pair)
+      local indicator = (entry.file_index == selected_index) and "\xe2\x96\xb8" or " "
+      local status = pair.status
+      local stats = format_stats(pair)
 
-    -- Calculate available width for path
-    -- Layout: [indicator][status] [path]  [stats]
-    -- indicator=1 char (but multi-byte), status=1 char, spaces=3, stats=variable
-    local fixed_width = 4 + #stats -- indicator(1) + status(1) + spaces(2+trailing)
-    if #stats > 0 then
-      fixed_width = fixed_width + 1 -- extra space before stats
-    end
-    local path_width = width - fixed_width
-    if path_width < 5 then
-      path_width = 5
-    end
+      -- Display name: basename, or "old_base -> new_base" for renames
+      local display_name = get_tree_display_name(pair, entry.name)
 
-    local path = get_display_path(pair)
-    local display_path = truncate_path(path, path_width)
-
-    -- Build the line
-    -- Layout: [indicator][status] [path][padding][stats]
-    local path_padding = ""
-    local stats_section = ""
-    if #stats > 0 then
-      local pad_len = path_width - #display_path
-      if pad_len > 0 then
-        path_padding = string.rep(" ", pad_len)
+      -- Resolve file type icon (optional)
+      local icon, icon_hl
+      if icon_fn then
+        local fname = (pair.new_path ~= "" and pair.new_path or pair.old_path):match("[^/]+$")
+          or entry.name
+        icon, icon_hl = icon_fn(fname)
       end
-      stats_section = " " .. stats
-    end
 
-    local line = indicator .. status .. " " .. display_path .. path_padding .. stats_section
-    table.insert(lines, line)
-    line_info[#lines] = { type = "file", file_index = i }
+      -- Calculate available width for name
+      -- Layout: [indicator(1)][indent][status(1)] [icon(1) ][name]  [stats]
+      local icon_extra = icon and 2 or 0
+      local fixed_width = 4 + indent_width + icon_extra + #stats
+      if #stats > 0 then
+        fixed_width = fixed_width + 1
+      end
+      local name_width = width - fixed_width
+      if name_width < 5 then
+        name_width = 5
+      end
+
+      local truncated_name = truncate_path(display_name, name_width)
+
+      -- Build the line
+      local icon_section = ""
+      local icon_byte_offset_val
+      if icon then
+        local indicator_bytes = (entry.file_index == selected_index) and 3 or 1
+        icon_byte_offset_val = indicator_bytes + indent_width + 1 + 1 -- + status + space
+        icon_section = icon .. " "
+      end
+
+      local name_padding = ""
+      local stats_section = ""
+      if #stats > 0 then
+        local pad_len = name_width - #truncated_name
+        if pad_len > 0 then
+          name_padding = string.rep(" ", pad_len)
+        end
+        stats_section = " " .. stats
+      end
+
+      local file_line = indicator
+        .. indent
+        .. status
+        .. " "
+        .. icon_section
+        .. truncated_name
+        .. name_padding
+        .. stats_section
+      table.insert(lines, file_line)
+      local file_info = { type = "file", file_index = entry.file_index, depth = entry.depth }
+      if icon and icon_hl then
+        file_info.icon_hl = icon_hl
+        file_info.icon_byte_offset = icon_byte_offset_val
+      end
+      line_info[#lines] = file_info
+    end
   end
 
   return { lines = lines, line_info = line_info }
@@ -286,6 +360,7 @@ function M.new(winnr, opts)
   self.line_map = {}
   self.pr_info = nil
   self.selected_commit = nil
+  self.collapsed_dirs = {}
 
   -- Create a scratch buffer
   self.bufnr = vim.api.nvim_create_buf(false, true)
@@ -297,16 +372,17 @@ function M.new(winnr, opts)
   vim.bo[self.bufnr].modifiable = false
   vim.bo[self.bufnr].filetype = "gitlad-diff-panel"
 
-  -- Set window options
+  -- Set buffer in window BEFORE window options (nvim_win_set_buf triggers
+  -- autocmds like BufWinEnter/FileType that can reset window-local options)
+  vim.api.nvim_win_set_buf(winnr, self.bufnr)
+
+  -- Set window options after buffer is in place
   local win_opts = { win = winnr, scope = "local" }
   vim.api.nvim_set_option_value("number", false, win_opts)
   vim.api.nvim_set_option_value("signcolumn", "no", win_opts)
   vim.api.nvim_set_option_value("wrap", false, win_opts)
   vim.api.nvim_set_option_value("winfixwidth", true, win_opts)
   vim.api.nvim_set_option_value("cursorline", true, win_opts)
-
-  -- Set buffer in window
-  vim.api.nvim_win_set_buf(winnr, self.bufnr)
 
   -- Set up keymaps
   self:_setup_keymaps()
@@ -340,7 +416,9 @@ function DiffPanel:render(file_pairs, pr_info, selected_commit)
     self.selected_file,
     self.width,
     self.pr_info,
-    self.selected_commit
+    self.selected_commit,
+    get_devicon,
+    self.collapsed_dirs
   )
 
   -- Update line_map (1-indexed for cursor positions)
@@ -407,6 +485,8 @@ function DiffPanel:_apply_highlights(result)
       if del_start then
         hl.set(self.bufnr, ns, line_idx, del_start - 1, del_end, "GitladForgePRDeletions")
       end
+    elseif info.type == "dir" then
+      hl.set(self.bufnr, ns, line_idx, 0, #line, "Directory")
     elseif info.type == "file" and info.file_index then
       local pair = self.file_pairs[info.file_index]
       if not pair then
@@ -418,15 +498,15 @@ function DiffPanel:_apply_highlights(result)
         hl.set_line(self.bufnr, ns, line_idx, "CursorLine")
       end
 
-      -- Highlight status character (position 1 after the indicator)
-      -- The indicator is a multi-byte char (3 bytes for triangle, 1 for space)
+      -- Highlight status character (after indicator + indent)
+      local indent_bytes = (info.depth or 0) * 2
       local status_byte_offset
       if info.file_index == self.selected_file then
         -- Triangle indicator is 3 bytes
-        status_byte_offset = 3
+        status_byte_offset = 3 + indent_bytes
       else
         -- Space indicator is 1 byte
-        status_byte_offset = 1
+        status_byte_offset = 1 + indent_bytes
       end
 
       local status_hl_map = {
@@ -438,6 +518,18 @@ function DiffPanel:_apply_highlights(result)
       }
       local status_hl = status_hl_map[pair.status] or "GitladFileStatus"
       hl.set(self.bufnr, ns, line_idx, status_byte_offset, status_byte_offset + 1, status_hl)
+
+      -- Highlight file type icon (from nvim-web-devicons)
+      if info.icon_hl and info.icon_byte_offset then
+        -- Most devicons are 3-byte UTF-8 characters
+        local icon_start = info.icon_byte_offset
+        local icon_text = line:sub(icon_start + 1, icon_start + 4) -- grab up to 4 bytes
+        local icon_len = #(icon_text:match("^[^\128-\191][\128-\191]*") or "")
+        if icon_len == 0 then
+          icon_len = 3
+        end
+        hl.set(self.bufnr, ns, line_idx, icon_start, icon_start + icon_len, info.icon_hl)
+      end
 
       -- Highlight diff stats (+N and -N)
       local add_start, add_end = line:find("%+%d+")
@@ -500,10 +592,15 @@ function DiffPanel:_setup_keymaps()
     self:_goto_prev_file()
   end, "Previous file")
 
-  -- Select file
+  -- Select file / toggle directory
   keymap.set(bufnr, "n", "<CR>", function()
     self:_select_file_at_cursor()
-  end, "Select file")
+  end, "Select file / Toggle directory")
+
+  -- Toggle directory collapse
+  keymap.set(bufnr, "n", "<Tab>", function()
+    self:_toggle_dir_at_cursor()
+  end, "Toggle directory")
 
   -- Close
   keymap.set(bufnr, "n", "q", function()
@@ -570,12 +667,31 @@ function DiffPanel:_select_file_at_cursor()
     return
   end
 
-  if info.type == "file" and info.file_index then
+  if info.type == "dir" and info.dir_path then
+    self.collapsed_dirs[info.dir_path] = not self.collapsed_dirs[info.dir_path]
+    self:render(self.file_pairs)
+  elseif info.type == "file" and info.file_index then
     self:select_file(info.file_index)
   elseif info.type == "commit_all" then
     self.on_select_commit(nil)
   elseif info.type == "commit" and info.commit_index then
     self.on_select_commit(info.commit_index)
+  end
+end
+
+--- Toggle directory collapse at the current cursor position
+function DiffPanel:_toggle_dir_at_cursor()
+  if not vim.api.nvim_win_is_valid(self.winnr) then
+    return
+  end
+
+  local cursor = vim.api.nvim_win_get_cursor(self.winnr)
+  local line = cursor[1]
+  local info = self.line_map[line]
+
+  if info and info.type == "dir" and info.dir_path then
+    self.collapsed_dirs[info.dir_path] = not self.collapsed_dirs[info.dir_path]
+    self:render(self.file_pairs)
   end
 end
 
