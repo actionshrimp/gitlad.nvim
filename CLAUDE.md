@@ -38,7 +38,7 @@ gitlad.nvim is building a **native diff viewer** to replace the diffview.nvim de
 | **PR review diffs** (inline comments, review threads) | gitlad.nvim native diff viewer + forge module |
 | **3-way merge conflict resolution** | Currently diffview.nvim, migrating to native |
 
-See PLAN.md Milestone 3 for the native diff viewer design.
+See PLAN.md Milestone 4 for the native diff viewer design.
 
 ## Current Status
 
@@ -240,7 +240,8 @@ lua/gitlad/
     ├── components/
     │   ├── log_list.lua  # Reusable commit list component
     │   ├── pr_list.lua   # Reusable PR list component
-    │   └── comment.lua   # Comment/thread rendering component
+    │   ├── comment.lua   # Comment/thread rendering component
+    │   └── checks.lua    # CI checks section component
     ├── hl.lua            # Highlight groups and namespace management
     └── views/
         ├── status.lua        # Main status buffer view
@@ -447,11 +448,13 @@ This makes the plugin more comfortable for vim/evil users.
 ### PR Detail View
 | Key | Action |
 |-----|--------|
-| `gj` / `gk` | Next/previous comment/review |
+| `gj` / `gk` | Next/previous comment/check |
+| `<CR>` | Open check in browser (on check line) |
+| `<Tab>` | Toggle checks section collapsed/expanded |
 | `c` | Add comment |
 | `e` | Edit comment at cursor |
 | `y` | Yank PR number |
-| `o` | Open in browser |
+| `o` | Open PR in browser |
 | `d` | View diff (placeholder for M3) |
 | `gr` | Refresh |
 | `q` | Close |
@@ -514,11 +517,12 @@ See **PLAN.md** for the detailed development roadmap. Current focus:
 
 1. **Milestone 1**: Forge foundation — HTTP client, GitHub GraphQL, forge popup (`N`), PR list
 2. **Milestone 2**: PR management — detail view, comments, actions
-3. **Milestone 3**: Native diff viewer — replacing diffview.nvim
-4. **Milestone 4**: PR review — inline comments in native diff viewer
-5. **Milestone 5**: Polish — 3-way merge, PR creation, notifications
+3. **Milestone 3**: CI checks viewer — check status in PR list, detail, and status buffer (done)
+4. **Milestone 4**: Native diff viewer — replacing diffview.nvim
+5. **Milestone 5**: PR review — inline comments in native diff viewer
+6. **Milestone 6**: Polish — 3-way merge, PR creation, notifications
 
-Milestones 1-2 (forge) and Milestone 3 (diff viewer) are independent and can proceed in parallel.
+Milestones 1-2 (forge) and Milestone 4 (diff viewer) are independent and can proceed in parallel.
 
 ## Reference Projects
 

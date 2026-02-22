@@ -279,7 +279,7 @@ T["pr detail view"]["? opens help popup"] = function()
     if line:match("e%s+Edit comment") then
       found_edit = true
     end
-    if line:match("gj%s+Next comment") then
+    if line:match("gj%s+Next comment/check") then
       found_gj = true
     end
   end

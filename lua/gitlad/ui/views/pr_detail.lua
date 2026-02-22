@@ -157,7 +157,8 @@ function PRDetailBuffer:_show_help()
         { key = "c", desc = "Add comment" },
         { key = "e", desc = "Edit comment" },
         { key = "d", desc = "View diff" },
-        { key = "o", desc = "Open in browser" },
+        { key = "<CR>", desc = "Open check in browser" },
+        { key = "o", desc = "Open PR in browser" },
         { key = "y", desc = "Yank PR number" },
       },
     },
@@ -165,8 +166,9 @@ function PRDetailBuffer:_show_help()
       name = "Navigation",
       columns = 3,
       items = {
-        { key = "gj", desc = "Next comment" },
-        { key = "gk", desc = "Previous comment" },
+        { key = "gj", desc = "Next comment/check" },
+        { key = "gk", desc = "Prev comment/check" },
+        { key = "<Tab>", desc = "Toggle checks" },
       },
     },
     {
