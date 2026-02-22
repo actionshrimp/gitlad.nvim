@@ -77,4 +77,29 @@ function M.get(api_url, token, owner, repo, number, callback)
   end)
 end
 
+--- Get review threads for a pull request
+---@param api_url string GitHub API URL
+---@param token string Auth token
+---@param owner string Repository owner
+---@param repo string Repository name
+---@param number number PR number
+---@param callback fun(threads: ForgeReviewThread[]|nil, pr_node_id: string|nil, err: string|nil)
+function M.get_review_threads(api_url, token, owner, repo, number, callback)
+  local variables = {
+    owner = owner,
+    repo = repo,
+    number = number,
+  }
+
+  graphql.execute(api_url, token, graphql.queries.pr_review_threads, variables, function(data, err)
+    if err then
+      callback(nil, nil, err)
+      return
+    end
+
+    local threads, pr_node_id, parse_err = graphql.parse_review_threads(data)
+    callback(threads, pr_node_id, parse_err)
+  end)
+end
+
 return M

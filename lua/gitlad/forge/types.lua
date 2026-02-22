@@ -60,12 +60,32 @@ local M = {}
 
 ---@class ForgeReviewComment
 ---@field id string Comment ID
+---@field database_id? number Numeric database ID (for REST API)
 ---@field author ForgeUser Comment author
 ---@field body string Comment body
 ---@field path string File path
 ---@field line? number Line number in the diff
 ---@field side? string "LEFT"|"RIGHT"
 ---@field created_at string ISO 8601 timestamp
+
+---@class ForgeReviewThread
+---@field id string GraphQL node ID
+---@field is_resolved boolean
+---@field is_outdated boolean
+---@field path string File path
+---@field line number|nil Current line in the diff
+---@field original_line number|nil Original line number
+---@field start_line number|nil Multi-line comment start
+---@field diff_side string "LEFT"|"RIGHT"
+---@field comments ForgeThreadComment[]
+
+---@class ForgeThreadComment
+---@field id string GraphQL node ID
+---@field database_id number|nil Numeric database ID (for REST API)
+---@field author ForgeUser Comment author
+---@field body string Comment body (markdown)
+---@field created_at string ISO 8601 timestamp
+---@field updated_at string ISO 8601 timestamp
 
 ---@class ForgeCheck
 ---@field name string Check name (e.g. "CI / test")
@@ -103,6 +123,7 @@ local M = {}
 ---@field provider_type string "github"|"gitlab"|"gitea"
 ---@field list_prs fun(self: ForgeProvider, opts: ForgeListPRsOpts, callback: fun(prs: ForgePullRequest[]|nil, err: string|nil))
 ---@field get_pr fun(self: ForgeProvider, number: number, callback: fun(pr: ForgePullRequest|nil, err: string|nil))
+---@field get_review_threads? fun(self: ForgeProvider, pr_number: number, callback: fun(threads: ForgeReviewThread[]|nil, pr_node_id: string|nil, err: string|nil))
 
 ---@class ForgeRemoteInfo
 ---@field provider string "github"

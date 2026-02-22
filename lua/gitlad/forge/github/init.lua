@@ -58,6 +58,14 @@ function M.new(owner, repo, api_url, token)
     review.edit_comment(api_url, token, self.owner, self.repo, comment_id, body, callback)
   end
 
+  --- Get review threads for a PR
+  ---@param self ForgeProvider
+  ---@param pr_number number PR number
+  ---@param callback fun(threads: ForgeReviewThread[]|nil, pr_node_id: string|nil, err: string|nil)
+  function provider:get_review_threads(pr_number, callback)
+    pr.get_review_threads(api_url, token, self.owner, self.repo, pr_number, callback)
+  end
+
   return provider
 end
 
