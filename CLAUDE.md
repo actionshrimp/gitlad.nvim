@@ -421,6 +421,49 @@ This makes the plugin more comfortable for vim/evil users.
 | `gr` | Refresh |
 | `q` | Close |
 
+### Forge Popup Actions
+| Key | Action |
+|-----|--------|
+| `N l` | List pull requests |
+| `N v` | View current branch PR |
+| `N c` | Checkout PR branch |
+| `N n` | Create pull request (opens `gh pr create --web`) |
+| `N m` | Merge pull request (prompts for PR# and strategy) |
+| `N C` | Close pull request |
+| `N R` | Reopen pull request |
+| `N o` | Open current branch PR in browser |
+
+### PR List View
+| Key | Action |
+|-----|--------|
+| `gj` / `gk` | Next/previous PR |
+| `<CR>` | View PR detail |
+| `y` | Yank PR number |
+| `o` | Open in browser |
+| `gr` | Refresh |
+| `q` | Close |
+
+### PR Detail View
+| Key | Action |
+|-----|--------|
+| `gj` / `gk` | Next/previous comment/review |
+| `c` | Add comment |
+| `e` | Edit comment at cursor |
+| `y` | Yank PR number |
+| `o` | Open in browser |
+| `d` | View diff (placeholder for M3) |
+| `gr` | Refresh |
+| `q` | Close |
+
+### Comment Editor
+| Key | Action |
+|-----|--------|
+| `C-c C-c` | Submit comment |
+| `C-c C-k` | Abort |
+| `ZZ` | Submit comment |
+| `ZQ` | Abort |
+| `q` | Abort (normal mode) |
+
 ### Rebase Editor (when editing git-rebase-todo)
 
 The rebase editor is a normal vim buffer. Use standard vim motions to edit freely.
