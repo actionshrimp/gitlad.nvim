@@ -83,6 +83,61 @@ local function open_pr_detail_with_mock(child, repo)
   child.lua([[vim.wait(500, function() return false end)]])
 end
 
+--- Helper: open PR detail with checks fixture (no real HTTP)
+---@param child table
+---@param repo string
+local function open_pr_detail_with_checks(child, repo)
+  child.lua(string.format(
+    [[
+    vim.cmd("cd %s")
+    require("gitlad.ui.views.status").open()
+  ]],
+    repo
+  ))
+  helpers.wait_for_status(child)
+
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+
+    local fixture_path = nil
+    for _, path in ipairs(vim.api.nvim_list_runtime_paths()) do
+      local candidate = path .. "/tests/fixtures/github/pr_detail_with_checks.json"
+      if vim.fn.filereadable(candidate) == 1 then
+        fixture_path = candidate
+        break
+      end
+    end
+
+    local f = io.open(fixture_path, "r")
+    local json = f:read("*a")
+    f:close()
+    local data = vim.json.decode(json)
+
+    local graphql = require("gitlad.forge.github.graphql")
+    local pr = graphql.parse_pr_detail(data)
+
+    local mock_provider = {
+      provider_type = "github",
+      owner = "testowner",
+      repo = "testrepo",
+      host = "github.com",
+      list_prs = function(self, opts, cb)
+        vim.schedule(function() cb({}, nil) end)
+      end,
+      get_pr = function(self, num, cb)
+        vim.schedule(function() cb(pr, nil) end)
+      end,
+    }
+
+    pr_detail_view.open(buf.repo_state, mock_provider, 42)
+  ]])
+
+  helpers.wait_for_buffer(child, "gitlad://pr%-detail")
+  child.lua([[vim.wait(500, function() return false end)]])
+end
+
 T["pr detail view"] = MiniTest.new_set()
 
 T["pr detail view"]["opens and shows PR header"] = function()
@@ -325,6 +380,123 @@ T["pr detail view"]["gj/gk navigate between comments"] = function()
   child.type_keys("gk")
   local line3 = child.lua_get("vim.api.nvim_win_get_cursor(0)[1]")
   eq(line3, line1)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["shows checks section when PR has checks"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_checks(child, repo)
+
+  child.lua([[
+    _G._test_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[_G._test_lines]])
+
+  -- Should show checks section header
+  local found_checks_header = false
+  local found_ci_test = false
+  for _, line in ipairs(lines) do
+    if line:match("Checks") then
+      found_checks_header = true
+    end
+    if line:match("CI / test") then
+      found_ci_test = true
+    end
+  end
+  eq(found_checks_header, true)
+  eq(found_ci_test, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["gj/gk navigate to check lines"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_checks(child, repo)
+
+  -- Start at top
+  child.lua([[vim.api.nvim_win_set_cursor(0, {1, 0})]])
+
+  -- Navigate forward repeatedly, collecting line types
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local buf = pr_detail_view.get_buffer()
+    _G._visited_types = {}
+    vim.api.nvim_win_set_cursor(0, {1, 0})
+    for i = 1, 10 do
+      vim.cmd("normal gj")
+      local line = vim.api.nvim_win_get_cursor(0)[1]
+      local info = buf.line_map[line]
+      if info then
+        table.insert(_G._visited_types, info.type)
+      end
+    end
+  ]])
+  local visited_types = child.lua_get([[_G._visited_types]])
+
+  -- Should have visited checks_header or check types
+  local found_check_type = false
+  for _, t in ipairs(visited_types) do
+    if t == "check" or t == "checks_header" then
+      found_check_type = true
+    end
+  end
+  eq(found_check_type, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["TAB toggles checks section"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_checks(child, repo)
+
+  -- Count lines with checks
+  local initial_count = child.lua_get([[vim.api.nvim_buf_line_count(0)]])
+
+  -- Navigate to checks header and press TAB to collapse
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local buf = pr_detail_view.get_buffer()
+    -- Find the checks header line
+    for line_nr, info in pairs(buf.line_map) do
+      if info.type == "checks_header" then
+        vim.api.nvim_win_set_cursor(0, {line_nr, 0})
+        break
+      end
+    end
+  ]])
+
+  child.type_keys("<Tab>")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  local collapsed_count = child.lua_get([[vim.api.nvim_buf_line_count(0)]])
+
+  -- Should have fewer lines after collapsing
+  expect.equality(collapsed_count < initial_count, true)
+
+  -- Press TAB again to expand
+  child.type_keys("<Tab>")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  local expanded_count = child.lua_get([[vim.api.nvim_buf_line_count(0)]])
+
+  -- Should be back to original count
+  eq(expanded_count, initial_count)
 
   helpers.cleanup_repo(child, repo)
 end

@@ -20,6 +20,7 @@ local hl = require("gitlad.ui.hl")
 ---@field pr_number number PR number being viewed
 ---@field line_map table<number, CommentLineInfo> Map of line numbers to line info
 ---@field ranges table<string, {start: number, end_line: number}> Named ranges
+---@field checks_collapsed boolean Whether checks section is collapsed
 local PRDetailBuffer = {}
 PRDetailBuffer.__index = PRDetailBuffer
 
@@ -46,6 +47,7 @@ local function get_or_create_buffer(repo_state, provider)
   self.pr_number = 0
   self.line_map = {}
   self.ranges = {}
+  self.checks_collapsed = false
 
   -- Create buffer
   self.bufnr = vim.api.nvim_create_buf(false, true)
@@ -122,6 +124,16 @@ function PRDetailBuffer:_setup_keymaps()
     self:close()
   end, "Close PR detail")
 
+  -- Open check in browser / enter on check line
+  keymap.set(bufnr, "n", "<CR>", function()
+    self:_action_at_cursor()
+  end, "Open check in browser")
+
+  -- Toggle checks section collapsed
+  keymap.set(bufnr, "n", "<Tab>", function()
+    self:_toggle_checks()
+  end, "Toggle checks section")
+
   -- Diff (placeholder for Milestone 3)
   keymap.set(bufnr, "n", "d", function()
     vim.notify("[gitlad] Native diff viewer coming in Milestone 3", vim.log.levels.INFO)
@@ -185,40 +197,62 @@ function PRDetailBuffer:_get_current_info()
   return self.line_map[line]
 end
 
---- Navigate to next comment or review
+--- Check if a line is a navigation target (start of comment, review, or check line)
+---@param line number 1-indexed line number
+---@return boolean
+function PRDetailBuffer:_is_nav_target(line)
+  local info = self.line_map[line]
+  if not info then
+    return false
+  end
+
+  -- Check lines are each a navigation target
+  if info.type == "check" then
+    return true
+  end
+
+  -- Checks header is a navigation target
+  if info.type == "checks_header" then
+    return true
+  end
+
+  -- Comment/review lines: only the @author header line
+  if info.type == "comment" or info.type == "review" then
+    local line_text = vim.api.nvim_buf_get_lines(self.bufnr, line - 1, line, false)[1]
+    return line_text ~= nil and line_text:match("@%S+") ~= nil
+  end
+
+  return false
+end
+
+--- Navigate to next comment, review, or check
 function PRDetailBuffer:_goto_next_item()
   local cursor = vim.api.nvim_win_get_cursor(0)
   local current_line = cursor[1]
 
   for line = current_line + 1, vim.api.nvim_buf_line_count(self.bufnr) do
-    local info = self.line_map[line]
-    if info and (info.type == "comment" or info.type == "review") then
-      -- Check it's the start of a new item (author line has @)
-      local line_text = vim.api.nvim_buf_get_lines(self.bufnr, line - 1, line, false)[1]
-      if line_text and line_text:match("@%S+") then
-        vim.api.nvim_win_set_cursor(0, { line, 0 })
-        return
-      end
+    if self:_is_nav_target(line) then
+      vim.api.nvim_win_set_cursor(0, { line, 0 })
+      return
     end
   end
 end
 
---- Navigate to previous comment or review
+--- Navigate to previous comment, review, or check
 function PRDetailBuffer:_goto_prev_item()
   local cursor = vim.api.nvim_win_get_cursor(0)
   local current_line = cursor[1]
 
-  -- First, find the start of the current item (walk backwards to find @author line)
+  -- First, find the start of the current item
   local current_item_start = nil
   for line = current_line, 1, -1 do
+    if self:_is_nav_target(line) then
+      current_item_start = line
+      break
+    end
+    -- For comment/review body lines, keep searching backwards
     local info = self.line_map[line]
-    if info and (info.type == "comment" or info.type == "review") then
-      local line_text = vim.api.nvim_buf_get_lines(self.bufnr, line - 1, line, false)[1]
-      if line_text and line_text:match("@%S+") then
-        current_item_start = line
-        break
-      end
-    else
+    if not info or (info.type ~= "comment" and info.type ~= "review") then
       break
     end
   end
@@ -226,15 +260,29 @@ function PRDetailBuffer:_goto_prev_item()
   -- Now find the previous item before current_item_start
   local search_from = (current_item_start or current_line) - 1
   for line = search_from, 1, -1 do
-    local info = self.line_map[line]
-    if info and (info.type == "comment" or info.type == "review") then
-      local line_text = vim.api.nvim_buf_get_lines(self.bufnr, line - 1, line, false)[1]
-      if line_text and line_text:match("@%S+") then
-        vim.api.nvim_win_set_cursor(0, { line, 0 })
-        return
-      end
+    if self:_is_nav_target(line) then
+      vim.api.nvim_win_set_cursor(0, { line, 0 })
+      return
     end
   end
+end
+
+--- Perform action at cursor (open check URL, etc.)
+function PRDetailBuffer:_action_at_cursor()
+  local info = self:_get_current_info()
+  if not info then
+    return
+  end
+
+  if info.type == "check" and info.check and info.check.details_url then
+    vim.ui.open(info.check.details_url)
+  end
+end
+
+--- Toggle checks section collapsed/expanded
+function PRDetailBuffer:_toggle_checks()
+  self.checks_collapsed = not self.checks_collapsed
+  self:render()
 end
 
 --- Add a new comment to the PR
@@ -353,7 +401,9 @@ function PRDetailBuffer:render()
     return
   end
 
-  local result = comment_component.render(self.pr)
+  local result = comment_component.render(self.pr, {
+    checks_collapsed = self.checks_collapsed,
+  })
   local lines = result.lines
   self.line_map = result.line_info
   self.ranges = result.ranges
