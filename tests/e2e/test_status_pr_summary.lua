@@ -382,4 +382,161 @@ T["status PR summary"]["does not show PR line when disabled in config"] = functi
   helpers.cleanup_repo(child, repo)
 end
 
+T["status PR summary"]["PR line cleared when no matching open PR on re-fetch"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  child.lua(string.format(
+    [[
+    vim.cmd("cd %s")
+    require("gitlad.ui.views.status").open()
+  ]],
+    repo
+  ))
+  helpers.wait_for_status(child)
+
+  -- Inject PR info as if it was previously fetched
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+    buf.repo_state.pr_info = {
+      number = 42,
+      title = "Fix auth bug",
+      state = "open",
+      draft = false,
+      author = { login = "octocat" },
+      head_ref = "fix/auth-bug",
+      base_ref = "main",
+      review_decision = "APPROVED",
+      labels = {},
+      additions = 10,
+      deletions = 3,
+      created_at = "",
+      updated_at = "",
+      url = "",
+    }
+    buf.repo_state._pr_info_branch = buf.repo_state.status.branch
+    buf.repo_state._pr_info_fetched_at = vim.uv.now()
+    buf:render()
+  ]])
+
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Verify PR line is shown
+  child.lua([[
+    _G._test_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[_G._test_lines]])
+  local found_pr = false
+  for _, line in ipairs(lines) do
+    if line:match("PR:") and line:match("#42") then
+      found_pr = true
+    end
+  end
+  eq(found_pr, true)
+
+  -- Simulate clearing pr_info (as would happen when merged PR is re-fetched)
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+    buf.repo_state.pr_info = nil
+    buf:render()
+  ]])
+
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Verify PR line is gone
+  child.lua([[
+    _G._test_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  ]])
+  lines = child.lua_get([[_G._test_lines]])
+  found_pr = false
+  for _, line in ipairs(lines) do
+    if line:match("PR:") and line:match("#42") then
+      found_pr = true
+    end
+  end
+  eq(found_pr, false)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["status PR summary"]["fetch_pr_info respects TTL throttle"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  child.lua(string.format(
+    [[
+    vim.cmd("cd %s")
+    require("gitlad.ui.views.status").open()
+  ]],
+    repo
+  ))
+  helpers.wait_for_status(child)
+
+  -- Set up state as if PR was recently fetched (within TTL)
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+    buf.repo_state._pr_info_branch = buf.repo_state.status.branch
+    buf.repo_state._pr_info_fetched_at = vim.uv.now()
+    buf.repo_state._pr_info_fetching = false
+    -- No pr_info (simulates "checked, no PR found" state)
+
+    -- Call fetch_pr_info() without force — should be throttled (no-op)
+    buf.repo_state:fetch_pr_info()
+    _G._is_fetching = buf.repo_state._pr_info_fetching
+  ]])
+
+  local is_fetching = child.lua_get([[_G._is_fetching]])
+  -- Should NOT be fetching because TTL hasn't expired
+  eq(is_fetching, false)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["status PR summary"]["fetch_pr_info force bypasses TTL"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  child.lua(string.format(
+    [[
+    vim.cmd("cd %s")
+    require("gitlad.ui.views.status").open()
+  ]],
+    repo
+  ))
+  helpers.wait_for_status(child)
+
+  -- Set up state as if PR was recently fetched (within TTL)
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+    buf.repo_state._pr_info_branch = buf.repo_state.status.branch
+    buf.repo_state._pr_info_fetched_at = vim.uv.now()
+    buf.repo_state._pr_info_fetching = false
+
+    -- Call fetch_pr_info(true) with force — should bypass TTL
+    buf.repo_state:fetch_pr_info(true)
+    _G._is_fetching = buf.repo_state._pr_info_fetching
+  ]])
+
+  local is_fetching = child.lua_get([[_G._is_fetching]])
+  -- Should be fetching because force=true bypasses TTL
+  -- (it will fail to find a provider since there's no real remote, but
+  -- the important thing is that it entered the fetching state)
+  eq(is_fetching, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
 return T

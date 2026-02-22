@@ -34,6 +34,7 @@ local M = {}
 
 ---@class GitladForgeConfig
 ---@field show_pr_in_status boolean Show PR summary line in status buffer header (default: true)
+---@field pr_info_ttl number Seconds before cached PR info is re-fetched on auto-refresh (default: 30). Manual refresh (gr) always bypasses this.
 
 ---@class GitladConfig
 ---@field signs GitladSigns
@@ -71,6 +72,7 @@ local defaults = {
   },
   forge = {
     show_pr_in_status = true, -- Show PR summary in status header
+    pr_info_ttl = 30, -- Seconds before auto-refresh re-fetches PR info (gr always bypasses)
   },
   show_tags_in_refs = false,
 }

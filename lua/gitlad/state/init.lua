@@ -29,6 +29,7 @@ local errors = require("gitlad.utils.errors")
 ---@field pr_info ForgePullRequest|nil Cached PR info for current branch
 ---@field _pr_info_branch string|nil Branch name the pr_info was fetched for
 ---@field _pr_info_fetching boolean Whether a PR info fetch is in progress
+---@field _pr_info_fetched_at number Timestamp (ms) of last successful PR info fetch
 local RepoState = {}
 RepoState.__index = RepoState
 
@@ -79,6 +80,7 @@ function M.get(path)
   state.pr_info = nil
   state._pr_info_branch = nil
   state._pr_info_fetching = false
+  state._pr_info_fetched_at = 0
 
   -- Create status handler that notifies listeners on update
   state.status_handler = async.new(function(result)
@@ -178,7 +180,8 @@ end
 --- Lazily fetch PR info for the current branch
 --- Non-blocking: returns cached data, triggers async fetch if stale/missing
 --- Calls self:_notify("status") when new data arrives to trigger re-render
-function RepoState:fetch_pr_info()
+---@param force? boolean Bypass TTL (used for manual refresh via gr)
+function RepoState:fetch_pr_info(force)
   local cfg = require("gitlad.config").get()
   if not cfg.forge or not cfg.forge.show_pr_in_status then
     return
@@ -189,16 +192,21 @@ function RepoState:fetch_pr_info()
     return
   end
 
-  -- If we already have data for this branch, return it
-  if self._pr_info_branch == branch and self.pr_info then
-    return
-  end
-
   -- If branch changed, invalidate cache
   if self._pr_info_branch ~= branch then
     self.pr_info = nil
     self._pr_info_branch = branch
     self._pr_info_fetching = false
+    self._pr_info_fetched_at = 0
+  end
+
+  -- If not forced, check TTL before re-fetching
+  if not force then
+    local ttl_ms = (cfg.forge.pr_info_ttl or 30) * 1000
+    local now = vim.uv.now()
+    if self._pr_info_fetched_at > 0 and (now - self._pr_info_fetched_at) < ttl_ms then
+      return
+    end
   end
 
   -- If already fetching, skip
@@ -219,6 +227,7 @@ function RepoState:fetch_pr_info()
     provider:list_prs({ state = "open", limit = 50 }, function(prs, list_err)
       vim.schedule(function()
         self._pr_info_fetching = false
+        self._pr_info_fetched_at = vim.uv.now()
 
         if list_err or not prs then
           return
@@ -227,14 +236,24 @@ function RepoState:fetch_pr_info()
         -- Find PR matching current branch
         for _, pr in ipairs(prs) do
           if pr.head_ref == branch then
+            local changed = self.pr_info == nil
+              or self.pr_info.number ~= pr.number
+              or self.pr_info.state ~= pr.state
+              or self.pr_info.review_decision ~= pr.review_decision
             self.pr_info = pr
             self._pr_info_branch = branch
-            self:_notify("status")
+            if changed then
+              self:_notify("status")
+            end
             return
           end
         end
 
-        -- No PR found — mark as checked so we don't keep retrying
+        -- No matching open PR found — clear stale data (PR was merged/closed)
+        if self.pr_info then
+          self.pr_info = nil
+          self:_notify("status")
+        end
         self._pr_info_branch = branch
       end)
     end)

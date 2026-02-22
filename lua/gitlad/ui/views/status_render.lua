@@ -296,6 +296,8 @@ local function render(self)
   -- PR summary line (lazy-loaded from forge)
   if cfg.forge and cfg.forge.show_pr_in_status ~= false then
     local pr_info = self.repo_state.pr_info
+    -- Trigger fetch (respects TTL internally, non-blocking)
+    self.repo_state:fetch_pr_info()
     if pr_info then
       local types = require("gitlad.forge.types")
       local pr_line = "PR:       #" .. pr_info.number .. " " .. pr_info.title
@@ -315,9 +317,6 @@ local function render(self)
         end
       end
       table.insert(lines, pr_line)
-    else
-      -- Trigger lazy fetch (async, non-blocking)
-      self.repo_state:fetch_pr_info()
     end
   end
 

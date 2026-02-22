@@ -267,6 +267,7 @@ local function setup_keymaps(self)
   -- Refresh (gr to free up g prefix for vim motions like gg)
   keymap.set(bufnr, "n", "gr", function()
     self.repo_state:refresh_status(true)
+    self.repo_state:fetch_pr_info(true)
   end, "Refresh status")
 
   -- Close
