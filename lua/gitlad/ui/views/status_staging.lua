@@ -51,11 +51,17 @@ end
 ---@return number start_line
 ---@return number end_line
 local function get_visual_selection_range()
-  -- Exit visual mode to update '< and '> marks
+  -- Read the visual selection range while still in visual mode using "v" mark
+  -- (more robust than exiting first and reading '< '> marks, which can be
+  -- unreliable with nvim_feedkeys on some Neovim versions)
+  local start_line = vim.fn.line("v")
+  local end_line = vim.fn.line(".")
+  if start_line > end_line then
+    start_line, end_line = end_line, start_line
+  end
+  -- Exit visual mode
   local esc = vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
   vim.api.nvim_feedkeys(esc, "nx", false)
-  local start_line = vim.fn.line("'<")
-  local end_line = vim.fn.line("'>")
   return start_line, end_line
 end
 
