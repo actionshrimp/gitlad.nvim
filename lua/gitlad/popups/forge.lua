@@ -104,8 +104,8 @@ function M._view_current_pr(repo_state, provider)
       -- Find PR matching current branch
       for _, pr in ipairs(prs) do
         if pr.head_ref == branch then
-          vim.notify("[gitlad] Found PR #" .. pr.number .. ": " .. pr.title, vim.log.levels.INFO)
-          -- TODO: Open PR detail view (Milestone 2)
+          local pr_detail_view = require("gitlad.ui.views.pr_detail")
+          pr_detail_view.open(repo_state, provider, pr.number)
           return
         end
       end
