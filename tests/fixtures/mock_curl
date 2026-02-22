@@ -1,0 +1,23 @@
+#!/bin/bash
+# Mock curl for testing forge HTTP requests
+# Maps URL patterns to fixture JSON files
+
+# Find the script directory (where fixtures live)
+FIXTURE_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Extract URL from arguments (last argument)
+URL="${@: -1}"
+
+# Check for GraphQL endpoint (PR list)
+if echo "$URL" | grep -q "graphql"; then
+  cat "$FIXTURE_DIR/github/pr_list.json"
+  echo ""
+  echo "200"
+  exit 0
+fi
+
+# Default: return 404
+echo '{"message": "Not Found"}'
+echo ""
+echo "404"
+exit 0

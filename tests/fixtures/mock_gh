@@ -1,0 +1,12 @@
+#!/bin/bash
+# Mock gh CLI for testing
+# Responds to 'gh auth token' with a test token
+
+if [ "$1" = "auth" ] && [ "$2" = "token" ]; then
+  echo "ghp_test_token_12345"
+  exit 0
+fi
+
+# Default: exit with error for unknown commands
+echo "mock_gh: unknown command: $@" >&2
+exit 1

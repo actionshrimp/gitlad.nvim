@@ -413,6 +413,13 @@ local function create_sections(status_buffer)
           end,
         },
         { key = "B", desc = "Blame" },
+        {
+          key = "N",
+          desc = "Forge",
+          action = function()
+            require("gitlad.popups.forge").open(repo_state)
+          end,
+        },
       },
     },
 

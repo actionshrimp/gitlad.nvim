@@ -505,6 +505,12 @@ local function setup_keymaps(self)
   end
   keymap.set(bufnr, "n", "Z", open_worktree_popup, "Worktree popup")
   keymap.set(bufnr, "n", "%", open_worktree_popup, "Worktree popup")
+
+  -- Forge popup (evil-collection-magit style: N for forge/GitHub)
+  keymap.set(bufnr, "n", "N", function()
+    local forge_popup = require("gitlad.popups.forge")
+    forge_popup.open(self.repo_state)
+  end, "Forge popup")
 end
 
 --- Attach keymap methods to StatusBuffer class
