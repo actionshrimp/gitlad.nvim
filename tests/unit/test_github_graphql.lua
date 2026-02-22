@@ -347,4 +347,170 @@ T["parse_pr_detail()"]["returns error for missing repository"] = function()
   expect.equality(err:match("Repository not found") ~= nil, true)
 end
 
+-- =============================================================================
+-- PR list with checks
+-- =============================================================================
+
+T["parse_pr_list() with checks"] = MiniTest.new_set()
+
+T["parse_pr_list() with checks"]["parses checks summary from fixture"] = function()
+  local data = load_fixture("pr_list_with_checks.json")
+  local prs, err = graphql.parse_pr_list(data)
+  eq(err, nil)
+  eq(#prs, 3)
+
+  -- First PR: all 3 checks pass
+  expect.equality(prs[1].checks_summary ~= nil, true)
+  eq(prs[1].checks_summary.state, "success")
+  eq(prs[1].checks_summary.total, 3)
+  eq(prs[1].checks_summary.success, 3)
+  eq(prs[1].checks_summary.failure, 0)
+  eq(prs[1].checks_summary.pending, 0)
+end
+
+T["parse_pr_list() with checks"]["parses failure checks correctly"] = function()
+  local data = load_fixture("pr_list_with_checks.json")
+  local prs, err = graphql.parse_pr_list(data)
+  eq(err, nil)
+
+  -- Second PR: 2 pass, 1 fail
+  expect.equality(prs[2].checks_summary ~= nil, true)
+  eq(prs[2].checks_summary.state, "failure")
+  eq(prs[2].checks_summary.total, 3)
+  eq(prs[2].checks_summary.success, 2)
+  eq(prs[2].checks_summary.failure, 1)
+end
+
+T["parse_pr_list() with checks"]["parses pending checks correctly"] = function()
+  local data = load_fixture("pr_list_with_checks.json")
+  local prs, err = graphql.parse_pr_list(data)
+  eq(err, nil)
+
+  -- Third PR: 1 pass, 1 in-progress
+  expect.equality(prs[3].checks_summary ~= nil, true)
+  eq(prs[3].checks_summary.state, "pending")
+  eq(prs[3].checks_summary.total, 2)
+  eq(prs[3].checks_summary.success, 1)
+  eq(prs[3].checks_summary.pending, 1)
+end
+
+T["parse_pr_list() with checks"]["does not include check details in list mode"] = function()
+  local data = load_fixture("pr_list_with_checks.json")
+  local prs, err = graphql.parse_pr_list(data)
+  eq(err, nil)
+
+  -- List mode should not populate individual checks
+  eq(#prs[1].checks_summary.checks, 0)
+end
+
+T["parse_pr_list() with checks"]["handles PR without statusCheckRollup"] = function()
+  local data = load_fixture("pr_list.json")
+  local prs, err = graphql.parse_pr_list(data)
+  eq(err, nil)
+
+  -- Original fixture has no commits/checks data
+  eq(prs[1].checks_summary, nil)
+end
+
+-- =============================================================================
+-- PR detail with checks
+-- =============================================================================
+
+T["parse_pr_detail() with checks"] = MiniTest.new_set()
+
+T["parse_pr_detail() with checks"]["parses checks with full details from fixture"] = function()
+  local data = load_fixture("pr_detail_with_checks.json")
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+
+  expect.equality(pr.checks_summary ~= nil, true)
+  eq(pr.checks_summary.total, 4)
+  eq(pr.checks_summary.success, 3) -- 2 CheckRun success + 1 StatusContext success
+  eq(pr.checks_summary.failure, 1) -- 1 CheckRun failure
+end
+
+T["parse_pr_detail() with checks"]["includes check details in detail mode"] = function()
+  local data = load_fixture("pr_detail_with_checks.json")
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+
+  local checks = pr.checks_summary.checks
+  eq(#checks, 4)
+
+  -- First CheckRun
+  eq(checks[1].name, "CI / test")
+  eq(checks[1].status, "completed")
+  eq(checks[1].conclusion, "success")
+  eq(checks[1].app_name, "GitHub Actions")
+  expect.equality(checks[1].details_url ~= nil, true)
+  expect.equality(checks[1].started_at ~= nil, true)
+  expect.equality(checks[1].completed_at ~= nil, true)
+end
+
+T["parse_pr_detail() with checks"]["parses StatusContext as check"] = function()
+  local data = load_fixture("pr_detail_with_checks.json")
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+
+  -- Fourth item is a StatusContext
+  local check = pr.checks_summary.checks[4]
+  eq(check.name, "coverage/codecov")
+  eq(check.status, "completed")
+  eq(check.conclusion, "success")
+  expect.equality(check.details_url ~= nil, true)
+end
+
+T["parse_pr_detail() with checks"]["handles PR without statusCheckRollup"] = function()
+  local data = load_fixture("pr_detail.json")
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+
+  -- Original fixture has no commits/checks data
+  eq(pr.checks_summary, nil)
+end
+
+T["parse_pr_detail() with checks"]["handles empty contexts"] = function()
+  local data = {
+    data = {
+      repository = {
+        pullRequest = {
+          number = 1,
+          title = "Test",
+          state = "OPEN",
+          isDraft = false,
+          author = { login = "user" },
+          headRefName = "test",
+          baseRefName = "main",
+          labels = { nodes = {} },
+          additions = 0,
+          deletions = 0,
+          createdAt = "",
+          updatedAt = "",
+          url = "",
+          body = "",
+          commits = {
+            nodes = {
+              {
+                commit = {
+                  statusCheckRollup = {
+                    state = "SUCCESS",
+                    contexts = { nodes = {} },
+                  },
+                },
+              },
+            },
+          },
+          comments = { nodes = {} },
+          reviews = { nodes = {} },
+        },
+      },
+    },
+  }
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+  expect.equality(pr.checks_summary ~= nil, true)
+  eq(pr.checks_summary.total, 0)
+  eq(#pr.checks_summary.checks, 0)
+end
+
 return T

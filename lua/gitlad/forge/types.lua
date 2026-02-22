@@ -33,6 +33,7 @@ local M = {}
 ---@field comments? ForgeComment[] Issue comments
 ---@field reviews? ForgeReview[] Reviews
 ---@field timeline? ForgeTimelineItem[] Chronologically sorted timeline
+---@field checks_summary? ForgeChecksSummary CI check rollup summary
 
 ---@class ForgeTimelineItem
 ---@field type "comment"|"review" Discriminator
@@ -65,6 +66,23 @@ local M = {}
 ---@field line? number Line number in the diff
 ---@field side? string "LEFT"|"RIGHT"
 ---@field created_at string ISO 8601 timestamp
+
+---@class ForgeCheck
+---@field name string Check name (e.g. "CI / test")
+---@field status string "queued"|"in_progress"|"completed"
+---@field conclusion? string "success"|"failure"|"neutral"|"cancelled"|"skipped"|"timed_out"|"action_required"|"startup_failure"|nil
+---@field details_url? string URL to the check details page
+---@field app_name? string App name (e.g. "GitHub Actions")
+---@field started_at? string ISO 8601 timestamp
+---@field completed_at? string ISO 8601 timestamp
+
+---@class ForgeChecksSummary
+---@field state string "success"|"failure"|"pending" Overall rollup state
+---@field total number Total number of checks
+---@field success number Number of successful checks
+---@field failure number Number of failed checks
+---@field pending number Number of pending/in-progress checks
+---@field checks ForgeCheck[] Individual check details
 
 ---@class ForgeFile
 ---@field path string File path
@@ -181,6 +199,108 @@ end
 ---@return string stat_text e.g. "+10 -3"
 function M.format_diff_stat(additions, deletions)
   return "+" .. additions .. " -" .. deletions
+end
+
+--- Format a check icon based on status/conclusion
+---@param check ForgeCheck
+---@return string icon Single character icon
+---@return string hl_group Highlight group name
+function M.format_check_icon(check)
+  if check.status ~= "completed" then
+    return "○", "GitladForgeCheckPending"
+  end
+  local conclusion = check.conclusion
+  if conclusion == "success" then
+    return "✓", "GitladForgeCheckSuccess"
+  elseif
+    conclusion == "failure"
+    or conclusion == "timed_out"
+    or conclusion == "startup_failure"
+  then
+    return "✗", "GitladForgeCheckFailure"
+  elseif conclusion == "cancelled" then
+    return "⊘", "GitladForgeCheckNeutral"
+  elseif conclusion == "skipped" then
+    return "⊘", "GitladForgeCheckNeutral"
+  elseif conclusion == "neutral" then
+    return "◎", "GitladForgeCheckNeutral"
+  elseif conclusion == "action_required" then
+    return "!", "GitladForgeCheckPending"
+  end
+  return "?", "GitladForgeCheckNeutral"
+end
+
+--- Format a compact checks summary for PR list / status line
+--- Returns e.g. "3/3" (all pass), "1/3" (failures), "~2/3" (pending)
+---@param summary ForgeChecksSummary
+---@return string text
+---@return string hl_group
+function M.format_checks_compact(summary)
+  if summary.total == 0 then
+    return "", "Comment"
+  end
+  if summary.pending > 0 then
+    return "~" .. (summary.total - summary.pending) .. "/" .. summary.total,
+      "GitladForgeCheckPending"
+  elseif summary.failure > 0 then
+    return summary.success .. "/" .. summary.total, "GitladForgeCheckFailure"
+  else
+    return summary.success .. "/" .. summary.total, "GitladForgeCheckSuccess"
+  end
+end
+
+--- Format duration between two ISO 8601 timestamps
+---@param started_at? string ISO 8601 timestamp
+---@param completed_at? string ISO 8601 timestamp
+---@return string duration e.g. "2m 30s", "" if timestamps missing
+function M.format_check_duration(started_at, completed_at)
+  if not started_at or started_at == "" or not completed_at or completed_at == "" then
+    return ""
+  end
+
+  local function parse_iso(iso)
+    local year, month, day, hour, min, sec = iso:match("^(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+    if not year then
+      return nil
+    end
+    return os.time({
+      year = tonumber(year) --[[@as integer]],
+      month = tonumber(month) --[[@as integer]],
+      day = tonumber(day) --[[@as integer]],
+      hour = tonumber(hour) --[[@as integer]],
+      min = tonumber(min) --[[@as integer]],
+      sec = tonumber(sec) --[[@as integer]],
+    })
+  end
+
+  local start_ts = parse_iso(started_at)
+  local end_ts = parse_iso(completed_at)
+  if not start_ts or not end_ts then
+    return ""
+  end
+
+  local diff = end_ts - start_ts
+  if diff < 0 then
+    return ""
+  end
+
+  if diff < 60 then
+    return diff .. "s"
+  elseif diff < 3600 then
+    local minutes = math.floor(diff / 60)
+    local seconds = diff % 60
+    if seconds > 0 then
+      return minutes .. "m " .. seconds .. "s"
+    end
+    return minutes .. "m"
+  else
+    local hours = math.floor(diff / 3600)
+    local minutes = math.floor((diff % 3600) / 60)
+    if minutes > 0 then
+      return hours .. "h " .. minutes .. "m"
+    end
+    return hours .. "h"
+  end
 end
 
 return M
