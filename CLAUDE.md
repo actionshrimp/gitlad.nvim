@@ -442,6 +442,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `o` | Open in browser |
 | `gr` | Refresh |
 | `q` | Close |
+| `?` | Show help |
 
 ### PR Detail View
 | Key | Action |
@@ -454,6 +455,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `d` | View diff (placeholder for M3) |
 | `gr` | Refresh |
 | `q` | Close |
+| `?` | Show help |
 
 ### Comment Editor
 | Key | Action |

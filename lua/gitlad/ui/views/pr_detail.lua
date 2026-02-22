@@ -126,6 +126,56 @@ function PRDetailBuffer:_setup_keymaps()
   keymap.set(bufnr, "n", "d", function()
     vim.notify("[gitlad] Native diff viewer coming in Milestone 3", vim.log.levels.INFO)
   end, "View diff (coming soon)")
+
+  -- Help
+  keymap.set(bufnr, "n", "?", function()
+    self:_show_help()
+  end, "Show help")
+end
+
+--- Show help popup with PR detail keybindings
+function PRDetailBuffer:_show_help()
+  local HelpView = require("gitlad.popups.help").HelpView
+
+  local sections = {
+    {
+      name = "Actions",
+      columns = 3,
+      items = {
+        { key = "c", desc = "Add comment" },
+        { key = "e", desc = "Edit comment" },
+        { key = "d", desc = "View diff" },
+        { key = "o", desc = "Open in browser" },
+        { key = "y", desc = "Yank PR number" },
+      },
+    },
+    {
+      name = "Navigation",
+      columns = 3,
+      items = {
+        { key = "gj", desc = "Next comment" },
+        { key = "gk", desc = "Previous comment" },
+      },
+    },
+    {
+      name = "Essential commands",
+      columns = 2,
+      items = {
+        {
+          key = "gr",
+          desc = "Refresh",
+          action = function()
+            self:refresh()
+          end,
+        },
+        { key = "q", desc = "Close buffer" },
+        { key = "?", desc = "This help" },
+      },
+    },
+  }
+
+  local help_view = HelpView.new(sections)
+  help_view:show()
 end
 
 --- Get the line info at the cursor position
