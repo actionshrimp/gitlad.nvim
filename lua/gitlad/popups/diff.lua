@@ -1,12 +1,17 @@
 ---@mod gitlad.popups.diff Diff popup
 ---@brief [[
---- Transient-style diff popup that delegates to diffview.nvim.
+--- Transient-style diff popup with configurable viewer backend.
 --- Context-aware: adapts actions based on cursor position (file vs commit).
+---
+--- Supports two viewers:
+---   "native"   — built-in side-by-side diff viewer (default)
+---   "diffview" — delegates to diffview.nvim
 ---@brief ]]
 
 local M = {}
 
 local popup = require("gitlad.ui.popup")
+local config = require("gitlad.config")
 
 ---@class DiffContext
 ---@field file_path? string File under cursor (if any)
@@ -17,6 +22,12 @@ local popup = require("gitlad.ui.popup")
 ---@field base_ref? string Base ref being compared against (from refs buffer)
 ---@field ref_upstream? string Upstream tracking ref for the ref under cursor (e.g., origin/feature)
 ---@field current_upstream? string Upstream of the current (HEAD) branch (e.g., origin/main)
+
+--- Check whether to use the native diff viewer
+---@return boolean
+local function use_native()
+  return config.get().diff.viewer == "native"
+end
 
 --- Check if diffview.nvim is available
 ---@return boolean has_diffview
@@ -50,22 +61,51 @@ local function open_diffview(args, fallback_cmd)
   end
 end
 
+--- Open the native diff viewer with the given DiffSpec
+---@param spec DiffSpec|nil The diff specification
+---@param err string|nil Error message from the producer
+local function open_native(spec, err)
+  if err then
+    vim.notify("[gitlad] " .. err, vim.log.levels.ERROR)
+    return
+  end
+  vim.schedule(function()
+    local diff_view = require("gitlad.ui.views.diff")
+    diff_view.open(spec)
+  end)
+end
+
 --- Diff staged changes (index vs HEAD)
 ---@param repo_state RepoState
 function M._diff_staged(repo_state)
-  open_diffview({ "--cached" }, "git diff --cached")
+  if use_native() then
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_staged(repo_state.repo_root, open_native)
+  else
+    open_diffview({ "--cached" }, "git diff --cached")
+  end
 end
 
 --- Diff unstaged changes (working tree vs index)
 ---@param repo_state RepoState
 function M._diff_unstaged(repo_state)
-  open_diffview({}, "git diff")
+  if use_native() then
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_unstaged(repo_state.repo_root, open_native)
+  else
+    open_diffview({}, "git diff")
+  end
 end
 
 --- Diff worktree (working tree vs HEAD)
 ---@param repo_state RepoState
 function M._diff_worktree(repo_state)
-  open_diffview({ "HEAD" }, "git diff HEAD")
+  if use_native() then
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_worktree(repo_state.repo_root, open_native)
+  else
+    open_diffview({ "HEAD" }, "git diff HEAD")
+  end
 end
 
 --- Show commit diff
@@ -76,7 +116,12 @@ function M._diff_commit(repo_state, commit)
     vim.notify("[gitlad] No commit under cursor", vim.log.levels.WARN)
     return
   end
-  open_diffview({ commit.hash .. "^!" }, "git show " .. commit.hash)
+  if use_native() then
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_commit(repo_state.repo_root, commit.hash, open_native)
+  else
+    open_diffview({ commit.hash .. "^!" }, "git show " .. commit.hash)
+  end
 end
 
 --- Show stash diff
@@ -87,7 +132,12 @@ function M._diff_stash(repo_state, stash)
     vim.notify("[gitlad] No stash under cursor", vim.log.levels.WARN)
     return
   end
-  open_diffview({ stash.ref .. "^!" }, "git stash show -p " .. stash.ref)
+  if use_native() then
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_stash(repo_state.repo_root, stash.ref, open_native)
+  else
+    open_diffview({ stash.ref .. "^!" }, "git stash show -p " .. stash.ref)
+  end
 end
 
 --- Compute the default range expression based on context.
@@ -133,14 +183,19 @@ function M._diff_range(repo_state, context)
     if not input or input == "" then
       return
     end
-    open_diffview({ input }, "git diff " .. input)
+    if use_native() then
+      local source = require("gitlad.ui.views.diff.source")
+      source.produce_range(repo_state.repo_root, input, open_native)
+    else
+      open_diffview({ input }, "git diff " .. input)
+    end
   end)
 end
 
 --- Diff ref against the current branch's upstream.
 --- Uses the HEAD branch's upstream tracking ref (e.g., origin/main when on main
 --- tracking origin/main). This shows changes unique to the ref compared to the
---- remote version of the merge target — the most common comparison.
+--- remote version of the merge target -- the most common comparison.
 ---@param repo_state RepoState
 ---@param context DiffContext Context about cursor position
 function M._diff_upstream(repo_state, context)
@@ -149,7 +204,7 @@ function M._diff_upstream(repo_state, context)
     return
   end
 
-  -- Prefer the current (HEAD) branch's upstream — this is typically origin/main,
+  -- Prefer the current (HEAD) branch's upstream -- this is typically origin/main,
   -- which is what users want when comparing a feature branch against the remote.
   -- Fall back to the ref's own upstream if HEAD has no upstream configured.
   local upstream = context.current_upstream or context.ref_upstream
@@ -159,10 +214,15 @@ function M._diff_upstream(repo_state, context)
   end
 
   local range = upstream .. "..." .. context.ref
-  open_diffview({ range }, "git diff " .. range)
+  if use_native() then
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_range(repo_state.repo_root, range, open_native)
+  else
+    open_diffview({ range }, "git diff " .. range)
+  end
 end
 
---- Build range via guided 3-step flow (base ref → range type → other ref)
+--- Build range via guided 3-step flow (base ref -> range type -> other ref)
 ---@param repo_state RepoState
 function M._diff_build_range(repo_state)
   local prompt_mod = require("gitlad.utils.prompt")
@@ -170,7 +230,12 @@ function M._diff_build_range(repo_state)
     if not range or range == "" then
       return
     end
-    open_diffview({ range }, "git diff " .. range)
+    if use_native() then
+      local source = require("gitlad.ui.views.diff.source")
+      source.produce_range(repo_state.repo_root, range, open_native)
+    else
+      open_diffview({ range }, "git diff " .. range)
+    end
   end)
 end
 
@@ -180,7 +245,12 @@ end
 ---@param base string The base ref to compare against
 function M._diff_ref_against(repo_state, ref, base)
   local range = base .. ".." .. ref
-  open_diffview({ range }, "git diff " .. range)
+  if use_native() then
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_range(repo_state.repo_root, range, open_native)
+  else
+    open_diffview({ range }, "git diff " .. range)
+  end
 end
 
 --- 3-way staging view (HEAD/index/working tree)

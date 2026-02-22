@@ -36,6 +36,9 @@ local M = {}
 ---@field show_pr_in_status boolean Show PR summary line in status buffer header (default: true)
 ---@field pr_info_ttl number Seconds before cached PR info is re-fetched on auto-refresh (default: 30). Manual refresh (gr) always bypasses this.
 
+---@class GitladDiffConfig
+---@field viewer "native"|"diffview" Diff viewer to use ("native" = built-in side-by-side, "diffview" = diffview.nvim)
+
 ---@class GitladConfig
 ---@field signs GitladSigns
 ---@field commit_editor GitladCommitEditorConfig
@@ -44,6 +47,7 @@ local M = {}
 ---@field watcher GitladWatcherConfig
 ---@field output GitladOutputConfig
 ---@field forge GitladForgeConfig
+---@field diff GitladDiffConfig
 ---@field show_tags_in_refs boolean Whether to show tags alongside branch names in refs (default: false)
 local defaults = {
   signs = {
@@ -73,6 +77,9 @@ local defaults = {
   forge = {
     show_pr_in_status = true, -- Show PR summary in status header
     pr_info_ttl = 30, -- Seconds before auto-refresh re-fetches PR info (gr always bypasses)
+  },
+  diff = {
+    viewer = "native", -- "native" or "diffview"
   },
   show_tags_in_refs = false,
 }
