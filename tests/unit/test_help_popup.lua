@@ -395,4 +395,52 @@ T["HelpView content"]["has Popups-equivalent content"] = function()
   eq(found_p, true)
 end
 
+T["HelpView content"]["has Diff View section with keybindings"] = function()
+  local help = require("gitlad.popups.help")
+  local HelpView = help.HelpView
+
+  local sections = {
+    {
+      name = "Diff view",
+      columns = 3,
+      items = {
+        { key = "q", desc = "Close diff view" },
+        { key = "gj", desc = "Next file" },
+        { key = "gk", desc = "Previous file" },
+        { key = "]c", desc = "Next hunk" },
+        { key = "[c", desc = "Previous hunk" },
+        { key = "gr", desc = "Refresh" },
+      },
+    },
+  }
+
+  local view = HelpView.new(sections)
+  local lines = view:render_lines()
+
+  local found_header = false
+  local found_gj = false
+  local found_next_hunk = false
+  local found_prev_hunk = false
+
+  for _, line in ipairs(lines) do
+    if line:match("Diff view") then
+      found_header = true
+    end
+    if line:match("gj%s+Next file") then
+      found_gj = true
+    end
+    if line:match("%]c%s+Next hunk") then
+      found_next_hunk = true
+    end
+    if line:match("%[c%s+Previous hunk") then
+      found_prev_hunk = true
+    end
+  end
+
+  eq(found_header, true)
+  eq(found_gj, true)
+  eq(found_next_hunk, true)
+  eq(found_prev_hunk, true)
+end
+
 return T

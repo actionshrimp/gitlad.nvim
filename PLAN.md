@@ -278,103 +278,25 @@ Config: `forge.show_pr_in_status = true` (default). Fetched lazily via GraphQL, 
 
 ---
 
-## Milestone 4: Native Diff Viewer
+## Milestone 4: Native Diff Viewer (DONE)
 
 **Goal**: Replace diffview.nvim with built-in side-by-side diff viewer.
 **Depends on**: Nothing (independent, but required before Milestone 5).
+**Status**: Complete.
 
-### Design Principles
+### What was built:
 
-1. **Two real buffers in a split** (not virtual text overlays)
-2. **File panel** sidebar listing changed files
-3. **Treesitter highlighting** on file content (set filetype, treesitter does the rest)
-4. **Diff highlighting** on top via extmarks (higher priority)
-5. **Scrollbind + cursorbind** between left/right (informed by blame view pattern)
-6. **Filler lines** for alignment (extmarks with `virt_lines`)
-7. **New tab page** to isolate from user's layout
-
-### 3.1 Diff Data Model & Hunk Parsing
-
-**Create**: `lua/gitlad/ui/views/diff/hunk.lua`, `tests/unit/test_diff_hunk.lua`
-
-Transform unified diff → side-by-side:
-
-```lua
----@class DiffFilePair
----@field old_path string
----@field new_path string
----@field status "added"|"modified"|"deleted"|"renamed"
----@field hunks DiffSideBySideHunk[]
----@field old_lines string[]
----@field new_lines string[]
-
----@class DiffLinePair
----@field old_line string|nil    -- nil = added (filler on left)
----@field new_line string|nil    -- nil = deleted (filler on right)
----@field old_lineno number|nil
----@field new_lineno number|nil
----@field type "context"|"change"|"add"|"delete"
-```
-
-Algorithm: parse unified diff hunk headers, walk lines pairing context/change/add/delete, generate filler lines for alignment.
-
-For full file content: `git show <ref>:<path>` for each side.
-
-### 3.2 Side-by-Side Buffer Management
-
-**Create**: `lua/gitlad/ui/views/diff/buffer.lua`, `tests/unit/test_diff_buffer.lua`
-
-Extend blame view's two-buffer pattern. Buffers: `buftype=nofile`, `filetype` set from extension for treesitter, `scrollbind`/`cursorbind` enabled.
-
-Filler lines via extmarks `virt_lines` (preferred) or real blank lines if virt_lines cause scroll sync issues.
-
-### 3.3 File Panel
-
-**Create**: `lua/gitlad/ui/views/diff/panel.lua`, `tests/unit/test_diff_panel.lua`
-
-Narrow sidebar (35 chars) listing changed files:
-```
-Changes (3 files)
- M src/auth.lua       +10 -3
- A src/new_file.lua    +25
- D src/old_file.lua         -15
-```
-
-Keybindings: `<CR>` select file, `gj`/`gk` navigate, `q` close all, `<Tab>` toggle panel.
-
-### 3.4 DiffView Coordinator
-
-**Create**: `lua/gitlad/ui/views/diff/init.lua`
-**Create**: `tests/e2e/test_diff_view.lua`
-
-Responsibilities:
-- Accept diff source (staged, unstaged, commit, range, PR)
-- Create tab page with layout: `[panel | left_buf | right_buf]`
-- Handle file selection from panel → update buffer pair
-- Lifecycle: close all windows/buffers on quit
-
-Keybindings in diff buffers: `]c`/`[c` next/prev hunk, `gj`/`gk` next/prev file, `<Tab>` toggle panel, `q` close, `gr` refresh.
-
-### 3.5 Diff Highlighting
-
-**Modify**: `lua/gitlad/ui/hl.lua`, `lua/gitlad/ui/hl_diff.lua`
-
-New highlight groups: `GitladDiffAdd`, `GitladDiffDelete`, `GitladDiffChange`, `GitladDiffFiller`, `GitladDiffAddInline`, `GitladDiffDeleteInline`.
-
-Word-level diff: for change lines (paired old/new), compute word-level LCS diff to highlight exactly what changed.
-
-### 3.6 Replace diffview.nvim Delegations
-
-**Modify**: `lua/gitlad/popups/diff.lua`, `lua/gitlad/config.lua`
-
-Route diff popup actions to native viewer. Config option for backward compat:
-```lua
-diff = {
-  viewer = "native",  -- "native" (new default) or "diffview" (backward compat)
-}
-```
-
-All existing `_diff_staged`, `_diff_unstaged`, `_diff_commit`, `_diff_range` get native implementations.
+- **Hunk parsing** (`diff/hunk.lua`): Transforms unified diff output into side-by-side `DiffSideBySideHunk` structures with paired context/add/delete/change lines
+- **DiffSpec producers** (`diff/source.lua`): Generates `DiffSpec` for staged, unstaged, worktree, commit, range, stash, and PR diffs
+- **File content + alignment** (`diff/content.lua`): Retrieves file content via `git show`, aligns left/right sides with filler lines for synchronized display
+- **Side-by-side buffer pair** (`diff/buffer.lua`): Two `buftype=nofile` buffers with `scrollbind`/`cursorbind`, treesitter highlighting via filetype detection, diff extmarks for add/delete/change lines
+- **File panel sidebar** (`diff/panel.lua`): 35-char sidebar listing changed files with status indicators, diff stats, selection highlighting; PR commit selector with "All changes" and per-commit entries
+- **DiffView coordinator** (`diff/init.lua`): Tab-page layout `[panel | left | right]`, file selection, hunk navigation (`]c`/`[c`), file navigation (`gj`/`gk`), refresh, close/cleanup lifecycle
+- **Word-level inline diff** (`diff/inline.lua`): LCS-based word diff highlighting within changed lines, `GitladDiffAddInline`/`GitladDiffDeleteInline` highlight groups
+- **Diff popup wired to native viewer** (`popups/diff.lua`): All diff actions (staged, unstaged, worktree, commit, range, stash) route to native viewer
+- **PR commit navigation**: `<C-n>`/`<C-p>` cycle through individual PR commits or "All changes" view
+- **PR diff entry points**: `d` from PR detail view and `N d` from forge popup open native diff viewer with PR context
+- **Type definitions** (`diff/types.lua`): `DiffSpec`, `DiffSource`, `DiffPRInfo`, `DiffPRCommit` types
 
 ---
 

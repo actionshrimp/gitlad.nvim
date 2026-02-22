@@ -392,4 +392,35 @@ T["compute default range"]["handles ref without base_ref but with upstream"] = f
   eq(result, "origin/main...feature-branch")
 end
 
+-- =============================================================================
+-- Viewer config tests
+-- =============================================================================
+
+T["viewer config"] = MiniTest.new_set({
+  hooks = {
+    pre_case = function()
+      -- Reset config to defaults before each test
+      local cfg = require("gitlad.config")
+      cfg.reset()
+    end,
+  },
+})
+
+T["viewer config"]["defaults to native viewer"] = function()
+  local cfg = require("gitlad.config")
+  eq(cfg.get().diff.viewer, "native")
+end
+
+T["viewer config"]["can be set to diffview"] = function()
+  local cfg = require("gitlad.config")
+  cfg.setup({ diff = { viewer = "diffview" } })
+  eq(cfg.get().diff.viewer, "diffview")
+end
+
+T["viewer config"]["can be set to native explicitly"] = function()
+  local cfg = require("gitlad.config")
+  cfg.setup({ diff = { viewer = "native" } })
+  eq(cfg.get().diff.viewer, "native")
+end
+
 return T

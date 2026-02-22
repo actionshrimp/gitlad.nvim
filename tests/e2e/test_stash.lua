@@ -799,48 +799,31 @@ T["stash section"]["RET on stash entry calls diff_stash"] = function()
   local stash_line = child.lua_get([[_G.stash_line]])
   eq(stash_line ~= nil, true)
 
-  -- Mock diffview to capture the call (since diffview may not be installed)
-  -- We'll verify that _diff_stash is called with correct args by checking the fallback notification
-  child.lua([[
-    -- Override vim.notify to capture the notification
-    _G.notify_calls = {}
-    local original_notify = vim.notify
-    vim.notify = function(msg, level)
-      table.insert(_G.notify_calls, { msg = msg, level = level })
-      original_notify(msg, level)
-    end
-  ]])
+  -- Record initial tab count
+  local initial_tabs = child.lua_get([[vim.fn.tabpagenr('$')]])
 
   -- Press RET on the stash entry
   child.type_keys("<CR>")
-  helpers.wait_short(child, 200)
 
-  -- When diffview is not installed, _diff_stash should show a notification about it
-  -- or open a terminal with the fallback command
-  -- Check if we got the diffview not installed message OR a terminal was opened
+  -- Wait for the native diff viewer to open (creates a new tab)
+  child.lua(string.format(
+    [[
+    vim.wait(3000, function()
+      return vim.fn.tabpagenr('$') > %d
+    end, 10)
+  ]],
+    initial_tabs
+  ))
+
+  -- Verify a new tab was opened (native diff viewer)
+  local final_tabs = child.lua_get([[vim.fn.tabpagenr('$')]])
+  eq(final_tabs > initial_tabs, true)
+
+  -- Clean up: close the diff view tab
   child.lua([[
-    _G.diffview_warning_shown = false
-    _G.terminal_opened = false
-    for _, call in ipairs(_G.notify_calls) do
-      if call.msg:match("diffview.nvim not installed") then
-        _G.diffview_warning_shown = true
-      end
-    end
-    -- Check if a terminal buffer was created with stash show command
-    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-      local buftype = vim.api.nvim_buf_get_option(bufnr, "buftype")
-      if buftype == "terminal" then
-        _G.terminal_opened = true
-      end
-    end
+    local diff_view = require("gitlad.ui.views.diff")
+    diff_view.close()
   ]])
-
-  -- Either diffview warning was shown or terminal was opened (fallback behavior)
-  local diffview_warning = child.lua_get([[_G.diffview_warning_shown]])
-  local terminal_opened = child.lua_get([[_G.terminal_opened]])
-
-  -- One of these should be true (either diffview fallback kicked in)
-  eq(diffview_warning or terminal_opened, true)
 
   helpers.cleanup_repo(child, repo)
 end
@@ -878,15 +861,8 @@ T["stash section"]["d d (dwim) on stash entry shows stash diff"] = function()
   local stash_line = child.lua_get([[_G.stash_line]])
   eq(stash_line ~= nil, true)
 
-  -- Mock diffview to capture the call
-  child.lua([[
-    _G.notify_calls = {}
-    local original_notify = vim.notify
-    vim.notify = function(msg, level)
-      table.insert(_G.notify_calls, { msg = msg, level = level })
-      original_notify(msg, level)
-    end
-  ]])
+  -- Record initial tab count
+  local initial_tabs = child.lua_get([[vim.fn.tabpagenr('$')]])
 
   -- Open diff popup with 'd', then press 'd' for dwim
   child.type_keys("d")
@@ -894,31 +870,26 @@ T["stash section"]["d d (dwim) on stash entry shows stash diff"] = function()
 
   -- Press 'd' again for dwim action
   child.type_keys("d")
-  helpers.wait_short(child, 200)
 
-  -- When diffview is not installed, _diff_stash should show a notification about it
-  -- or open a terminal with the fallback command
+  -- Wait for the native diff viewer to open (creates a new tab)
+  child.lua(string.format(
+    [[
+    vim.wait(3000, function()
+      return vim.fn.tabpagenr('$') > %d
+    end, 10)
+  ]],
+    initial_tabs
+  ))
+
+  -- Verify a new tab was opened (native diff viewer)
+  local final_tabs = child.lua_get([[vim.fn.tabpagenr('$')]])
+  eq(final_tabs > initial_tabs, true)
+
+  -- Clean up: close the diff view tab
   child.lua([[
-    _G.diffview_warning_shown = false
-    _G.terminal_opened = false
-    for _, call in ipairs(_G.notify_calls) do
-      if call.msg:match("diffview.nvim not installed") then
-        _G.diffview_warning_shown = true
-      end
-    end
-    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-      local buftype = vim.api.nvim_buf_get_option(bufnr, "buftype")
-      if buftype == "terminal" then
-        _G.terminal_opened = true
-      end
-    end
+    local diff_view = require("gitlad.ui.views.diff")
+    diff_view.close()
   ]])
-
-  local diffview_warning = child.lua_get([[_G.diffview_warning_shown]])
-  local terminal_opened = child.lua_get([[_G.terminal_opened]])
-
-  -- One of these should be true (stash diff was triggered via dwim)
-  eq(diffview_warning or terminal_opened, true)
 
   helpers.cleanup_repo(child, repo)
 end

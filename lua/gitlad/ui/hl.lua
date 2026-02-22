@@ -116,6 +116,19 @@ local highlight_groups = {
   GitladDiffAddSign = { fg = "#4ade80" }, -- Green for + sign
   GitladDiffDeleteSign = { fg = "#f87171" }, -- Red for - sign
 
+  -- Native diff viewer (side-by-side buffers)
+  GitladDiffFiller = { bg = "#1a1a2a" }, -- Muted blue-grey for filler lines
+  GitladDiffChangeOld = { bg = "#4a2a2a" }, -- Same as GitladDiffDelete bg
+  GitladDiffChangeNew = { bg = "#2a4a2a" }, -- Same as GitladDiffAdd bg
+  GitladDiffAddInline = { bg = "#3a6a3a" }, -- Brighter green for inline add
+  GitladDiffDeleteInline = { bg = "#6a3a3a" }, -- Brighter red for inline delete
+  GitladDiffLineNr = { link = "LineNr" }, -- Line number virtual text
+  GitladDiffPanelFile = { link = "Normal" }, -- File entry in panel
+  GitladDiffPanelSelected = { link = "CursorLine" }, -- Selected file in panel
+  GitladDiffPanelCommit = { link = "Comment" }, -- Commit entry in panel
+  GitladDiffPanelCommitSelected = { link = "CursorLine" }, -- Selected commit
+  GitladDiffPanelSeparator = { link = "Comment" }, -- Separator line
+
   -- History view
   GitladHistorySuccess = { link = "DiagnosticOk" },
   GitladHistoryFailure = { link = "DiagnosticError" },
