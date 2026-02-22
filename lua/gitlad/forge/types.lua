@@ -30,9 +30,19 @@ local M = {}
 ---@field updated_at string ISO 8601 timestamp
 ---@field url string Web URL for the PR
 ---@field body? string PR description/body
+---@field comments? ForgeComment[] Issue comments
+---@field reviews? ForgeReview[] Reviews
+---@field timeline? ForgeTimelineItem[] Chronologically sorted timeline
+
+---@class ForgeTimelineItem
+---@field type "comment"|"review" Discriminator
+---@field comment? ForgeComment Present when type == "comment"
+---@field review? ForgeReview Present when type == "review"
+---@field timestamp string ISO 8601 timestamp for sorting
 
 ---@class ForgeComment
 ---@field id string Comment ID
+---@field database_id? number Numeric database ID (for REST API)
 ---@field author ForgeUser Comment author
 ---@field body string Comment body (markdown)
 ---@field created_at string ISO 8601 timestamp
@@ -40,6 +50,7 @@ local M = {}
 
 ---@class ForgeReview
 ---@field id string Review ID
+---@field database_id? number Numeric database ID (for REST API)
 ---@field author ForgeUser Reviewer
 ---@field state string "APPROVED"|"CHANGES_REQUESTED"|"COMMENTED"|"PENDING"|"DISMISSED"
 ---@field body? string Review body

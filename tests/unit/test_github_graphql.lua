@@ -182,4 +182,169 @@ T["parse_pr_list()"]["lowercases state values"] = function()
   eq(prs[1].state, "merged")
 end
 
+-- =============================================================================
+-- queries.pr_detail
+-- =============================================================================
+
+T["queries"]["pr_detail query string is defined"] = function()
+  expect.equality(type(graphql.queries.pr_detail), "string")
+  expect.equality(graphql.queries.pr_detail:match("pullRequest") ~= nil, true)
+  expect.equality(graphql.queries.pr_detail:match("comments") ~= nil, true)
+  expect.equality(graphql.queries.pr_detail:match("reviews") ~= nil, true)
+  expect.equality(graphql.queries.pr_detail:match("databaseId") ~= nil, true)
+end
+
+-- =============================================================================
+-- parse_pr_detail
+-- =============================================================================
+
+T["parse_pr_detail()"] = MiniTest.new_set()
+
+T["parse_pr_detail()"]["parses fixture data correctly"] = function()
+  local data = load_fixture("pr_detail.json")
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+
+  -- PR metadata
+  eq(pr.number, 42)
+  eq(pr.title, "Fix authentication bug in login flow")
+  eq(pr.state, "open")
+  eq(pr.draft, false)
+  eq(pr.author.login, "octocat")
+  eq(pr.head_ref, "fix/auth-bug")
+  eq(pr.base_ref, "main")
+  eq(pr.review_decision, "APPROVED")
+  eq(#pr.labels, 2)
+  eq(pr.additions, 10)
+  eq(pr.deletions, 3)
+  expect.equality(pr.body ~= nil, true)
+end
+
+T["parse_pr_detail()"]["parses comments correctly"] = function()
+  local data = load_fixture("pr_detail.json")
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+
+  -- 2 issue comments
+  eq(#pr.comments, 2)
+  eq(pr.comments[1].author.login, "reviewer")
+  expect.equality(pr.comments[1].body:match("token expiry") ~= nil, true)
+  eq(pr.comments[1].database_id, 1001)
+
+  eq(pr.comments[2].author.login, "octocat")
+  expect.equality(pr.comments[2].body:match("updated the expiry") ~= nil, true)
+  eq(pr.comments[2].database_id, 1002)
+end
+
+T["parse_pr_detail()"]["parses reviews correctly"] = function()
+  local data = load_fixture("pr_detail.json")
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+
+  -- 1 review
+  eq(#pr.reviews, 1)
+  eq(pr.reviews[1].author.login, "reviewer")
+  eq(pr.reviews[1].state, "APPROVED")
+  expect.equality(pr.reviews[1].body:match("LGTM") ~= nil, true)
+  eq(pr.reviews[1].database_id, 3001)
+
+  -- Review has 1 inline comment
+  eq(#pr.reviews[1].comments, 1)
+  eq(pr.reviews[1].comments[1].path, "src/auth.lua")
+  eq(pr.reviews[1].comments[1].line, 42)
+end
+
+T["parse_pr_detail()"]["builds chronological timeline"] = function()
+  local data = load_fixture("pr_detail.json")
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+
+  -- Timeline: 2 comments + 1 review = 3 items
+  eq(#pr.timeline, 3)
+
+  -- Should be chronologically sorted
+  eq(pr.timeline[1].type, "comment") -- 2026-02-19T14:00:00Z
+  eq(pr.timeline[1].comment.author.login, "reviewer")
+
+  eq(pr.timeline[2].type, "comment") -- 2026-02-19T16:00:00Z
+  eq(pr.timeline[2].comment.author.login, "octocat")
+
+  eq(pr.timeline[3].type, "review") -- 2026-02-20T10:00:00Z
+  eq(pr.timeline[3].review.state, "APPROVED")
+
+  -- Verify timestamps are in order
+  for i = 2, #pr.timeline do
+    expect.equality(pr.timeline[i].timestamp >= pr.timeline[i - 1].timestamp, true)
+  end
+end
+
+T["parse_pr_detail()"]["handles empty comments and reviews"] = function()
+  local data = {
+    data = {
+      repository = {
+        pullRequest = {
+          number = 1,
+          title = "Test",
+          state = "OPEN",
+          isDraft = false,
+          author = { login = "user" },
+          headRefName = "test",
+          baseRefName = "main",
+          labels = { nodes = {} },
+          additions = 0,
+          deletions = 0,
+          createdAt = "",
+          updatedAt = "",
+          url = "",
+          body = "Test body",
+          comments = { nodes = {} },
+          reviews = { nodes = {} },
+        },
+      },
+    },
+  }
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+  eq(#pr.comments, 0)
+  eq(#pr.reviews, 0)
+  eq(#pr.timeline, 0)
+end
+
+T["parse_pr_detail()"]["returns error for nil data"] = function()
+  local pr, err = graphql.parse_pr_detail(nil)
+  eq(pr, nil)
+  expect.equality(err ~= nil, true)
+end
+
+T["parse_pr_detail()"]["returns error for GraphQL errors"] = function()
+  local data = {
+    errors = {
+      { message = "Could not resolve to a PullRequest" },
+    },
+  }
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(pr, nil)
+  expect.equality(err:match("GraphQL error") ~= nil, true)
+end
+
+T["parse_pr_detail()"]["returns error for missing PR"] = function()
+  local data = {
+    data = {
+      repository = {
+        pullRequest = nil,
+      },
+    },
+  }
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(pr, nil)
+  expect.equality(err:match("Pull request not found") ~= nil, true)
+end
+
+T["parse_pr_detail()"]["returns error for missing repository"] = function()
+  local data = { data = {} }
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(pr, nil)
+  expect.equality(err:match("Repository not found") ~= nil, true)
+end
+
 return T
