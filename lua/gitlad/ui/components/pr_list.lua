@@ -14,6 +14,7 @@ local types = require("gitlad.forge.types")
 ---@field show_diff_stat boolean|nil Show +/- stats (default: true)
 ---@field show_review boolean|nil Show review decision (default: true)
 ---@field show_author boolean|nil Show author (default: true)
+---@field show_checks boolean|nil Show CI checks indicator (default: true)
 
 ---@class PRLineInfo
 ---@field type "pr" Discriminator for union type
@@ -49,6 +50,7 @@ function M.render(prs, opts)
   local show_diff = opts.show_diff_stat ~= false
   local show_review = opts.show_review ~= false
   local show_author = opts.show_author ~= false
+  local show_checks = opts.show_checks ~= false
 
   local result = {
     lines = {},
@@ -121,6 +123,15 @@ function M.render(prs, opts)
       local review_str = types.format_review_decision(decision)
       if review_str ~= "" then
         table.insert(parts, review_str)
+        table.insert(parts, "  ")
+      end
+    end
+
+    -- CI checks indicator
+    if show_checks and pr.checks_summary then
+      local checks_text = types.format_checks_compact(pr.checks_summary)
+      if checks_text ~= "" then
+        table.insert(parts, "[" .. checks_text .. "]")
       end
     end
 
@@ -209,6 +220,18 @@ function M.apply_highlights(bufnr, ns, start_line, result)
       local draft_start, draft_end = line:find("%[Draft%]")
       if draft_start then
         hl.set(bufnr, ns, line_idx, draft_start - 1, draft_end, "GitladForgePRDraft")
+      end
+    end
+
+    -- Highlight checks indicator [N/N]
+    if pr.checks_summary then
+      local checks_text, checks_hl = types.format_checks_compact(pr.checks_summary)
+      if checks_text ~= "" then
+        local bracket_text = "[" .. checks_text .. "]"
+        local ci_start = line:find(bracket_text, 1, true)
+        if ci_start then
+          hl.set(bufnr, ns, line_idx, ci_start - 1, ci_start - 1 + #bracket_text, checks_hl)
+        end
       end
     end
 
