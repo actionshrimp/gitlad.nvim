@@ -1,0 +1,163 @@
+{
+  "data": {
+    "repository": {
+      "pullRequests": {
+        "nodes": [
+          {
+            "number": 42,
+            "title": "Fix authentication bug in login flow",
+            "state": "OPEN",
+            "isDraft": false,
+            "author": {
+              "login": "octocat",
+              "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4"
+            },
+            "headRefName": "fix/auth-bug",
+            "baseRefName": "main",
+            "reviewDecision": "APPROVED",
+            "labels": {
+              "nodes": [
+                {"name": "bug"}
+              ]
+            },
+            "additions": 10,
+            "deletions": 3,
+            "createdAt": "2026-02-19T10:30:00Z",
+            "updatedAt": "2026-02-20T14:00:00Z",
+            "url": "https://github.com/owner/repo/pull/42",
+            "body": "Fixes the auth bug.",
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "SUCCESS",
+                      "contexts": {
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 41,
+            "title": "Add dark mode support",
+            "state": "OPEN",
+            "isDraft": true,
+            "author": {
+              "login": "contributor",
+              "avatarUrl": "https://avatars.githubusercontent.com/u/2?v=4"
+            },
+            "headRefName": "feature/dark-mode",
+            "baseRefName": "main",
+            "reviewDecision": null,
+            "labels": {
+              "nodes": []
+            },
+            "additions": 150,
+            "deletions": 20,
+            "createdAt": "2026-02-18T09:00:00Z",
+            "updatedAt": "2026-02-19T16:00:00Z",
+            "url": "https://github.com/owner/repo/pull/41",
+            "body": "WIP dark mode.",
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "FAILURE",
+                      "contexts": {
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "FAILURE",
+                            "status": "COMPLETED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "number": 40,
+            "title": "Refactor database queries",
+            "state": "OPEN",
+            "isDraft": false,
+            "author": {
+              "login": "devuser",
+              "avatarUrl": "https://avatars.githubusercontent.com/u/3?v=4"
+            },
+            "headRefName": "refactor/db-queries",
+            "baseRefName": "main",
+            "reviewDecision": "CHANGES_REQUESTED",
+            "labels": {
+              "nodes": []
+            },
+            "additions": 45,
+            "deletions": 89,
+            "createdAt": "2026-02-15T08:00:00Z",
+            "updatedAt": "2026-02-17T11:30:00Z",
+            "url": "https://github.com/owner/repo/pull/40",
+            "body": "Optimizes DB queries.",
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "PENDING",
+                      "contexts": {
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": "SUCCESS",
+                            "status": "COMPLETED"
+                          },
+                          {
+                            "__typename": "CheckRun",
+                            "conclusion": null,
+                            "status": "IN_PROGRESS"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

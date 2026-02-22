@@ -39,6 +39,27 @@ query($owner: String!, $repo: String!, $states: [PullRequestState!], $first: Int
         updatedAt
         url
         body
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                state
+                contexts(first: 100) {
+                  nodes {
+                    __typename
+                    ... on CheckRun {
+                      conclusion
+                      status
+                    }
+                    ... on StatusContext {
+                      cState: state
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -71,6 +92,39 @@ query($owner: String!, $repo: String!, $number: Int!) {
       updatedAt
       url
       body
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup {
+              state
+              contexts(first: 100) {
+                nodes {
+                  __typename
+                  ... on CheckRun {
+                    name
+                    conclusion
+                    status
+                    detailsUrl
+                    startedAt
+                    completedAt
+                    checkSuite {
+                      app {
+                        name
+                      }
+                    }
+                  }
+                  ... on StatusContext {
+                    context
+                    cState: state
+                    targetUrl
+                    createdAt
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
       comments(first: 100) {
         nodes {
           id
@@ -116,6 +170,123 @@ query($owner: String!, $repo: String!, $number: Int!) {
 -- =============================================================================
 -- Response Parsers
 -- =============================================================================
+
+--- Parse statusCheckRollup commit node into a ForgeChecksSummary
+--- Works for both pr_list (compact) and pr_detail (full details) responses.
+---@param commits_node table The `commits` field from the PR node
+---@param include_details boolean Whether to include full check details (name, urls, timestamps)
+---@return ForgeChecksSummary|nil
+local function parse_checks_summary(commits_node, include_details)
+  if not commits_node or not commits_node.nodes or #commits_node.nodes == 0 then
+    return nil
+  end
+
+  local commit_node = commits_node.nodes[1]
+  if not commit_node or not commit_node.commit then
+    return nil
+  end
+
+  local rollup = commit_node.commit.statusCheckRollup
+  if not rollup then
+    return nil
+  end
+
+  local state_map = {
+    SUCCESS = "success",
+    FAILURE = "failure",
+    ERROR = "failure",
+    EXPECTED = "pending",
+    PENDING = "pending",
+  }
+  local rollup_state = state_map[rollup.state] or "pending"
+
+  local checks = {}
+  local success_count = 0
+  local failure_count = 0
+  local pending_count = 0
+
+  local contexts = rollup.contexts and rollup.contexts.nodes or {}
+  for _, ctx in ipairs(contexts) do
+    if ctx.__typename == "CheckRun" then
+      local status = (ctx.status or ""):upper()
+      local raw_conclusion = ctx.conclusion
+      -- vim.NIL comes from JSON null; treat as nil
+      if raw_conclusion == vim.NIL then
+        raw_conclusion = nil
+      end
+      local conclusion = raw_conclusion and raw_conclusion:lower() or nil
+
+      if status ~= "COMPLETED" then
+        pending_count = pending_count + 1
+      elseif conclusion == "success" then
+        success_count = success_count + 1
+      elseif
+        conclusion == "failure"
+        or conclusion == "timed_out"
+        or conclusion == "startup_failure"
+      then
+        failure_count = failure_count + 1
+      elseif conclusion == "cancelled" or conclusion == "skipped" or conclusion == "neutral" then
+        success_count = success_count + 1 -- count neutral/skipped as non-failures
+      else
+        pending_count = pending_count + 1
+      end
+
+      if include_details then
+        ---@type ForgeCheck
+        local check = {
+          name = ctx.name or "unknown",
+          status = status == "COMPLETED" and "completed" or "in_progress",
+          conclusion = conclusion,
+          details_url = ctx.detailsUrl ~= vim.NIL and ctx.detailsUrl or nil,
+          app_name = ctx.checkSuite and ctx.checkSuite.app and ctx.checkSuite.app.name or nil,
+          started_at = ctx.startedAt ~= vim.NIL and ctx.startedAt or nil,
+          completed_at = ctx.completedAt ~= vim.NIL and ctx.completedAt or nil,
+        }
+        table.insert(checks, check)
+      end
+    elseif ctx.__typename == "StatusContext" then
+      local state = (ctx.cState or ""):upper()
+
+      if state == "SUCCESS" then
+        success_count = success_count + 1
+      elseif state == "FAILURE" or state == "ERROR" then
+        failure_count = failure_count + 1
+      else
+        pending_count = pending_count + 1
+      end
+
+      if include_details then
+        ---@type ForgeCheck
+        local check = {
+          name = ctx.context or "unknown",
+          status = (state == "SUCCESS" or state == "FAILURE" or state == "ERROR") and "completed"
+            or "in_progress",
+          conclusion = state == "SUCCESS" and "success"
+            or (state == "FAILURE" or state == "ERROR") and "failure"
+            or nil,
+          details_url = ctx.targetUrl ~= vim.NIL and ctx.targetUrl or nil,
+          app_name = nil,
+          started_at = ctx.createdAt ~= vim.NIL and ctx.createdAt or nil,
+          completed_at = nil,
+        }
+        table.insert(checks, check)
+      end
+    end
+  end
+
+  local total = success_count + failure_count + pending_count
+
+  ---@type ForgeChecksSummary
+  return {
+    state = rollup_state,
+    total = total,
+    success = success_count,
+    failure = failure_count,
+    pending = pending_count,
+    checks = checks,
+  }
+end
 
 --- Parse a PR list GraphQL response into ForgePullRequest[]
 ---@param data table Decoded JSON response from GraphQL API
@@ -175,6 +346,7 @@ function M.parse_pr_list(data)
       updated_at = node.updatedAt or "",
       url = node.url or "",
       body = node.body,
+      checks_summary = parse_checks_summary(node.commits, false),
     }
     table.insert(prs, pr)
   end
@@ -326,6 +498,7 @@ function M.parse_pr_detail(data)
     comments = comments,
     reviews = reviews,
     timeline = timeline,
+    checks_summary = parse_checks_summary(node.commits, true),
   }
 
   return pr, nil

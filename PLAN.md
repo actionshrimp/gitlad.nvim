@@ -57,20 +57,21 @@ lua/gitlad/
 ## Dependency Graph
 
 ```
-Milestone 1 (Forge Foundation)     Milestone 3 (Native Diff Viewer)
-         │                                    │
-         ▼                                    │
-Milestone 2 (PR Management)                  │
-         │                                    │
-         └──────────┬─────────────────────────┘
-                    ▼
-         Milestone 4 (PR Review)
-                    │
-                    ▼
-         Milestone 5 (Polish & Advanced)
+Milestone 1 (Forge Foundation)     Milestone 3 (CI Checks)    Milestone 4 (Native Diff Viewer)
+         │                                    │                          │
+         ▼                                    │                          │
+Milestone 2 (PR Management) ─────────────────►│                          │
+                                              │                          │
+                                              └──────────┬───────────────┘
+                                                         ▼
+                                              Milestone 5 (PR Review)
+                                                         │
+                                                         ▼
+                                              Milestone 6 (Polish & Advanced)
 ```
 
-Milestones 1-2 and Milestone 3 are **independent** and can proceed in parallel.
+Milestones 1-2 and Milestone 4 are **independent** and can proceed in parallel.
+Milestone 3 (CI Checks) depends on Milestone 2 (PR views).
 
 ---
 
@@ -261,10 +262,26 @@ Config: `forge.show_pr_in_status = true` (default). Fetched lazily via GraphQL, 
 
 ---
 
-## Milestone 3: Native Diff Viewer
+## Milestone 3: CI Checks Viewer (DONE)
+
+**Goal**: Show CI/CD check status in PR list, PR detail, and status buffer.
+**Depends on**: Milestones 1-2 (forge foundation + PR views).
+**Status**: Complete.
+
+### What was built:
+- `ForgeCheck` / `ForgeChecksSummary` types normalized from GitHub's CheckRun + StatusContext
+- GraphQL queries fetch `statusCheckRollup` for both PR list and PR detail
+- Compact check indicators `[3/3]`, `[1/3]`, `[~1/3]` in PR list and status buffer
+- Collapsible checks section in PR detail view with per-check status icons, app names, durations
+- `gj`/`gk` navigate to check lines, `<CR>` opens check URL, `<Tab>` toggles collapsed
+- Highlight groups: `GitladForgeCheckSuccess`, `GitladForgeCheckFailure`, `GitladForgeCheckPending`, `GitladForgeCheckNeutral`
+
+---
+
+## Milestone 4: Native Diff Viewer
 
 **Goal**: Replace diffview.nvim with built-in side-by-side diff viewer.
-**Depends on**: Nothing (independent, but required before Milestone 4).
+**Depends on**: Nothing (independent, but required before Milestone 5).
 
 ### Design Principles
 
@@ -361,18 +378,18 @@ All existing `_diff_staged`, `_diff_unstaged`, `_diff_commit`, `_diff_range` get
 
 ---
 
-## Milestone 4: PR Review
+## Milestone 5: PR Review
 
 **Goal**: Inline review comments in the native diff viewer.
-**Depends on**: Milestones 1-2 + Milestone 3.
+**Depends on**: Milestones 1-2 + Milestone 4.
 
-### 4.1 PR Diff in Native Viewer
+### 5.1 PR Diff in Native Viewer
 
 **Modify**: `lua/gitlad/ui/views/diff/init.lua`, `lua/gitlad/forge/github/pr.lua`
 
 PR diff source: fetch unified diff via `git diff <base>...<head>`, full file content via `git show <ref>:<path>`.
 
-### 4.2 Display Existing Review Comments
+### 5.2 Display Existing Review Comments
 
 **Create**: `lua/gitlad/ui/views/diff/review.lua`, `tests/unit/test_diff_review.lua`
 
@@ -387,38 +404,38 @@ Rendering: sign column indicator on commented lines, `virt_lines` below showing 
  43 | if not validate(user) then
 ```
 
-### 4.3 Add New Inline Comments
+### 5.3 Add New Inline Comments
 
 **Modify**: `lua/gitlad/ui/views/diff/review.lua`, `lua/gitlad/forge/github/review.lua`
 
 `c` in review mode opens comment editor at cursor line. Determine path/line/side from buffer's line_map. Submit via GraphQL mutation. `r` on existing comment replies to thread.
 
-### 4.4 Submit Review
+### 5.4 Submit Review
 
 Add review actions to forge popup (available in diff view):
 - `a` approve, `r` request changes, `c` comment (via GraphQL `submitPullRequestReview` mutation)
 
-### 4.5 Pending Review (Batch Comments)
+### 5.5 Pending Review (Batch Comments)
 
 Track pending comments in-memory, show with distinct highlight. Submit all as single review via GitHub API: create pending review → add comments → submit with event.
 
 ---
 
-## Milestone 5: Polish & Advanced
+## Milestone 6: Polish & Advanced
 
 **Goal**: 3-way merge, PR creation workflow, remaining polish.
-**Depends on**: Milestones 1-4.
+**Depends on**: Milestones 1-5.
 
-### 5.1 3-Way Merge View
+### 6.1 3-Way Merge View
 Extend native diff viewer to 3-pane: BASE | LOCAL | REMOTE. Replaces `d 3` diffview delegation.
 
-### 5.2 PR Creation Workflow
+### 6.2 PR Creation Workflow
 `n` in forge popup: prompt title (default: last commit), open body editor, select base branch, `gh pr create`.
 
-### 5.3 Notification Awareness
+### 6.3 Notification Awareness
 Badge on forge popup or status buffer section for unread GitHub notifications.
 
-### 5.4 Issue Management (basic)
+### 6.4 Issue Management (basic)
 List/view issues, create issues. Lower priority than PR workflow.
 
 ---

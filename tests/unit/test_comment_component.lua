@@ -375,4 +375,128 @@ T["render()"]["handles draft PR state"] = function()
   eq(found_draft, true)
 end
 
+T["render()"]["includes checks section when checks_summary present"] = function()
+  local pr = make_test_pr({
+    checks_summary = {
+      state = "success",
+      total = 3,
+      success = 3,
+      failure = 0,
+      pending = 0,
+      checks = {
+        {
+          name = "CI / test",
+          status = "completed",
+          conclusion = "success",
+          details_url = "https://example.com",
+          app_name = "GitHub Actions",
+          started_at = "2026-02-20T10:00:00Z",
+          completed_at = "2026-02-20T10:02:30Z",
+        },
+      },
+    },
+  })
+  local result = comment_component.render(pr)
+
+  local found_checks = false
+  local found_check_line = false
+  for _, line in ipairs(result.lines) do
+    if line:match("Checks") and line:match("3/3") then
+      found_checks = true
+    end
+    if line:match("CI / test") then
+      found_check_line = true
+    end
+  end
+  eq(found_checks, true)
+  eq(found_check_line, true)
+end
+
+T["render()"]["checks section absent when checks_summary is nil"] = function()
+  local pr = make_test_pr()
+  -- Default test PR has no checks_summary
+  local result = comment_component.render(pr)
+
+  local found_checks = false
+  for _, line in ipairs(result.lines) do
+    if line:match("Checks") then
+      found_checks = true
+    end
+  end
+  eq(found_checks, false)
+end
+
+T["render()"]["checks section absent when checks_summary has zero total"] = function()
+  local pr = make_test_pr({
+    checks_summary = {
+      state = "success",
+      total = 0,
+      success = 0,
+      failure = 0,
+      pending = 0,
+      checks = {},
+    },
+  })
+  local result = comment_component.render(pr)
+
+  local found_checks = false
+  for _, line in ipairs(result.lines) do
+    if line:match("Checks") then
+      found_checks = true
+    end
+  end
+  eq(found_checks, false)
+end
+
+T["render()"]["checks section collapsible via option"] = function()
+  local pr = make_test_pr({
+    checks_summary = {
+      state = "success",
+      total = 2,
+      success = 2,
+      failure = 0,
+      pending = 0,
+      checks = {
+        {
+          name = "CI / test",
+          status = "completed",
+          conclusion = "success",
+          app_name = "GitHub Actions",
+        },
+        {
+          name = "CI / lint",
+          status = "completed",
+          conclusion = "success",
+          app_name = "GitHub Actions",
+        },
+      },
+    },
+  })
+
+  -- Expanded (default)
+  local result_expanded = comment_component.render(pr)
+  local found_ci_test_expanded = false
+  for _, line in ipairs(result_expanded.lines) do
+    if line:match("CI / test") then
+      found_ci_test_expanded = true
+    end
+  end
+  eq(found_ci_test_expanded, true)
+
+  -- Collapsed
+  local result_collapsed = comment_component.render(pr, { checks_collapsed = true })
+  local found_ci_test_collapsed = false
+  local found_header_collapsed = false
+  for _, line in ipairs(result_collapsed.lines) do
+    if line:match("CI / test") then
+      found_ci_test_collapsed = true
+    end
+    if line:match("Checks") and line:match(">") then
+      found_header_collapsed = true
+    end
+  end
+  eq(found_ci_test_collapsed, false)
+  eq(found_header_collapsed, true)
+end
+
 return T

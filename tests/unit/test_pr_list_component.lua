@@ -143,6 +143,76 @@ T["render()"]["applies indent"] = function()
   expect.equality(result.lines[1]:match("^    ") ~= nil, true)
 end
 
+T["render()"]["shows checks indicator when all passing"] = function()
+  local result = pr_list.render({
+    make_pr({
+      checks_summary = {
+        state = "success",
+        total = 3,
+        success = 3,
+        failure = 0,
+        pending = 0,
+        checks = {},
+      },
+    }),
+  })
+  expect.equality(result.lines[1]:match("%[3/3%]") ~= nil, true)
+end
+
+T["render()"]["shows checks indicator with failures"] = function()
+  local result = pr_list.render({
+    make_pr({
+      checks_summary = {
+        state = "failure",
+        total = 3,
+        success = 1,
+        failure = 2,
+        pending = 0,
+        checks = {},
+      },
+    }),
+  })
+  expect.equality(result.lines[1]:match("%[1/3%]") ~= nil, true)
+end
+
+T["render()"]["shows checks indicator with pending"] = function()
+  local result = pr_list.render({
+    make_pr({
+      checks_summary = {
+        state = "pending",
+        total = 3,
+        success = 1,
+        failure = 0,
+        pending = 2,
+        checks = {},
+      },
+    }),
+  })
+  expect.equality(result.lines[1]:match("%[~1/3%]") ~= nil, true)
+end
+
+T["render()"]["hides checks when show_checks is false"] = function()
+  local result = pr_list.render({
+    make_pr({
+      checks_summary = {
+        state = "success",
+        total = 3,
+        success = 3,
+        failure = 0,
+        pending = 0,
+        checks = {},
+      },
+    }),
+  }, { show_checks = false })
+  expect.equality(result.lines[1]:match("%[3/3%]") == nil, true)
+end
+
+T["render()"]["no checks indicator when checks_summary is nil"] = function()
+  local result = pr_list.render({ make_pr() })
+  -- Default make_pr has no checks_summary
+  expect.equality(result.lines[1]:match("%[%d+/%d+%]") == nil, true)
+end
+
 T["render()"]["aligns PR numbers in column"] = function()
   local prs = {
     make_pr({ number = 1 }),

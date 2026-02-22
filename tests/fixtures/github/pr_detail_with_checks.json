@@ -1,0 +1,126 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "number": 42,
+        "title": "Fix authentication bug in login flow",
+        "state": "OPEN",
+        "isDraft": false,
+        "author": {
+          "login": "octocat",
+          "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4"
+        },
+        "headRefName": "fix/auth-bug",
+        "baseRefName": "main",
+        "reviewDecision": "APPROVED",
+        "labels": {
+          "nodes": [
+            {"name": "bug"},
+            {"name": "priority:high"}
+          ]
+        },
+        "additions": 10,
+        "deletions": 3,
+        "createdAt": "2026-02-19T10:30:00Z",
+        "updatedAt": "2026-02-20T14:00:00Z",
+        "url": "https://github.com/owner/repo/pull/42",
+        "body": "Fixes the authentication bug.",
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "state": "SUCCESS",
+                  "contexts": {
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / test",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/1001",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:02:30Z",
+                        "checkSuite": {
+                          "app": {
+                            "name": "GitHub Actions"
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / lint",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/1002",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:01:00Z",
+                        "checkSuite": {
+                          "app": {
+                            "name": "GitHub Actions"
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "deploy-preview",
+                        "conclusion": "FAILURE",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/1003",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:05:00Z",
+                        "checkSuite": {
+                          "app": {
+                            "name": "Vercel"
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "coverage/codecov",
+                        "cState": "SUCCESS",
+                        "targetUrl": "https://codecov.io/gh/owner/repo/pull/42",
+                        "createdAt": "2026-02-20T10:03:00Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "comments": {
+          "nodes": [
+            {
+              "id": "IC_1001",
+              "databaseId": 1001,
+              "author": {
+                "login": "reviewer"
+              },
+              "body": "Looks good.",
+              "createdAt": "2026-02-19T14:00:00Z",
+              "updatedAt": "2026-02-19T14:00:00Z"
+            }
+          ]
+        },
+        "reviews": {
+          "nodes": [
+            {
+              "id": "PRR_3001",
+              "databaseId": 3001,
+              "author": {
+                "login": "reviewer"
+              },
+              "state": "APPROVED",
+              "body": "LGTM",
+              "submittedAt": "2026-02-20T10:00:00Z",
+              "comments": {
+                "nodes": []
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

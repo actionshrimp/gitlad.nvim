@@ -195,6 +195,12 @@ local highlight_groups = {
   GitladForgeCommentTimestamp = { link = "Comment" },
   GitladForgeLabel = { link = "Type" },
 
+  -- Forge CI Checks
+  GitladForgeCheckSuccess = { link = "DiagnosticOk" },
+  GitladForgeCheckFailure = { link = "DiagnosticError" },
+  GitladForgeCheckPending = { link = "DiagnosticWarn" },
+  GitladForgeCheckNeutral = { link = "Comment" },
+
   -- Rebase sequence (matching magit-sequence faces)
   GitladSequencePick = { link = "Normal" }, -- Pending actions (default fg)
   GitladSequenceDone = { link = "Comment" }, -- Completed commits (muted)
