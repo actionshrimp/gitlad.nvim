@@ -29,6 +29,8 @@ local active_view = nil
 ---@field buffer_pair DiffBufferPair Side-by-side buffers
 ---@field tab_page number Tab page number
 ---@field selected_file number Currently displayed file index (1-based)
+---@field provider ForgeProvider|nil Forge provider (for PR review)
+---@field pr_number number|nil PR number (for PR review)
 ---@field _closed boolean Whether the view has been closed
 ---@field _autocmd_id number|nil Autocmd ID for tab close detection
 local DiffView = {}
@@ -537,7 +539,7 @@ end
 --- Creates a new tab page with file panel + side-by-side diff buffers.
 --- Closes any existing diff view first.
 ---@param diff_spec DiffSpec The diff specification to display
----@param opts? { initial_file?: string } Options: initial_file selects that file in the panel
+---@param opts? { initial_file?: string, provider?: ForgeProvider, pr_number?: number } Options
 ---@return DiffView
 function M.open(diff_spec, opts)
   opts = opts or {}
@@ -548,6 +550,8 @@ function M.open(diff_spec, opts)
   end
 
   local view = DiffView._new(diff_spec)
+  view.provider = opts.provider or nil
+  view.pr_number = opts.pr_number or nil
   view:_setup_layout()
   view:_render_initial(opts.initial_file)
 
