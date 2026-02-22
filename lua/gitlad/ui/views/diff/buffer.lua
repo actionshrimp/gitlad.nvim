@@ -43,6 +43,8 @@ end
 ---@field right_bufnr number Right buffer number
 ---@field left_winnr number Left window number
 ---@field right_winnr number Right window number
+---@field left_lines string[] Left buffer line content (for inline diff)
+---@field right_lines string[] Right buffer line content (for inline diff)
 ---@field line_map AlignedLineInfo[] Maps buffer line to metadata
 ---@field file_path string Current file path (for treesitter)
 ---@field _ns number Namespace for diff highlights
@@ -59,6 +61,8 @@ function M.new(left_winnr, right_winnr)
 
   self.left_winnr = left_winnr
   self.right_winnr = right_winnr
+  self.left_lines = {}
+  self.right_lines = {}
   self.line_map = {}
   self.file_path = ""
   self._ns = vim.api.nvim_create_namespace("gitlad_diff_view")
@@ -104,6 +108,8 @@ end
 ---@param file_path string File path for filetype detection
 function DiffBufferPair:set_content(aligned, file_path)
   self.line_map = aligned.line_map
+  self.left_lines = aligned.left_lines
+  self.right_lines = aligned.right_lines
   self.file_path = file_path
 
   -- Unlock both buffers
@@ -131,8 +137,11 @@ function DiffBufferPair:set_content(aligned, file_path)
 end
 
 --- Apply line-level highlights based on the line_map.
---- Uses extmarks for line background highlights and line number virtual text.
+--- Uses extmarks for line background highlights, line number virtual text,
+--- and word-level inline diff highlights for change-type line pairs.
 function DiffBufferPair:apply_diff_highlights()
+  local inline = require("gitlad.ui.views.diff.inline")
+
   -- Clear existing extmarks in both buffers
   vim.api.nvim_buf_clear_namespace(self.left_bufnr, self._ns, 0, -1)
   vim.api.nvim_buf_clear_namespace(self.right_bufnr, self._ns, 0, -1)
@@ -163,6 +172,28 @@ function DiffBufferPair:apply_diff_highlights()
       right_extmark_opts.line_hl_group = right_hl
     end
     vim.api.nvim_buf_set_extmark(self.right_bufnr, self._ns, line_idx, 0, right_extmark_opts)
+
+    -- Word-level inline diff for change-type line pairs
+    if info.left_type == "change" and info.right_type == "change" then
+      local left_line = self.left_lines[i] or ""
+      local right_line = self.right_lines[i] or ""
+      local result = inline.compute_inline_diff(left_line, right_line)
+
+      for _, range in ipairs(result.old_ranges) do
+        vim.api.nvim_buf_set_extmark(self.left_bufnr, self._ns, line_idx, range.col_start, {
+          end_col = range.col_end,
+          hl_group = "GitladDiffDeleteInline",
+          priority = 200,
+        })
+      end
+      for _, range in ipairs(result.new_ranges) do
+        vim.api.nvim_buf_set_extmark(self.right_bufnr, self._ns, line_idx, range.col_start, {
+          end_col = range.col_end,
+          hl_group = "GitladDiffAddInline",
+          priority = 200,
+        })
+      end
+    end
   end
 end
 
