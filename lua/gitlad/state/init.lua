@@ -26,6 +26,9 @@ local errors = require("gitlad.utils.errors")
 ---@field watcher Watcher|nil File system watcher instance (if enabled)
 ---@field last_operation_time number Timestamp (ms) of last gitlad operation (for watcher cooldown)
 ---@field _pending_optimistic_cmds StatusCommand[] Commands applied since last refresh dispatch
+---@field pr_info ForgePullRequest|nil Cached PR info for current branch
+---@field _pr_info_branch string|nil Branch name the pr_info was fetched for
+---@field _pr_info_fetching boolean Whether a PR info fetch is in progress
 local RepoState = {}
 RepoState.__index = RepoState
 
@@ -71,6 +74,11 @@ function M.get(path)
 
   -- Track optimistic commands for replay on refresh completion
   state._pending_optimistic_cmds = {}
+
+  -- PR info cache (lazy-loaded for status header)
+  state.pr_info = nil
+  state._pr_info_branch = nil
+  state._pr_info_fetching = false
 
   -- Create status handler that notifies listeners on update
   state.status_handler = async.new(function(result)
@@ -165,6 +173,72 @@ end
 ---@param watcher Watcher
 function RepoState:set_watcher(watcher)
   self.watcher = watcher
+end
+
+--- Lazily fetch PR info for the current branch
+--- Non-blocking: returns cached data, triggers async fetch if stale/missing
+--- Calls self:_notify("status") when new data arrives to trigger re-render
+function RepoState:fetch_pr_info()
+  local cfg = require("gitlad.config").get()
+  if not cfg.forge or not cfg.forge.show_pr_in_status then
+    return
+  end
+
+  local branch = self.status and self.status.branch
+  if not branch or branch == "" then
+    return
+  end
+
+  -- If we already have data for this branch, return it
+  if self._pr_info_branch == branch and self.pr_info then
+    return
+  end
+
+  -- If branch changed, invalidate cache
+  if self._pr_info_branch ~= branch then
+    self.pr_info = nil
+    self._pr_info_branch = branch
+    self._pr_info_fetching = false
+  end
+
+  -- If already fetching, skip
+  if self._pr_info_fetching then
+    return
+  end
+
+  self._pr_info_fetching = true
+
+  -- Try to detect provider and fetch
+  local forge = require("gitlad.forge")
+  forge.detect(self.repo_root, function(provider, err)
+    if err or not provider then
+      self._pr_info_fetching = false
+      return
+    end
+
+    provider:list_prs({ state = "open", limit = 50 }, function(prs, list_err)
+      vim.schedule(function()
+        self._pr_info_fetching = false
+
+        if list_err or not prs then
+          return
+        end
+
+        -- Find PR matching current branch
+        for _, pr in ipairs(prs) do
+          if pr.head_ref == branch then
+            self.pr_info = pr
+            self._pr_info_branch = branch
+            self:_notify("status")
+            return
+          end
+        end
+
+        -- No PR found — mark as checked so we don't keep retrying
+        self._pr_info_branch = branch
+      end)
+    end)
+  end)
 end
 
 --- Apply a command to update status (Elm Architecture pattern)

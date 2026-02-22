@@ -360,6 +360,47 @@ function M.apply_status_highlights(
         end
       end
 
+      -- PR line: "PR:       #42 Title (APPROVED) +10 -3"
+    elseif line:match("^PR:") then
+      hl_module.set(bufnr, ns_status, line_idx, 0, 3, "GitladHead")
+      -- Highlight PR number
+      local num_start, num_end = line:find("#%d+")
+      if num_start then
+        hl_module.set(bufnr, ns_status, line_idx, num_start - 1, num_end, "GitladForgePRNumber")
+      end
+      -- Highlight review decision in parens
+      local approved_start, approved_end = line:find("APPROVED", 1, true)
+      if approved_start then
+        hl_module.set(
+          bufnr,
+          ns_status,
+          line_idx,
+          approved_start - 1,
+          approved_end,
+          "GitladForgePRApproved"
+        )
+      end
+      local changes_start, changes_end = line:find("CHANGES REQUESTED", 1, true)
+      if changes_start then
+        hl_module.set(
+          bufnr,
+          ns_status,
+          line_idx,
+          changes_start - 1,
+          changes_end,
+          "GitladForgePRChangesRequested"
+        )
+      end
+      -- Highlight diff stat
+      local add_start, add_end = line:find("+%d+")
+      if add_start then
+        hl_module.set(bufnr, ns_status, line_idx, add_start - 1, add_end, "GitladForgePRAdditions")
+      end
+      local del_start, del_end = line:find("-%d+", add_end or 1)
+      if del_start then
+        hl_module.set(bufnr, ns_status, line_idx, del_start - 1, del_end, "GitladForgePRDeletions")
+      end
+
       -- Status indicator line is always on line 0 (first line of buffer)
     elseif line_idx == 0 then
       M.apply_status_line_highlight(bufnr, ns_status, line_idx, line, hl_module)

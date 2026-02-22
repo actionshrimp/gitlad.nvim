@@ -32,6 +32,9 @@ local M = {}
 ---@class GitladOutputConfig
 ---@field hook_output "lazy"|"always"|"never" How to show hook output ("lazy" = only when output arrives, "always" = immediately, "never" = disabled)
 
+---@class GitladForgeConfig
+---@field show_pr_in_status boolean Show PR summary line in status buffer header (default: true)
+
 ---@class GitladConfig
 ---@field signs GitladSigns
 ---@field commit_editor GitladCommitEditorConfig
@@ -39,6 +42,7 @@ local M = {}
 ---@field worktree GitladWorktreeConfig
 ---@field watcher GitladWatcherConfig
 ---@field output GitladOutputConfig
+---@field forge GitladForgeConfig
 ---@field show_tags_in_refs boolean Whether to show tags alongside branch names in refs (default: false)
 local defaults = {
   signs = {
@@ -64,6 +68,9 @@ local defaults = {
   },
   output = {
     hook_output = "lazy", -- "lazy", "always", or "never"
+  },
+  forge = {
+    show_pr_in_status = true, -- Show PR summary in status header
   },
   show_tags_in_refs = false,
 }
