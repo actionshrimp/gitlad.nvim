@@ -21,8 +21,9 @@ local M = {}
 ---@field is_binary boolean
 
 ---@class DiffPanelLineInfo
----@field type "header"|"separator"|"file"
+---@field type "header"|"separator"|"file"|"commit_all"|"commit"
 ---@field file_index number|nil Index into file_pairs (for "file" type)
+---@field commit_index number|nil Index into pr_info.commits (for "commit" type)
 
 ---@class DiffPanelRenderResult
 ---@field lines string[]
@@ -31,6 +32,7 @@ local M = {}
 ---@class DiffPanelOpts
 ---@field width number|nil Panel width (default: 35)
 ---@field on_select_file fun(index: number)|nil Callback when file is selected
+---@field on_select_commit fun(index: number|nil)|nil Callback when commit is selected (nil = all changes)
 ---@field on_close fun()|nil Callback when panel is closed
 
 ---@class DiffPanel
@@ -40,8 +42,11 @@ local M = {}
 ---@field selected_file number Currently selected file index (1-based)
 ---@field file_pairs DiffFilePair[] Current file pairs
 ---@field on_select_file fun(index: number) Callback when file is selected
+---@field on_select_commit fun(index: number|nil) Callback when commit is selected (nil = all)
 ---@field on_close fun() Callback when panel is closed
 ---@field width number Panel width
+---@field pr_info DiffPRInfo|nil PR info for commit section
+---@field selected_commit number|nil Currently selected commit index (nil = all changes)
 local DiffPanel = {}
 DiffPanel.__index = DiffPanel
 
@@ -100,24 +105,118 @@ local function get_display_path(pair)
   return pair.new_path ~= "" and pair.new_path or pair.old_path
 end
 
---- Pure render function for file list
+--- Format diff stats for a commit
+---@param commit DiffPRCommit
+---@return string stats Formatted stats like "+10 -3"
+local function format_commit_stats(commit)
+  local parts = {}
+  if commit.additions > 0 then
+    table.insert(parts, "+" .. commit.additions)
+  end
+  if commit.deletions > 0 then
+    table.insert(parts, "-" .. commit.deletions)
+  end
+  return table.concat(parts, " ")
+end
+
+--- Truncate a commit message to fit within a given width
+---@param msg string Commit message headline
+---@param max_width number Maximum display width
+---@return string truncated
+local function truncate_message(msg, max_width)
+  if #msg <= max_width then
+    return msg
+  end
+  if max_width > 3 then
+    return msg:sub(1, max_width - 3) .. "..."
+  end
+  return msg:sub(1, max_width)
+end
+
+--- Pure render function for file list, with optional PR commit section
 ---@param file_pairs DiffFilePair[]
 ---@param selected_index number Currently selected file (1-based)
 ---@param width number Panel width
+---@param pr_info DiffPRInfo|nil PR info for commit section (nil = no commit section)
+---@param selected_commit number|nil Currently selected commit index (nil = all changes)
 ---@return DiffPanelRenderResult
-function M._render_file_list(file_pairs, selected_index, width)
+function M._render_file_list(file_pairs, selected_index, width, pr_info, selected_commit)
   local lines = {}
   local line_info = {}
 
-  -- Header line
+  local separator = " " .. string.rep("\xe2\x94\x80", width - 2)
+
+  -- Commit section (only when pr_info is provided)
+  if pr_info and pr_info.commits and #pr_info.commits > 0 then
+    -- Commits header
+    local commits_header = " Commits (" .. #pr_info.commits .. ")"
+    table.insert(lines, commits_header)
+    line_info[#lines] = { type = "header" }
+
+    -- Separator
+    table.insert(lines, separator)
+    line_info[#lines] = { type = "separator" }
+
+    -- "All changes" entry
+    local all_icon = (selected_commit == nil) and "\xe2\x97\x86" or "\xe2\x97\x87"
+    local all_indicator = (selected_commit == nil) and "\xe2\x96\xb8" or " "
+    local all_line = all_indicator .. all_icon .. " All changes"
+    table.insert(lines, all_line)
+    line_info[#lines] = { type = "commit_all" }
+
+    -- Individual commit entries
+    for i, commit in ipairs(pr_info.commits) do
+      local icon = (selected_commit == i) and "\xe2\x97\x8f" or "\xe2\x97\x8b"
+      local indicator = (selected_commit == i) and "\xe2\x96\xb8" or " "
+      local stats = format_commit_stats(commit)
+
+      -- Layout: [indicator][icon] [short_oid] [message] [stats]
+      -- Icon is 3 bytes, indicator is 1 or 3 bytes, short_oid is 7 chars
+      local fixed_width = 4 + 8 + #stats -- indicator(1) + icon(1) + space(1) + oid(7) + space(1) + stats
+      if #stats > 0 then
+        fixed_width = fixed_width + 1 -- extra space before stats
+      end
+      local msg_width = width - fixed_width
+      if msg_width < 3 then
+        msg_width = 3
+      end
+
+      local msg = truncate_message(commit.message_headline, msg_width)
+      local msg_padding = ""
+      local stats_section = ""
+      if #stats > 0 then
+        local pad_len = msg_width - #msg
+        if pad_len > 0 then
+          msg_padding = string.rep(" ", pad_len)
+        end
+        stats_section = " " .. stats
+      end
+
+      local commit_line = indicator
+        .. icon
+        .. " "
+        .. commit.short_oid
+        .. " "
+        .. msg
+        .. msg_padding
+        .. stats_section
+      table.insert(lines, commit_line)
+      line_info[#lines] = { type = "commit", commit_index = i }
+    end
+
+    -- Separator between commits and files
+    table.insert(lines, separator)
+    line_info[#lines] = { type = "separator" }
+  end
+
+  -- Files header line
   local header = " Files (" .. #file_pairs .. ")"
   table.insert(lines, header)
-  line_info[#lines] = { type = "header", file_index = nil }
+  line_info[#lines] = { type = "header" }
 
   -- Separator line
-  local separator = " " .. string.rep("\xe2\x94\x80", width - 2)
   table.insert(lines, separator)
-  line_info[#lines] = { type = "separator", file_index = nil }
+  line_info[#lines] = { type = "separator" }
 
   -- File lines
   for i, pair in ipairs(file_pairs) do
@@ -180,10 +279,13 @@ function M.new(winnr, opts)
   self.winnr = winnr
   self.width = opts.width or 35
   self.on_select_file = opts.on_select_file or function() end
+  self.on_select_commit = opts.on_select_commit or function() end
   self.on_close = opts.on_close or function() end
   self.file_pairs = {}
   self.selected_file = 1
   self.line_map = {}
+  self.pr_info = nil
+  self.selected_commit = nil
 
   -- Create a scratch buffer
   self.bufnr = vim.api.nvim_create_buf(false, true)
@@ -214,8 +316,16 @@ end
 
 --- Render the file list from file_pairs
 ---@param file_pairs DiffFilePair[]
-function DiffPanel:render(file_pairs)
+---@param pr_info DiffPRInfo|nil Optional PR info for commit section
+---@param selected_commit number|nil Currently selected commit index
+function DiffPanel:render(file_pairs, pr_info, selected_commit)
   self.file_pairs = file_pairs
+  if pr_info ~= nil then
+    self.pr_info = pr_info
+  end
+  if selected_commit ~= nil or pr_info ~= nil then
+    self.selected_commit = selected_commit
+  end
 
   -- Clamp selected_file to valid range
   if self.selected_file < 1 then
@@ -225,7 +335,13 @@ function DiffPanel:render(file_pairs)
     self.selected_file = math.max(1, #file_pairs)
   end
 
-  local result = M._render_file_list(file_pairs, self.selected_file, self.width)
+  local result = M._render_file_list(
+    file_pairs,
+    self.selected_file,
+    self.width,
+    self.pr_info,
+    self.selected_commit
+  )
 
   -- Update line_map (1-indexed for cursor positions)
   self.line_map = result.line_info
@@ -264,6 +380,33 @@ function DiffPanel:_apply_highlights(result)
       hl.set(self.bufnr, ns, line_idx, 0, #line, "GitladSectionHeader")
     elseif info.type == "separator" then
       hl.set(self.bufnr, ns, line_idx, 0, #line, "Comment")
+    elseif info.type == "commit_all" then
+      -- Highlight "All changes" entry
+      if self.selected_commit == nil then
+        hl.set_line(self.bufnr, ns, line_idx, "CursorLine")
+      end
+      hl.set(self.bufnr, ns, line_idx, 0, #line, "GitladSectionHeader")
+    elseif info.type == "commit" and info.commit_index then
+      -- Highlight commit entry
+      if self.selected_commit == info.commit_index then
+        hl.set_line(self.bufnr, ns, line_idx, "CursorLine")
+      end
+
+      -- Highlight short OID
+      local oid_start = line:find("%x%x%x%x%x%x%x")
+      if oid_start then
+        hl.set(self.bufnr, ns, line_idx, oid_start - 1, oid_start - 1 + 7, "GitladHash")
+      end
+
+      -- Highlight diff stats
+      local add_start, add_end = line:find("%+%d+")
+      if add_start then
+        hl.set(self.bufnr, ns, line_idx, add_start - 1, add_end, "GitladForgePRAdditions")
+      end
+      local del_start, del_end = line:find("%-%d+", add_end or 1)
+      if del_start then
+        hl.set(self.bufnr, ns, line_idx, del_start - 1, del_end, "GitladForgePRDeletions")
+      end
     elseif info.type == "file" and info.file_index then
       local pair = self.file_pairs[info.file_index]
       if not pair then
@@ -330,11 +473,14 @@ function DiffPanel:select_file(index)
   self.selected_file = index
   self:render(self.file_pairs)
 
-  -- Move cursor to the selected file line
-  -- File lines start at line 3 (after header + separator)
-  local target_line = 2 + index
-  if vim.api.nvim_win_is_valid(self.winnr) then
-    vim.api.nvim_win_set_cursor(self.winnr, { target_line, 0 })
+  -- Find the target line from line_map (avoids hardcoding offset)
+  for line_nr, info in pairs(self.line_map) do
+    if info.type == "file" and info.file_index == index then
+      if vim.api.nvim_win_is_valid(self.winnr) then
+        vim.api.nvim_win_set_cursor(self.winnr, { line_nr, 0 })
+      end
+      break
+    end
   end
 
   self.on_select_file(index)
@@ -365,7 +511,17 @@ function DiffPanel:_setup_keymaps()
   end, "Close diff view")
 end
 
---- Navigate to the next file entry
+--- Check if a line info represents a navigable entry (file, commit, or commit_all)
+---@param info DiffPanelLineInfo|nil
+---@return boolean
+local function is_navigable(info)
+  if not info then
+    return false
+  end
+  return info.type == "file" or info.type == "commit" or info.type == "commit_all"
+end
+
+--- Navigate to the next navigable entry (file or commit)
 function DiffPanel:_goto_next_file()
   if not vim.api.nvim_win_is_valid(self.winnr) then
     return
@@ -376,15 +532,14 @@ function DiffPanel:_goto_next_file()
   local line_count = vim.api.nvim_buf_line_count(self.bufnr)
 
   for line = current_line + 1, line_count do
-    local info = self.line_map[line]
-    if info and info.type == "file" then
+    if is_navigable(self.line_map[line]) then
       vim.api.nvim_win_set_cursor(self.winnr, { line, 0 })
       return
     end
   end
 end
 
---- Navigate to the previous file entry
+--- Navigate to the previous navigable entry (file or commit)
 function DiffPanel:_goto_prev_file()
   if not vim.api.nvim_win_is_valid(self.winnr) then
     return
@@ -394,15 +549,14 @@ function DiffPanel:_goto_prev_file()
   local current_line = cursor[1]
 
   for line = current_line - 1, 1, -1 do
-    local info = self.line_map[line]
-    if info and info.type == "file" then
+    if is_navigable(self.line_map[line]) then
       vim.api.nvim_win_set_cursor(self.winnr, { line, 0 })
       return
     end
   end
 end
 
---- Select the file at the current cursor position
+--- Select the file or commit at the current cursor position
 function DiffPanel:_select_file_at_cursor()
   if not vim.api.nvim_win_is_valid(self.winnr) then
     return
@@ -412,8 +566,16 @@ function DiffPanel:_select_file_at_cursor()
   local line = cursor[1]
   local info = self.line_map[line]
 
-  if info and info.type == "file" and info.file_index then
+  if not info then
+    return
+  end
+
+  if info.type == "file" and info.file_index then
     self:select_file(info.file_index)
+  elseif info.type == "commit_all" then
+    self.on_select_commit(nil)
+  elseif info.type == "commit" and info.commit_index then
+    self.on_select_commit(info.commit_index)
   end
 end
 

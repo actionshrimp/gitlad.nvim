@@ -72,6 +72,9 @@ function DiffView:_setup_layout()
     on_select_file = function(index)
       self:select_file(index)
     end,
+    on_select_commit = function(index)
+      self:select_commit(index)
+    end,
     on_close = function()
       self:close()
     end,
@@ -111,9 +114,12 @@ end
 --- Render the panel and select the first file (or show empty message).
 function DiffView:_render_initial()
   local file_pairs = self.diff_spec.file_pairs
+  local source = self.diff_spec.source
 
-  -- Render the panel
-  self.panel:render(file_pairs)
+  -- Render the panel (with PR info if available)
+  local pr_info = source.pr_info
+  local selected_commit = source.selected_commit
+  self.panel:render(file_pairs, pr_info, selected_commit)
 
   if #file_pairs > 0 then
     -- Select the first file
@@ -166,6 +172,107 @@ function DiffView:prev_file()
     prev = count -- Wrap around
   end
   self:select_file(prev)
+end
+
+--- Select a commit within a PR diff view.
+--- Re-runs the diff producer for the selected commit and updates the view.
+---@param index number|nil Index into pr_info.commits (nil = all changes)
+function DiffView:select_commit(index)
+  local source = self.diff_spec.source
+  if source.type ~= "pr" or not source.pr_info then
+    return
+  end
+
+  -- Don't re-select the same commit
+  if index == source.selected_commit then
+    return
+  end
+
+  local src = require("gitlad.ui.views.diff.source")
+  local repo_root = self.diff_spec.repo_root
+  local pr_info = source.pr_info
+
+  src.produce_pr(repo_root, pr_info, index, function(spec, err)
+    if err then
+      vim.schedule(function()
+        vim.notify("[gitlad] Failed to load commit diff: " .. err, vim.log.levels.ERROR)
+      end)
+      return
+    end
+
+    if spec then
+      vim.schedule(function()
+        if self._closed then
+          return
+        end
+        self.diff_spec = spec
+
+        -- Re-render panel with new commit selection
+        self.panel:render(spec.file_pairs, pr_info, index)
+
+        -- Select first file
+        if #spec.file_pairs > 0 then
+          self:select_file(1)
+        else
+          self:_show_empty_message()
+        end
+      end)
+    end
+  end)
+end
+
+--- Navigate to the next commit in PR mode.
+function DiffView:next_commit()
+  local source = self.diff_spec.source
+  if source.type ~= "pr" or not source.pr_info then
+    return
+  end
+
+  local commits = source.pr_info.commits
+  if not commits or #commits == 0 then
+    return
+  end
+
+  local current = source.selected_commit
+  local next_idx
+  if current == nil then
+    -- Currently on "All changes" -> go to first commit
+    next_idx = 1
+  elseif current >= #commits then
+    -- On last commit -> wrap to "All changes"
+    next_idx = nil
+  else
+    next_idx = current + 1
+  end
+
+  self:select_commit(next_idx)
+end
+
+--- Navigate to the previous commit in PR mode.
+function DiffView:prev_commit()
+  local source = self.diff_spec.source
+  if source.type ~= "pr" or not source.pr_info then
+    return
+  end
+
+  local commits = source.pr_info.commits
+  if not commits or #commits == 0 then
+    return
+  end
+
+  local current = source.selected_commit
+  local prev_idx
+  if current == nil then
+    -- Currently on "All changes" -> wrap to last commit
+    prev_idx = #commits
+  elseif current <= 1 then
+    -- On first commit -> go to "All changes"
+    prev_idx = nil
+  else
+    prev_idx = current - 1
+  end
+
+  self:select_commit(prev_idx)
 end
 
 --- Navigate to the next hunk boundary within the current file.
@@ -258,6 +365,15 @@ function DiffView:_setup_keymaps()
     keymap.set(bufnr, "n", "gr", function()
       self:refresh()
     end, "Refresh diff")
+
+    -- PR commit navigation (only active in PR mode)
+    keymap.set(bufnr, "n", "<C-n>", function()
+      self:next_commit()
+    end, "Next commit (PR mode)")
+
+    keymap.set(bufnr, "n", "<C-p>", function()
+      self:prev_commit()
+    end, "Previous commit (PR mode)")
   end
 end
 
@@ -314,6 +430,8 @@ function DiffView:refresh()
     src.produce_range(repo_root, source.range, on_result)
   elseif source.type == "stash" then
     src.produce_stash(repo_root, source.ref, on_result)
+  elseif source.type == "pr" then
+    src.produce_pr(repo_root, source.pr_info, source.selected_commit, on_result)
   end
 end
 

@@ -513,4 +513,203 @@ T["parse_pr_detail() with checks"]["handles empty contexts"] = function()
   eq(#pr.checks_summary.checks, 0)
 end
 
+-- =============================================================================
+-- queries.pr_commits
+-- =============================================================================
+
+T["queries"]["pr_commits query string is defined"] = function()
+  expect.equality(type(graphql.queries.pr_commits), "string")
+  expect.equality(graphql.queries.pr_commits:match("pullRequest") ~= nil, true)
+  expect.equality(graphql.queries.pr_commits:match("commits") ~= nil, true)
+  expect.equality(graphql.queries.pr_commits:match("messageHeadline") ~= nil, true)
+end
+
+-- =============================================================================
+-- parse_pr_commits
+-- =============================================================================
+
+T["parse_pr_commits()"] = MiniTest.new_set()
+
+T["parse_pr_commits()"]["parses commits from a mock response"] = function()
+  local data = {
+    data = {
+      repository = {
+        pullRequest = {
+          commits = {
+            nodes = {
+              {
+                commit = {
+                  oid = "abc1234def5678901234567890abcdef12345678",
+                  messageHeadline = "Fix authentication bug",
+                  author = { name = "Jane Doe" },
+                  authoredDate = "2026-02-19T10:00:00Z",
+                  additions = 10,
+                  deletions = 3,
+                },
+              },
+              {
+                commit = {
+                  oid = "def5678abc1234567890abcdef1234567890abcd",
+                  messageHeadline = "Add validation",
+                  author = { name = "John Smith" },
+                  authoredDate = "2026-02-19T11:00:00Z",
+                  additions = 15,
+                  deletions = 5,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }
+
+  local commits, err = graphql.parse_pr_commits(data)
+  eq(err, nil)
+  eq(#commits, 2)
+
+  eq(commits[1].oid, "abc1234def5678901234567890abcdef12345678")
+  eq(commits[1].short_oid, "abc1234")
+  eq(commits[1].message_headline, "Fix authentication bug")
+  eq(commits[1].author_name, "Jane Doe")
+  eq(commits[1].author_date, "2026-02-19T10:00:00Z")
+  eq(commits[1].additions, 10)
+  eq(commits[1].deletions, 3)
+
+  eq(commits[2].oid, "def5678abc1234567890abcdef1234567890abcd")
+  eq(commits[2].short_oid, "def5678")
+  eq(commits[2].message_headline, "Add validation")
+  eq(commits[2].author_name, "John Smith")
+  eq(commits[2].additions, 15)
+  eq(commits[2].deletions, 5)
+end
+
+T["parse_pr_commits()"]["handles empty commits list"] = function()
+  local data = {
+    data = {
+      repository = {
+        pullRequest = {
+          commits = {
+            nodes = {},
+          },
+        },
+      },
+    },
+  }
+
+  local commits, err = graphql.parse_pr_commits(data)
+  eq(err, nil)
+  eq(#commits, 0)
+end
+
+T["parse_pr_commits()"]["handles missing author"] = function()
+  local data = {
+    data = {
+      repository = {
+        pullRequest = {
+          commits = {
+            nodes = {
+              {
+                commit = {
+                  oid = "abc1234def5678901234567890abcdef12345678",
+                  messageHeadline = "Some commit",
+                  author = nil,
+                  authoredDate = "2026-02-19T10:00:00Z",
+                  additions = 5,
+                  deletions = 2,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }
+
+  local commits, err = graphql.parse_pr_commits(data)
+  eq(err, nil)
+  eq(#commits, 1)
+  eq(commits[1].author_name, "Unknown")
+end
+
+T["parse_pr_commits()"]["returns error for nil data"] = function()
+  local commits, err = graphql.parse_pr_commits(nil)
+  eq(commits, nil)
+  expect.equality(err ~= nil, true)
+end
+
+T["parse_pr_commits()"]["returns error for GraphQL errors"] = function()
+  local data = {
+    errors = {
+      { message = "Could not resolve to a PullRequest" },
+    },
+  }
+  local commits, err = graphql.parse_pr_commits(data)
+  eq(commits, nil)
+  expect.equality(err:match("GraphQL error") ~= nil, true)
+end
+
+T["parse_pr_commits()"]["returns error for missing repository"] = function()
+  local data = { data = {} }
+  local commits, err = graphql.parse_pr_commits(data)
+  eq(commits, nil)
+  expect.equality(err:match("Repository not found") ~= nil, true)
+end
+
+T["parse_pr_commits()"]["returns error for missing pull request"] = function()
+  local data = {
+    data = {
+      repository = {
+        pullRequest = nil,
+      },
+    },
+  }
+  local commits, err = graphql.parse_pr_commits(data)
+  eq(commits, nil)
+  expect.equality(err:match("Pull request not found") ~= nil, true)
+end
+
+T["parse_pr_commits()"]["handles missing commits node gracefully"] = function()
+  local data = {
+    data = {
+      repository = {
+        pullRequest = {},
+      },
+    },
+  }
+
+  local commits, err = graphql.parse_pr_commits(data)
+  eq(err, nil)
+  eq(#commits, 0)
+end
+
+T["parse_pr_commits()"]["handles missing optional fields with defaults"] = function()
+  local data = {
+    data = {
+      repository = {
+        pullRequest = {
+          commits = {
+            nodes = {
+              {
+                commit = {
+                  oid = "abc1234def5678901234567890abcdef12345678",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }
+
+  local commits, err = graphql.parse_pr_commits(data)
+  eq(err, nil)
+  eq(#commits, 1)
+  eq(commits[1].message_headline, "")
+  eq(commits[1].author_name, "Unknown")
+  eq(commits[1].author_date, "")
+  eq(commits[1].additions, 0)
+  eq(commits[1].deletions, 0)
+end
+
 return T

@@ -310,4 +310,179 @@ T["integration"]["stash source produces correct args and spec"] = function()
   eq(spec.title, "Stash stash@{0} (empty)")
 end
 
+-- =============================================================================
+-- _build_pr_args
+-- =============================================================================
+
+T["_build_pr_args"] = MiniTest.new_set()
+
+local function make_pr_info(overrides)
+  overrides = overrides or {}
+  return vim.tbl_deep_extend("force", {
+    number = 42,
+    title = "Fix auth bug",
+    base_ref = "main",
+    head_ref = "feature/auth",
+    base_oid = "aaa1111222233334444555566667777aaaa1111",
+    head_oid = "bbb2222333344445555666677778888bbbb2222",
+    commits = {
+      {
+        oid = "ccc3333444455556666777788889999cccc3333",
+        short_oid = "ccc3333",
+        message_headline = "Fix login",
+        author_name = "Jane",
+        author_date = "2026-02-19T10:00:00Z",
+        additions = 10,
+        deletions = 3,
+      },
+      {
+        oid = "ddd4444555566667777888899990000dddd4444",
+        short_oid = "ddd4444",
+        message_headline = "Add tests",
+        author_name = "Jane",
+        author_date = "2026-02-19T11:00:00Z",
+        additions = 20,
+        deletions = 0,
+      },
+      {
+        oid = "eee5555666677778888999900001111eeee5555",
+        short_oid = "eee5555",
+        message_headline = "Clean up",
+        author_name = "Jane",
+        author_date = "2026-02-19T12:00:00Z",
+        additions = 5,
+        deletions = 8,
+      },
+    },
+  }, overrides)
+end
+
+T["_build_pr_args"]["builds three-dot diff for full PR diff (selected_index nil)"] = function()
+  local pr_info = make_pr_info()
+  local args, err = source._build_pr_args(pr_info, nil)
+  eq(err, nil)
+  eq(args, { "diff", pr_info.base_oid .. "..." .. pr_info.head_oid })
+end
+
+T["_build_pr_args"]["uses base_oid as parent for first commit"] = function()
+  local pr_info = make_pr_info()
+  local args, err = source._build_pr_args(pr_info, 1)
+  eq(err, nil)
+  eq(args, { "diff", pr_info.base_oid .. ".." .. pr_info.commits[1].oid })
+end
+
+T["_build_pr_args"]["uses previous commit as parent for subsequent commits"] = function()
+  local pr_info = make_pr_info()
+  local args, err = source._build_pr_args(pr_info, 2)
+  eq(err, nil)
+  eq(args, { "diff", pr_info.commits[1].oid .. ".." .. pr_info.commits[2].oid })
+end
+
+T["_build_pr_args"]["uses previous commit as parent for third commit"] = function()
+  local pr_info = make_pr_info()
+  local args, err = source._build_pr_args(pr_info, 3)
+  eq(err, nil)
+  eq(args, { "diff", pr_info.commits[2].oid .. ".." .. pr_info.commits[3].oid })
+end
+
+T["_build_pr_args"]["returns error for invalid commit index"] = function()
+  local pr_info = make_pr_info()
+  local args, err = source._build_pr_args(pr_info, 99)
+  expect.equality(err ~= nil, true)
+  expect.equality(err:match("Invalid commit index") ~= nil, true)
+  eq(#args, 0)
+end
+
+T["_build_pr_args"]["returns error for zero commit index"] = function()
+  local pr_info = make_pr_info({ commits = {} })
+  local args, err = source._build_pr_args(pr_info, 0)
+  expect.equality(err ~= nil, true)
+end
+
+-- =============================================================================
+-- _build_title for PR source
+-- =============================================================================
+
+T["_build_title"]["builds full PR title when no commit selected"] = function()
+  local s = {
+    type = "pr",
+    pr_info = {
+      number = 42,
+      title = "Fix auth bug",
+      commits = {},
+    },
+  }
+  local files = { {}, {} }
+  eq(source._build_title(s, files), "PR #42 Fix auth bug (2 files)")
+end
+
+T["_build_title"]["builds PR title with selected commit"] = function()
+  local s = {
+    type = "pr",
+    pr_info = {
+      number = 42,
+      title = "Fix auth bug",
+      commits = {
+        {
+          oid = "abc1234",
+          short_oid = "abc1234",
+          message_headline = "Fix login flow",
+        },
+      },
+    },
+    selected_commit = 1,
+  }
+  local files = { {} }
+  eq(source._build_title(s, files), "PR #42: Fix login flow (abc1234) (1 file)")
+end
+
+T["_build_title"]["handles PR source without pr_info"] = function()
+  local s = { type = "pr" }
+  local files = { {} }
+  eq(source._build_title(s, files), "PR (1 file)")
+end
+
+T["_build_title"]["handles PR source with invalid selected_commit"] = function()
+  local s = {
+    type = "pr",
+    pr_info = {
+      number = 42,
+      title = "Fix auth bug",
+      commits = {},
+    },
+    selected_commit = 99,
+  }
+  local files = { {} }
+  -- Falls through to full PR title when commit not found
+  eq(source._build_title(s, files), "PR #42 Fix auth bug (1 file)")
+end
+
+-- =============================================================================
+-- PR integration
+-- =============================================================================
+
+T["integration"]["PR full diff builds correct args and title"] = function()
+  local pr_info = make_pr_info()
+  local args, err = source._build_pr_args(pr_info, nil)
+  eq(err, nil)
+  eq(args[1], "diff")
+  expect.equality(args[2]:match("%.%.%.") ~= nil, true) -- three-dot diff
+
+  local s = { type = "pr", pr_info = pr_info }
+  local spec = source._build_diff_spec(s, { {}, {} }, "/repo")
+  eq(spec.title, "PR #42 Fix auth bug (2 files)")
+end
+
+T["integration"]["PR single commit builds correct args and title"] = function()
+  local pr_info = make_pr_info()
+  local args, err = source._build_pr_args(pr_info, 2)
+  eq(err, nil)
+  eq(args[1], "diff")
+  expect.equality(args[2]:match("%.%.") ~= nil, true) -- two-dot diff
+
+  local s = { type = "pr", pr_info = pr_info, selected_commit = 2 }
+  local spec = source._build_diff_spec(s, { {} }, "/repo")
+  eq(spec.title, "PR #42: Add tests (ddd4444) (1 file)")
+end
+
 return T

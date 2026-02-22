@@ -72,6 +72,24 @@ function M._build_title(source, file_pairs)
     return "Diff " .. (source.range or "unknown") .. suffix
   elseif source.type == "stash" then
     return "Stash " .. (source.ref or "unknown") .. suffix
+  elseif source.type == "pr" then
+    local pr_info = source.pr_info
+    if not pr_info then
+      return "PR" .. suffix
+    end
+    if source.selected_commit then
+      local commit = pr_info.commits and pr_info.commits[source.selected_commit]
+      if commit then
+        return string.format(
+          "PR #%d: %s (%s)%s",
+          pr_info.number,
+          commit.message_headline,
+          commit.short_oid,
+          suffix
+        )
+      end
+    end
+    return string.format("PR #%d %s%s", pr_info.number, pr_info.title, suffix)
   else
     return "Diff" .. suffix
   end
@@ -167,6 +185,52 @@ end
 function M.produce_stash(repo_root, stash_ref, cb)
   local source = { type = "stash", ref = stash_ref }
   local args = M._build_args("stash", stash_ref)
+  run_diff(source, args, repo_root, cb)
+end
+
+--- Build git diff arguments for a PR source
+---@param pr_info DiffPRInfo PR info with base/head OIDs and commits
+---@param selected_index number|nil Index into pr_info.commits (nil = full PR diff)
+---@return string[] args Git command arguments
+---@return string|nil err Error message if invalid
+function M._build_pr_args(pr_info, selected_index)
+  if selected_index == nil then
+    -- Full PR diff (three-dot: changes introduced by head relative to merge base)
+    return { "diff", pr_info.base_oid .. "..." .. pr_info.head_oid }, nil
+  end
+
+  local commit = pr_info.commits and pr_info.commits[selected_index]
+  if not commit then
+    return {}, "Invalid commit index: " .. tostring(selected_index)
+  end
+
+  -- Single commit diff
+  local parent
+  if selected_index == 1 then
+    parent = pr_info.base_oid
+  else
+    parent = pr_info.commits[selected_index - 1].oid
+  end
+  return { "diff", parent .. ".." .. commit.oid }, nil
+end
+
+--- Produce a DiffSpec for a PR (full diff or single commit within the PR)
+---@param repo_root string Repository root path
+---@param pr_info DiffPRInfo PR info with base/head OIDs and commits
+---@param selected_index number|nil Index into pr_info.commits (nil = full PR diff)
+---@param cb fun(diff_spec: DiffSpec|nil, err: string|nil) Callback
+function M.produce_pr(repo_root, pr_info, selected_index, cb)
+  local args, err = M._build_pr_args(pr_info, selected_index)
+  if err then
+    cb(nil, err)
+    return
+  end
+
+  local source = {
+    type = "pr",
+    pr_info = pr_info,
+    selected_commit = selected_index,
+  }
   run_diff(source, args, repo_root, cb)
 end
 

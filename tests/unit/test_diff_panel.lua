@@ -246,4 +246,246 @@ T["_render_file_list"]["handles copied file status"] = function()
   expect.equality(result.lines[3]:match("copied%.lua") ~= nil, true)
 end
 
+-- =============================================================================
+-- _render_file_list with PR commits
+-- =============================================================================
+
+T["_render_file_list with PR commits"] = MiniTest.new_set()
+
+--- Helper to create mock PR info
+---@param overrides? table
+---@return table
+local function make_pr_info(overrides)
+  overrides = overrides or {}
+  return vim.tbl_deep_extend("force", {
+    number = 42,
+    title = "Fix auth bug",
+    base_ref = "main",
+    head_ref = "feature/auth",
+    base_oid = "aaa111",
+    head_oid = "bbb222",
+    commits = {
+      {
+        oid = "abc1234",
+        short_oid = "abc1234",
+        message_headline = "Fix auth",
+        author_name = "Jane",
+        author_date = "2026-02-19T10:00:00Z",
+        additions = 10,
+        deletions = 3,
+      },
+      {
+        oid = "def5678",
+        short_oid = "def5678",
+        message_headline = "Add validation",
+        author_name = "John",
+        author_date = "2026-02-19T11:00:00Z",
+        additions = 15,
+        deletions = 5,
+      },
+      {
+        oid = "ghi9012",
+        short_oid = "ghi9012",
+        message_headline = "Update tests",
+        author_name = "Jane",
+        author_date = "2026-02-19T12:00:00Z",
+        additions = 17,
+        deletions = 10,
+      },
+    },
+  }, overrides)
+end
+
+T["_render_file_list with PR commits"]["renders commits section when pr_info provided"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  local result = panel._render_file_list(file_pairs, 1, 50, pr_info, nil)
+
+  -- Commits header(1) + sep(1) + All changes(1) + 3 commits(3) + sep(1) +
+  -- Files header(1) + sep(1) + 1 file(1) = 10 lines
+  eq(#result.lines, 10)
+
+  -- Verify the Commits header
+  expect.equality(result.lines[1]:match("Commits %(3%)") ~= nil, true)
+  eq(result.line_info[1].type, "header")
+end
+
+T["_render_file_list with PR commits"]["renders All changes entry"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  -- selected_commit = nil means "All changes" is selected
+  local result = panel._render_file_list(file_pairs, 1, 50, pr_info, nil)
+
+  -- Line 3 should be "All changes"
+  expect.equality(result.lines[3]:match("All changes") ~= nil, true)
+  eq(result.line_info[3].type, "commit_all")
+end
+
+T["_render_file_list with PR commits"]["shows filled diamond for selected All changes"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  -- selected_commit = nil means "All changes" is selected
+  local result = panel._render_file_list(file_pairs, 1, 50, pr_info, nil)
+
+  -- Filled diamond: U+25C6 = \xe2\x97\x86
+  local filled_diamond = "\xe2\x97\x86"
+  expect.equality(result.lines[3]:find(filled_diamond, 1, true) ~= nil, true)
+end
+
+T["_render_file_list with PR commits"]["shows open diamond for unselected All changes"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  -- selected_commit = 1 means first commit is selected, not All changes
+  local result = panel._render_file_list(file_pairs, 1, 50, pr_info, 1)
+
+  -- Open diamond: U+25C7 = \xe2\x97\x87
+  local open_diamond = "\xe2\x97\x87"
+  expect.equality(result.lines[3]:find(open_diamond, 1, true) ~= nil, true)
+end
+
+T["_render_file_list with PR commits"]["renders individual commit entries"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  local result = panel._render_file_list(file_pairs, 1, 60, pr_info, nil)
+
+  -- Commits at lines 4, 5, 6
+  expect.equality(result.lines[4]:match("abc1234") ~= nil, true)
+  expect.equality(result.lines[4]:match("Fix auth") ~= nil, true)
+  eq(result.line_info[4].type, "commit")
+  eq(result.line_info[4].commit_index, 1)
+
+  expect.equality(result.lines[5]:match("def5678") ~= nil, true)
+  expect.equality(result.lines[5]:match("Add validation") ~= nil, true)
+  eq(result.line_info[5].type, "commit")
+  eq(result.line_info[5].commit_index, 2)
+
+  expect.equality(result.lines[6]:match("ghi9012") ~= nil, true)
+  expect.equality(result.lines[6]:match("Update tests") ~= nil, true)
+  eq(result.line_info[6].type, "commit")
+  eq(result.line_info[6].commit_index, 3)
+end
+
+T["_render_file_list with PR commits"]["shows filled circle for selected commit"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  -- Select commit 2
+  local result = panel._render_file_list(file_pairs, 1, 60, pr_info, 2)
+
+  -- Filled circle: U+25CF = \xe2\x97\x8f
+  local filled_circle = "\xe2\x97\x8f"
+  -- Open circle: U+25CB = \xe2\x97\x8b
+  local open_circle = "\xe2\x97\x8b"
+
+  -- Commit 1 (line 4) should have open circle
+  expect.equality(result.lines[4]:find(open_circle, 1, true) ~= nil, true)
+  -- Commit 2 (line 5) should have filled circle
+  expect.equality(result.lines[5]:find(filled_circle, 1, true) ~= nil, true)
+  -- Commit 3 (line 6) should have open circle
+  expect.equality(result.lines[6]:find(open_circle, 1, true) ~= nil, true)
+end
+
+T["_render_file_list with PR commits"]["shows triangle indicator for selected commit"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  -- Select commit 2
+  local result = panel._render_file_list(file_pairs, 1, 60, pr_info, 2)
+
+  local triangle = "\xe2\x96\xb8"
+  -- Commit 1 (line 4): space indicator
+  expect.equality(result.lines[4]:sub(1, 1) == " ", true)
+  -- Commit 2 (line 5): triangle indicator
+  expect.equality(result.lines[5]:sub(1, 3) == triangle, true)
+  -- Commit 3 (line 6): space indicator
+  expect.equality(result.lines[6]:sub(1, 1) == " ", true)
+end
+
+T["_render_file_list with PR commits"]["shows diff stats on commit entries"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  local result = panel._render_file_list(file_pairs, 1, 60, pr_info, nil)
+
+  -- First commit: +10 -3
+  expect.equality(result.lines[4]:match("%+10") ~= nil, true)
+  expect.equality(result.lines[4]:match("%-3") ~= nil, true)
+end
+
+T["_render_file_list with PR commits"]["has separator between commits and files sections"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  local result = panel._render_file_list(file_pairs, 1, 50, pr_info, nil)
+
+  -- Line 7 should be a separator (between commit and file sections)
+  eq(result.line_info[7].type, "separator")
+end
+
+T["_render_file_list with PR commits"]["files section follows commits section"] = function()
+  local file_pairs = {
+    make_pair({ new_path = "src/auth.lua" }),
+    make_pair({ new_path = "src/test.lua" }),
+  }
+  local pr_info = make_pr_info()
+  local result = panel._render_file_list(file_pairs, 1, 50, pr_info, nil)
+
+  -- Find Files header
+  local files_header_line = nil
+  for i, info in _G.pairs(result.line_info) do
+    if info.type == "header" and result.lines[i]:match("Files") then
+      files_header_line = i
+      break
+    end
+  end
+  expect.equality(files_header_line ~= nil, true)
+
+  -- Files header should contain count
+  expect.equality(result.lines[files_header_line]:match("Files %(2%)") ~= nil, true)
+
+  -- File entries should follow
+  local file_lines = {}
+  for i, info in _G.pairs(result.line_info) do
+    if info.type == "file" then
+      table.insert(file_lines, i)
+    end
+  end
+  eq(#file_lines, 2)
+end
+
+T["_render_file_list with PR commits"]["renders without commits when pr_info is nil"] = function()
+  local file_pairs = { make_pair() }
+  -- No pr_info -> should render like normal (no commit section)
+  local result = panel._render_file_list(file_pairs, 1, 40, nil, nil)
+
+  -- Same as normal: header + separator + 1 file = 3 lines
+  eq(#result.lines, 3)
+  expect.equality(result.lines[1]:match("Files %(1%)") ~= nil, true)
+end
+
+T["_render_file_list with PR commits"]["renders without commits when pr_info has empty commits"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info({ commits = {} })
+  -- Empty commits -> should skip commit section
+  local result = panel._render_file_list(file_pairs, 1, 40, pr_info, nil)
+
+  -- Just files: header + separator + 1 file = 3 lines
+  eq(#result.lines, 3)
+end
+
+T["_render_file_list with PR commits"]["line_info correctly identifies all commit-related lines"] = function()
+  local file_pairs = { make_pair() }
+  local pr_info = make_pr_info()
+  local result = panel._render_file_list(file_pairs, 1, 50, pr_info, nil)
+
+  -- Count each type
+  local counts = { header = 0, separator = 0, commit_all = 0, commit = 0, file = 0 }
+  for _, info in _G.pairs(result.line_info) do
+    counts[info.type] = (counts[info.type] or 0) + 1
+  end
+
+  -- 2 headers (Commits + Files), 3 separators, 1 commit_all, 3 commits, 1 file
+  eq(counts.header, 2)
+  eq(counts.separator, 3)
+  eq(counts.commit_all, 1)
+  eq(counts.commit, 3)
+  eq(counts.file, 1)
+end
+
 return T

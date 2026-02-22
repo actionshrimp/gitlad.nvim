@@ -167,6 +167,29 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }
 ]]
 
+M.queries.pr_commits = [[
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      commits(first: 250) {
+        nodes {
+          commit {
+            oid
+            messageHeadline
+            author {
+              name
+            }
+            authoredDate
+            additions
+            deletions
+          }
+        }
+      }
+    }
+  }
+}
+]]
+
 -- =============================================================================
 -- Response Parsers
 -- =============================================================================
@@ -502,6 +525,55 @@ function M.parse_pr_detail(data)
   }
 
   return pr, nil
+end
+
+--- Parse a PR commits GraphQL response into DiffPRCommit[]
+---@param data table Decoded JSON response from GraphQL API
+---@return DiffPRCommit[]|nil commits List of commits
+---@return string|nil err Error message
+function M.parse_pr_commits(data)
+  if not data then
+    return nil, "No data in response"
+  end
+
+  -- Check for GraphQL errors
+  if data.errors and #data.errors > 0 then
+    local msgs = {}
+    for _, err in ipairs(data.errors) do
+      table.insert(msgs, err.message or "Unknown error")
+    end
+    return nil, "GraphQL error: " .. table.concat(msgs, "; ")
+  end
+
+  -- Navigate to the PR node
+  local repo = data.data and data.data.repository
+  if not repo then
+    return nil, "Repository not found"
+  end
+
+  local pr = repo.pullRequest
+  if not pr then
+    return nil, "Pull request not found"
+  end
+
+  local commits = {}
+  local commit_nodes = pr.commits and pr.commits.nodes or {}
+  for _, node in ipairs(commit_nodes) do
+    local c = node.commit
+    if c then
+      table.insert(commits, {
+        oid = c.oid or "",
+        short_oid = (c.oid or ""):sub(1, 7),
+        message_headline = c.messageHeadline or "",
+        author_name = (c.author and c.author.name) or "Unknown",
+        author_date = c.authoredDate or "",
+        additions = c.additions or 0,
+        deletions = c.deletions or 0,
+      })
+    end
+  end
+
+  return commits, nil
 end
 
 --- Execute a GraphQL query against GitHub API
