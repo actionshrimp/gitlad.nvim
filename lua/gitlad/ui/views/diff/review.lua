@@ -16,12 +16,20 @@ local ns = vim.api.nvim_create_namespace("gitlad_diff_review")
 -- Review State
 -- =============================================================================
 
+---@class PendingComment
+---@field path string File path
+---@field line number Line number
+---@field side string "LEFT"|"RIGHT"
+---@field body string Comment body
+
 ---@class ReviewState
 ---@field threads ForgeReviewThread[] All review threads for this PR
 ---@field thread_map table<string, ForgeReviewThread[]> Threads grouped by file path
 ---@field collapsed table<string, boolean> Thread ID -> collapsed state (true = collapsed)
 ---@field pr_node_id string|nil PR GraphQL node ID (for mutations)
 ---@field file_thread_positions table<number, ForgeReviewThread> Buffer line -> thread mapping
+---@field pending_mode boolean Whether pending review mode is active
+---@field pending_comments PendingComment[] Pending comments not yet submitted
 
 --- Create a new ReviewState
 ---@return ReviewState
@@ -32,6 +40,8 @@ function M.new_state()
     collapsed = {},
     pr_node_id = nil,
     file_thread_positions = {},
+    pending_mode = false,
+    pending_comments = {},
   }
 end
 
@@ -198,17 +208,24 @@ end
 ---@param file_threads ForgeReviewThread[] Threads for the current file
 ---@param line_map AlignedLineInfo[] Line mapping metadata
 ---@param collapsed table<string, boolean> Thread collapse state
+---@param pending_comments? PendingComment[] Pending comments for this file
 ---@return table<number, ForgeReviewThread> positions Buffer line -> first thread at that line
-function M.apply_overlays(buffer_pair, file_threads, line_map, collapsed)
+function M.apply_overlays(buffer_pair, file_threads, line_map, collapsed, pending_comments)
   -- Clear previous review overlays
   vim.api.nvim_buf_clear_namespace(buffer_pair.left_bufnr, ns, 0, -1)
   vim.api.nvim_buf_clear_namespace(buffer_pair.right_bufnr, ns, 0, -1)
 
-  if not file_threads or #file_threads == 0 then
+  local has_threads = file_threads and #file_threads > 0
+  local has_pending = pending_comments and #pending_comments > 0
+
+  if not has_threads and not has_pending then
     return {}
   end
 
-  local thread_positions = M.map_threads_to_lines(file_threads, line_map)
+  local thread_positions = {}
+  if has_threads then
+    thread_positions = M.map_threads_to_lines(file_threads, line_map)
+  end
   local positions = {}
 
   -- Get sorted line numbers for deterministic rendering
@@ -285,7 +302,62 @@ function M.apply_overlays(buffer_pair, file_threads, line_map, collapsed)
     end
   end
 
+  -- Render pending comments
+  if has_pending then
+    M._apply_pending_overlays(buffer_pair, pending_comments, line_map)
+  end
+
   return positions
+end
+
+--- Apply pending comment overlays for a file.
+---@param buffer_pair DiffBufferPair
+---@param pending_comments PendingComment[]
+---@param line_map AlignedLineInfo[]
+function M._apply_pending_overlays(buffer_pair, pending_comments, line_map)
+  for _, pc in ipairs(pending_comments) do
+    -- Find the buffer line for this pending comment
+    for buf_line, info in ipairs(line_map) do
+      local match = false
+      if pc.side == "RIGHT" and info.right_lineno == pc.line then
+        match = true
+      elseif pc.side == "LEFT" and info.left_lineno == pc.line then
+        match = true
+      end
+
+      if match then
+        local target_bufnr = pc.side == "LEFT" and buffer_pair.left_bufnr or buffer_pair.right_bufnr
+        local line_idx = buf_line - 1
+
+        -- Pending sign
+        if vim.api.nvim_buf_is_valid(target_bufnr) then
+          pcall(vim.api.nvim_buf_set_extmark, target_bufnr, ns, line_idx, 0, {
+            sign_text = "\u{25cf}",
+            sign_hl_group = "GitladReviewPending",
+            priority = 110,
+          })
+
+          -- Pending comment preview
+          local body_preview = pc.body:gsub("\n", " ")
+          if #body_preview > 60 then
+            body_preview = body_preview:sub(1, 57) .. "..."
+          end
+
+          pcall(vim.api.nvim_buf_set_extmark, target_bufnr, ns, line_idx, 0, {
+            virt_lines = {
+              {
+                { "\u{2500}\u{2500} [pending] ", "GitladReviewPending" },
+                { body_preview, "GitladReviewPending" },
+              },
+            },
+            virt_lines_above = false,
+          })
+        end
+
+        break
+      end
+    end
+  end
 end
 
 --- Clear all review overlays from a buffer pair.

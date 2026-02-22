@@ -222,6 +222,7 @@ local highlight_groups = {
   GitladReviewBody = { link = "Normal" },
   GitladReviewResolved = { link = "Comment" },
   GitladReviewOutdated = { link = "DiagnosticWarn" },
+  GitladReviewPending = { link = "DiagnosticHint" },
 
   -- Rebase sequence (matching magit-sequence faces)
   GitladSequencePick = { link = "Normal" }, -- Pending actions (default fg)

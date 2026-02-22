@@ -294,4 +294,67 @@ function M.submit_review(api_url, token, pr_node_id, event, body, callback)
   )
 end
 
+--- Submit a review with batch comments (threads)
+--- Uses GraphQL: addPullRequestReview mutation with threads argument
+---@param api_url string GitHub API URL
+---@param token string Auth token
+---@param pr_node_id string GraphQL node ID of the pull request
+---@param event string "APPROVE"|"REQUEST_CHANGES"|"COMMENT"
+---@param body string|nil Optional review body
+---@param threads PendingComment[] List of pending comments to submit as threads
+---@param callback fun(result: table|nil, err: string|nil)
+function M.submit_review_with_comments(api_url, token, pr_node_id, event, body, threads, callback)
+  local graphql = require("gitlad.forge.github.graphql")
+
+  -- Convert PendingComment[] to DraftPullRequestReviewThread[] for GraphQL
+  local draft_threads = {}
+  for _, pc in ipairs(threads) do
+    table.insert(draft_threads, {
+      path = pc.path,
+      line = pc.line,
+      side = pc.side,
+      body = pc.body,
+    })
+  end
+
+  local variables = {
+    pullRequestId = pr_node_id,
+    event = event,
+    body = body,
+    threads = draft_threads,
+  }
+
+  graphql.execute(
+    api_url,
+    token,
+    graphql.mutations.add_pull_request_review_with_threads,
+    variables,
+    function(data, err)
+      if err then
+        callback(nil, err)
+        return
+      end
+
+      if not data then
+        callback(nil, "No data in response")
+        return
+      end
+
+      if data.errors and #data.errors > 0 then
+        local msgs = {}
+        for _, e in ipairs(data.errors) do
+          table.insert(msgs, e.message or "Unknown error")
+        end
+        callback(nil, "GraphQL error: " .. table.concat(msgs, "; "))
+        return
+      end
+
+      local review_data = data.data
+        and data.data.addPullRequestReview
+        and data.data.addPullRequestReview.pullRequestReview
+      callback(review_data, nil)
+    end
+  )
+end
+
 return M

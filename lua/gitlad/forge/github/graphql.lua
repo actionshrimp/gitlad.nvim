@@ -180,6 +180,17 @@ mutation($pullRequestId: ID!, $event: PullRequestReviewEvent!, $body: String) {
 }
 ]]
 
+M.mutations.add_pull_request_review_with_threads = [[
+mutation($pullRequestId: ID!, $event: PullRequestReviewEvent!, $body: String, $threads: [DraftPullRequestReviewThread!]) {
+  addPullRequestReview(input: {pullRequestId: $pullRequestId, event: $event, body: $body, threads: $threads}) {
+    pullRequestReview {
+      id
+      state
+    }
+  }
+}
+]]
+
 M.queries.pr_review_threads = [[
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {

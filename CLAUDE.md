@@ -434,6 +434,12 @@ This makes the plugin more comfortable for vim/evil users.
 | `<CR>` | Select file (in panel) |
 | `gr` | Refresh |
 | `C-n` / `C-p` | Next/previous commit (PR mode) |
+| `]t` / `[t` | Next/previous review thread (PR mode) |
+| `<Tab>` | Toggle review thread expand/collapse |
+| `c` | Add review comment at cursor line |
+| `r` | Reply to review thread at cursor |
+| `R` | Submit review (approve/request changes/comment) |
+| `P` | Toggle pending review mode |
 
 ### Forge Popup Actions
 | Key | Action |

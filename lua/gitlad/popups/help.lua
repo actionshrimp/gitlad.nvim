@@ -519,6 +519,7 @@ local function create_sections(status_buffer)
         { key = "c", desc = "Add review comment" },
         { key = "r", desc = "Reply to thread" },
         { key = "R", desc = "Submit review" },
+        { key = "P", desc = "Toggle pending mode" },
       },
     },
 

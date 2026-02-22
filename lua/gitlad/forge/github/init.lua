@@ -104,6 +104,17 @@ function M.new(owner, repo, api_url, token)
     review.submit_review(api_url, token, pr_node_id, event, body, callback)
   end
 
+  --- Submit a review with batch comments
+  ---@param self ForgeProvider
+  ---@param pr_node_id string GraphQL node ID of the PR
+  ---@param event string "APPROVE"|"REQUEST_CHANGES"|"COMMENT"
+  ---@param body string|nil Optional review body
+  ---@param threads PendingComment[] Pending comments to include
+  ---@param callback fun(result: table|nil, err: string|nil)
+  function provider:submit_review_with_comments(pr_node_id, event, body, threads, callback)
+    review.submit_review_with_comments(api_url, token, pr_node_id, event, body, threads, callback)
+  end
+
   return provider
 end
 

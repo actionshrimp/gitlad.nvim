@@ -418,11 +418,22 @@ function DiffView:_apply_review_overlays(file_path)
   local review_mod = require("gitlad.ui.views.diff.review")
   local file_threads = self.review_state.thread_map[file_path] or {}
 
+  -- Get pending comments for this file
+  local file_pending = {}
+  if self.review_state.pending_mode then
+    for _, pc in ipairs(self.review_state.pending_comments) do
+      if pc.path == file_path then
+        table.insert(file_pending, pc)
+      end
+    end
+  end
+
   self.review_state.file_thread_positions = review_mod.apply_overlays(
     self.buffer_pair,
     file_threads,
     self.buffer_pair.line_map,
-    self.review_state.collapsed
+    self.review_state.collapsed,
+    #file_pending > 0 and file_pending or nil
   )
 end
 
@@ -530,20 +541,53 @@ function DiffView:_get_review_line_info()
 end
 
 --- Add a new review comment at the cursor position.
+--- In pending mode, adds to the local pending list instead of submitting.
 function DiffView:add_review_comment()
   if not self.provider or not self.pr_number then
     vim.notify("[gitlad] Not in a PR diff view", vim.log.levels.WARN)
     return
   end
 
-  if not self.provider.create_review_comment then
-    vim.notify("[gitlad] Provider does not support review comments", vim.log.levels.WARN)
-    return
-  end
-
   local line_info = self:_get_review_line_info()
   if not line_info then
     vim.notify("[gitlad] No valid line at cursor", vim.log.levels.WARN)
+    return
+  end
+
+  -- Pending mode: accumulate locally
+  if self.review_state and self.review_state.pending_mode then
+    local comment_editor = require("gitlad.ui.views.comment_editor")
+    local title = string.format("[Pending] Comment on %s:%d", line_info.path, line_info.lineno)
+
+    comment_editor.open({
+      title = title,
+      on_submit = function(body)
+        ---@type PendingComment
+        local pc = {
+          path = line_info.path,
+          line = line_info.lineno,
+          side = line_info.side,
+          body = body,
+        }
+        table.insert(self.review_state.pending_comments, pc)
+        local count = #self.review_state.pending_comments
+        vim.notify(
+          string.format("[gitlad] Comment added to pending review (%d total)", count),
+          vim.log.levels.INFO
+        )
+        -- Re-apply overlays to show the pending comment
+        local file_pairs = self.diff_spec.file_pairs
+        if self.selected_file >= 1 and self.selected_file <= #file_pairs then
+          self:_apply_review_overlays(file_pairs[self.selected_file].new_path)
+        end
+      end,
+    })
+    return
+  end
+
+  -- Immediate mode: submit directly via REST API
+  if not self.provider.create_review_comment then
+    vim.notify("[gitlad] Provider does not support review comments", vim.log.levels.WARN)
     return
   end
 
@@ -681,29 +725,49 @@ function DiffView:submit_review()
   local comment_editor = require("gitlad.ui.views.comment_editor")
   local provider = self.provider
   local pr_node_id = self.review_state.pr_node_id
+  local pending = self.review_state.pending_comments
+  local has_pending = #pending > 0
 
   local function do_submit(event, event_label)
     comment_editor.open({
       title = string.format("Review: %s PR #%d", event_label, self.pr_number),
       on_submit = function(body)
-        vim.notify("[gitlad] Submitting review...", vim.log.levels.INFO)
-        provider:submit_review(pr_node_id, event, body, function(_, err)
+        local function on_complete(_, err)
           vim.schedule(function()
             if err then
               vim.notify("[gitlad] Failed to submit review: " .. err, vim.log.levels.ERROR)
               return
             end
-            vim.notify("[gitlad] Review submitted: " .. event_label, vim.log.levels.INFO)
+            local msg = "[gitlad] Review submitted: " .. event_label
+            if has_pending then
+              msg = msg .. string.format(" (with %d comments)", #pending)
+              self.review_state.pending_comments = {}
+              self.review_state.pending_mode = false
+            end
+            vim.notify(msg, vim.log.levels.INFO)
             self:_fetch_review_threads()
           end)
-        end)
+        end
+
+        vim.notify("[gitlad] Submitting review...", vim.log.levels.INFO)
+
+        if has_pending and provider.submit_review_with_comments then
+          provider:submit_review_with_comments(pr_node_id, event, body, pending, on_complete)
+        else
+          provider:submit_review(pr_node_id, event, body, on_complete)
+        end
       end,
     })
   end
 
+  local title = "Submit Review"
+  if has_pending then
+    title = string.format("Submit Review (%d pending)", #pending)
+  end
+
   local review_popup = popup
     .builder()
-    :name("Submit Review")
+    :name(title)
     :action("a", "Approve", function()
       do_submit("APPROVE", "Approve")
     end)
@@ -716,6 +780,32 @@ function DiffView:submit_review()
     :build()
 
   review_popup:show()
+end
+
+--- Toggle pending review mode.
+--- In pending mode, `c` adds comments to a local list instead of posting immediately.
+--- Use `R` to submit the pending review as a batch.
+function DiffView:toggle_pending_mode()
+  if not self.review_state then
+    vim.notify("[gitlad] No review state available", vim.log.levels.WARN)
+    return
+  end
+
+  self.review_state.pending_mode = not self.review_state.pending_mode
+  local mode = self.review_state.pending_mode and "ON" or "OFF"
+  local count = #self.review_state.pending_comments
+
+  local msg = string.format("[gitlad] Pending review mode: %s", mode)
+  if count > 0 then
+    msg = msg .. string.format(" (%d comments)", count)
+  end
+  vim.notify(msg, vim.log.levels.INFO)
+
+  -- Re-apply overlays to show/hide pending indicators
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file >= 1 and self.selected_file <= #file_pairs then
+    self:_apply_review_overlays(file_pairs[self.selected_file].new_path)
+  end
 end
 
 --- Show a message in the diff buffers when there are no changes.
@@ -794,6 +884,10 @@ function DiffView:_setup_keymaps()
     keymap.set(bufnr, "n", "R", function()
       self:submit_review()
     end, "Submit review")
+
+    keymap.set(bufnr, "n", "P", function()
+      self:toggle_pending_mode()
+    end, "Toggle pending review mode")
   end
 end
 
