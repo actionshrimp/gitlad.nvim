@@ -124,6 +124,8 @@ local M = {}
 ---@field list_prs fun(self: ForgeProvider, opts: ForgeListPRsOpts, callback: fun(prs: ForgePullRequest[]|nil, err: string|nil))
 ---@field get_pr fun(self: ForgeProvider, number: number, callback: fun(pr: ForgePullRequest|nil, err: string|nil))
 ---@field get_review_threads? fun(self: ForgeProvider, pr_number: number, callback: fun(threads: ForgeReviewThread[]|nil, pr_node_id: string|nil, err: string|nil))
+---@field create_review_comment? fun(self: ForgeProvider, pr_number: number, opts: table, callback: fun(comment: table|nil, err: string|nil))
+---@field reply_to_review_comment? fun(self: ForgeProvider, pr_number: number, comment_id: number, body: string, callback: fun(comment: table|nil, err: string|nil))
 
 ---@class ForgeRemoteInfo
 ---@field provider string "github"

@@ -66,6 +66,34 @@ function M.new(owner, repo, api_url, token)
     pr.get_review_threads(api_url, token, self.owner, self.repo, pr_number, callback)
   end
 
+  --- Create a review comment on a specific line
+  ---@param self ForgeProvider
+  ---@param pr_number number PR number
+  ---@param opts { body: string, path: string, line: number, side: string, commit_id: string }
+  ---@param callback fun(comment: table|nil, err: string|nil)
+  function provider:create_review_comment(pr_number, opts, callback)
+    review.create_review_comment(api_url, token, self.owner, self.repo, pr_number, opts, callback)
+  end
+
+  --- Reply to an existing review thread
+  ---@param self ForgeProvider
+  ---@param pr_number number PR number
+  ---@param comment_id number Database ID of the comment to reply to
+  ---@param body string Reply body
+  ---@param callback fun(comment: table|nil, err: string|nil)
+  function provider:reply_to_review_comment(pr_number, comment_id, body, callback)
+    review.reply_to_review_comment(
+      api_url,
+      token,
+      self.owner,
+      self.repo,
+      pr_number,
+      comment_id,
+      body,
+      callback
+    )
+  end
+
   return provider
 end
 

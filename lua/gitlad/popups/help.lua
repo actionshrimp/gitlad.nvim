@@ -516,6 +516,8 @@ local function create_sections(status_buffer)
         { key = "]t", desc = "Next review thread" },
         { key = "[t", desc = "Prev review thread" },
         { key = "<Tab>", desc = "Toggle thread" },
+        { key = "c", desc = "Add review comment" },
+        { key = "r", desc = "Reply to thread" },
       },
     },
 

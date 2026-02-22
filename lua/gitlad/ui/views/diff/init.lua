@@ -489,6 +489,177 @@ function DiffView:toggle_thread_at_cursor()
   end
 end
 
+--- Get the current file path and line info at cursor for review operations.
+---@return { path: string, lineno: number, side: string }|nil info
+function DiffView:_get_review_line_info()
+  if not self.buffer_pair or not self.buffer_pair.line_map then
+    return nil
+  end
+
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file < 1 or self.selected_file > #file_pairs then
+    return nil
+  end
+
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+  local info = self.buffer_pair.line_map[current_line]
+  if not info then
+    return nil
+  end
+
+  -- Determine side and line number based on which buffer is active
+  local side, lineno
+  if current_win == self.buffer_pair.left_winnr then
+    side = "LEFT"
+    lineno = info.left_lineno
+  else
+    side = "RIGHT"
+    lineno = info.right_lineno
+  end
+
+  if not lineno then
+    return nil -- Filler line
+  end
+
+  return {
+    path = file_pairs[self.selected_file].new_path,
+    lineno = lineno,
+    side = side,
+  }
+end
+
+--- Add a new review comment at the cursor position.
+function DiffView:add_review_comment()
+  if not self.provider or not self.pr_number then
+    vim.notify("[gitlad] Not in a PR diff view", vim.log.levels.WARN)
+    return
+  end
+
+  if not self.provider.create_review_comment then
+    vim.notify("[gitlad] Provider does not support review comments", vim.log.levels.WARN)
+    return
+  end
+
+  local line_info = self:_get_review_line_info()
+  if not line_info then
+    vim.notify("[gitlad] No valid line at cursor", vim.log.levels.WARN)
+    return
+  end
+
+  -- Get the head commit OID for the commit_id parameter
+  local source = self.diff_spec.source
+  local commit_id
+  if source.pr_info then
+    if source.selected_commit and source.pr_info.commits then
+      local commit = source.pr_info.commits[source.selected_commit]
+      if commit then
+        commit_id = commit.oid
+      end
+    end
+    if not commit_id then
+      commit_id = source.pr_info.head_oid
+    end
+  end
+
+  if not commit_id then
+    vim.notify("[gitlad] Cannot determine commit for review comment", vim.log.levels.WARN)
+    return
+  end
+
+  local comment_editor = require("gitlad.ui.views.comment_editor")
+  local provider = self.provider
+  local pr_number = self.pr_number
+  local title = string.format("Review comment on %s:%d", line_info.path, line_info.lineno)
+
+  comment_editor.open({
+    title = title,
+    on_submit = function(body)
+      vim.notify("[gitlad] Submitting review comment...", vim.log.levels.INFO)
+      provider:create_review_comment(pr_number, {
+        body = body,
+        path = line_info.path,
+        line = line_info.lineno,
+        side = line_info.side,
+        commit_id = commit_id,
+      }, function(_, err)
+        vim.schedule(function()
+          if err then
+            vim.notify("[gitlad] Failed to add comment: " .. err, vim.log.levels.ERROR)
+            return
+          end
+          vim.notify("[gitlad] Review comment added", vim.log.levels.INFO)
+          -- Re-fetch threads to show the new comment
+          self:_fetch_review_threads()
+        end)
+      end)
+    end,
+  })
+end
+
+--- Reply to the review thread at the cursor position.
+function DiffView:reply_to_thread()
+  if not self.provider or not self.pr_number then
+    vim.notify("[gitlad] Not in a PR diff view", vim.log.levels.WARN)
+    return
+  end
+
+  if not self.provider.reply_to_review_comment then
+    vim.notify("[gitlad] Provider does not support thread replies", vim.log.levels.WARN)
+    return
+  end
+
+  if not self.review_state or not self.review_state.file_thread_positions then
+    vim.notify("[gitlad] No review threads loaded", vim.log.levels.WARN)
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+
+  local thread = review_mod.thread_at_cursor(self.review_state.file_thread_positions, current_line)
+  if not thread then
+    vim.notify("[gitlad] No review thread at cursor", vim.log.levels.WARN)
+    return
+  end
+
+  -- Find the first comment's database_id to reply to
+  if #thread.comments == 0 then
+    vim.notify("[gitlad] Thread has no comments to reply to", vim.log.levels.WARN)
+    return
+  end
+
+  local first_comment = thread.comments[1]
+  if not first_comment.database_id then
+    vim.notify("[gitlad] Cannot reply: comment has no database ID", vim.log.levels.WARN)
+    return
+  end
+
+  local comment_editor = require("gitlad.ui.views.comment_editor")
+  local provider = self.provider
+  local pr_number = self.pr_number
+  local title = string.format("Reply to @%s on %s", first_comment.author.login, thread.path)
+
+  comment_editor.open({
+    title = title,
+    on_submit = function(body)
+      vim.notify("[gitlad] Submitting reply...", vim.log.levels.INFO)
+      provider:reply_to_review_comment(pr_number, first_comment.database_id, body, function(_, err)
+        vim.schedule(function()
+          if err then
+            vim.notify("[gitlad] Failed to reply: " .. err, vim.log.levels.ERROR)
+            return
+          end
+          vim.notify("[gitlad] Reply added", vim.log.levels.INFO)
+          -- Re-fetch threads to show the reply
+          self:_fetch_review_threads()
+        end)
+      end)
+    end,
+  })
+end
+
 --- Show a message in the diff buffers when there are no changes.
 function DiffView:_show_empty_message()
   local msg = { "", "  No changes" }
@@ -552,6 +723,15 @@ function DiffView:_setup_keymaps()
     keymap.set(bufnr, "n", "<Tab>", function()
       self:toggle_thread_at_cursor()
     end, "Toggle review thread")
+
+    -- Review comment actions (PR mode only)
+    keymap.set(bufnr, "n", "c", function()
+      self:add_review_comment()
+    end, "Add review comment")
+
+    keymap.set(bufnr, "n", "r", function()
+      self:reply_to_thread()
+    end, "Reply to review thread")
   end
 end
 
