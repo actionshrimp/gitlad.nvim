@@ -102,6 +102,16 @@ function PRDetailBuffer:_setup_keymaps()
     end
   end, "Yank PR number")
 
+  -- Add comment
+  keymap.set(bufnr, "n", "c", function()
+    self:_add_comment()
+  end, "Add comment")
+
+  -- Edit comment at cursor
+  keymap.set(bufnr, "n", "e", function()
+    self:_edit_comment()
+  end, "Edit comment")
+
   -- Refresh
   keymap.set(bufnr, "n", "gr", function()
     self:refresh()
@@ -175,6 +185,74 @@ function PRDetailBuffer:_goto_prev_item()
       end
     end
   end
+end
+
+--- Add a new comment to the PR
+function PRDetailBuffer:_add_comment()
+  if not self.pr then
+    return
+  end
+
+  local comment_editor = require("gitlad.ui.views.comment_editor")
+  local pr_number = self.pr_number
+  local provider = self.provider
+
+  comment_editor.open({
+    title = "Comment on PR #" .. pr_number,
+    on_submit = function(body)
+      vim.notify("[gitlad] Submitting comment...", vim.log.levels.INFO)
+      provider:add_comment(pr_number, body, function(result, err)
+        vim.schedule(function()
+          if err then
+            vim.notify("[gitlad] Failed to add comment: " .. err, vim.log.levels.ERROR)
+            return
+          end
+          vim.notify("[gitlad] Comment added to PR #" .. pr_number, vim.log.levels.INFO)
+          self:refresh()
+        end)
+      end)
+    end,
+  })
+end
+
+--- Edit the comment at cursor
+function PRDetailBuffer:_edit_comment()
+  if not self.pr then
+    return
+  end
+
+  local info = self:_get_current_info()
+  if not info or info.type ~= "comment" or not info.comment then
+    vim.notify("[gitlad] No comment at cursor", vim.log.levels.WARN)
+    return
+  end
+
+  local comment = info.comment
+  if not comment.database_id then
+    vim.notify("[gitlad] Comment cannot be edited (no database ID)", vim.log.levels.WARN)
+    return
+  end
+
+  local comment_editor = require("gitlad.ui.views.comment_editor")
+  local provider = self.provider
+
+  comment_editor.open({
+    title = "Edit comment by @" .. comment.author.login,
+    initial_body = comment.body,
+    on_submit = function(body)
+      vim.notify("[gitlad] Updating comment...", vim.log.levels.INFO)
+      provider:edit_comment(comment.database_id, body, function(result, err)
+        vim.schedule(function()
+          if err then
+            vim.notify("[gitlad] Failed to edit comment: " .. err, vim.log.levels.ERROR)
+            return
+          end
+          vim.notify("[gitlad] Comment updated", vim.log.levels.INFO)
+          self:refresh()
+        end)
+      end)
+    end,
+  })
 end
 
 --- Refresh PR detail from provider
