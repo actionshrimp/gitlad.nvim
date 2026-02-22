@@ -31,6 +31,7 @@ local active_view = nil
 ---@field selected_file number Currently displayed file index (1-based)
 ---@field provider ForgeProvider|nil Forge provider (for PR review)
 ---@field pr_number number|nil PR number (for PR review)
+---@field review_state ReviewState|nil Review thread state (PR mode only)
 ---@field _closed boolean Whether the view has been closed
 ---@field _autocmd_id number|nil Autocmd ID for tab close detection
 local DiffView = {}
@@ -157,6 +158,11 @@ function DiffView:_render_initial(initial_file)
     -- No files: show a message in the diff buffers
     self:_show_empty_message()
   end
+
+  -- Fetch review threads for PR diffs (async, overlays applied when ready)
+  if self.provider and self.pr_number then
+    self:_fetch_review_threads()
+  end
 end
 
 --- Display the file at the given index in the side-by-side buffers.
@@ -171,6 +177,9 @@ function DiffView:select_file(index)
   local aligned = content.align_sides(file_pair)
   self.buffer_pair:set_content(aligned, file_pair.new_path)
   self.selected_file = index
+
+  -- Apply review overlays if we have review state
+  self:_apply_review_overlays(file_pair.new_path)
 
   -- Update panel selection (render with new selection)
   self.panel.selected_file = index
@@ -353,6 +362,133 @@ function DiffView:goto_prev_hunk()
   end
 end
 
+--- Fetch review threads from the provider and populate review_state.
+--- Called automatically when a PR diff opens with a provider set.
+function DiffView:_fetch_review_threads()
+  if not self.provider or not self.pr_number then
+    return
+  end
+
+  if not self.provider.get_review_threads then
+    return
+  end
+
+  self.provider:get_review_threads(self.pr_number, function(threads, pr_node_id, err)
+    vim.schedule(function()
+      if self._closed then
+        return
+      end
+      if err then
+        vim.notify("[gitlad] Failed to load review threads: " .. err, vim.log.levels.WARN)
+        return
+      end
+      if not threads then
+        return
+      end
+
+      local review_mod = require("gitlad.ui.views.diff.review")
+      self.review_state = review_mod.new_state()
+      self.review_state.threads = threads
+      self.review_state.thread_map = review_mod.group_threads_by_path(threads)
+      self.review_state.pr_node_id = pr_node_id
+
+      -- Enable signcolumn for review mode
+      for _, winnr in ipairs({ self.buffer_pair.left_winnr, self.buffer_pair.right_winnr }) do
+        if vim.api.nvim_win_is_valid(winnr) then
+          vim.api.nvim_set_option_value("signcolumn", "yes:1", { win = winnr, scope = "local" })
+        end
+      end
+
+      -- Apply overlays to current file
+      local file_pairs = self.diff_spec.file_pairs
+      if self.selected_file >= 1 and self.selected_file <= #file_pairs then
+        self:_apply_review_overlays(file_pairs[self.selected_file].new_path)
+      end
+    end)
+  end)
+end
+
+--- Apply review overlays for a given file path.
+---@param file_path string The file path to apply overlays for
+function DiffView:_apply_review_overlays(file_path)
+  if not self.review_state then
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local file_threads = self.review_state.thread_map[file_path] or {}
+
+  self.review_state.file_thread_positions = review_mod.apply_overlays(
+    self.buffer_pair,
+    file_threads,
+    self.buffer_pair.line_map,
+    self.review_state.collapsed
+  )
+end
+
+--- Navigate to the next review thread in the current file.
+function DiffView:goto_next_thread()
+  if not self.review_state or not self.review_state.file_thread_positions then
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+
+  local next_line =
+    review_mod.next_thread_line(self.review_state.file_thread_positions, current_line)
+  if next_line then
+    vim.api.nvim_win_set_cursor(current_win, { next_line, 0 })
+  end
+end
+
+--- Navigate to the previous review thread in the current file.
+function DiffView:goto_prev_thread()
+  if not self.review_state or not self.review_state.file_thread_positions then
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+
+  local prev_line =
+    review_mod.prev_thread_line(self.review_state.file_thread_positions, current_line)
+  if prev_line then
+    vim.api.nvim_win_set_cursor(current_win, { prev_line, 0 })
+  end
+end
+
+--- Toggle expand/collapse of the thread at cursor.
+function DiffView:toggle_thread_at_cursor()
+  if not self.review_state or not self.review_state.file_thread_positions then
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+
+  local thread = review_mod.thread_at_cursor(self.review_state.file_thread_positions, current_line)
+  if not thread then
+    return
+  end
+
+  -- Toggle collapsed state
+  local is_collapsed = self.review_state.collapsed[thread.id]
+  if is_collapsed == nil then
+    is_collapsed = true -- Default is collapsed
+  end
+  self.review_state.collapsed[thread.id] = not is_collapsed
+
+  -- Re-apply overlays
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file >= 1 and self.selected_file <= #file_pairs then
+    self:_apply_review_overlays(file_pairs[self.selected_file].new_path)
+  end
+end
+
 --- Show a message in the diff buffers when there are no changes.
 function DiffView:_show_empty_message()
   local msg = { "", "  No changes" }
@@ -403,6 +539,19 @@ function DiffView:_setup_keymaps()
     keymap.set(bufnr, "n", "<C-p>", function()
       self:prev_commit()
     end, "Previous commit (PR mode)")
+
+    -- Review thread navigation (PR mode only)
+    keymap.set(bufnr, "n", "]t", function()
+      self:goto_next_thread()
+    end, "Next review thread")
+
+    keymap.set(bufnr, "n", "[t", function()
+      self:goto_prev_thread()
+    end, "Previous review thread")
+
+    keymap.set(bufnr, "n", "<Tab>", function()
+      self:toggle_thread_at_cursor()
+    end, "Toggle review thread")
   end
 end
 
@@ -461,6 +610,11 @@ function DiffView:refresh()
     src.produce_stash(repo_root, source.ref, on_result)
   elseif source.type == "pr" then
     src.produce_pr(repo_root, source.pr_info, source.selected_commit, on_result)
+  end
+
+  -- Also re-fetch review threads on refresh
+  if self.provider and self.pr_number then
+    self:_fetch_review_threads()
   end
 end
 

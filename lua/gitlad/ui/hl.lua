@@ -214,6 +214,15 @@ local highlight_groups = {
   GitladForgeCheckPending = { link = "DiagnosticWarn" },
   GitladForgeCheckNeutral = { link = "Comment" },
 
+  -- Review comments (PR diff overlay)
+  GitladReviewSign = { link = "DiagnosticInfo" },
+  GitladReviewBorder = { link = "Comment" },
+  GitladReviewAuthor = { link = "String" },
+  GitladReviewTimestamp = { link = "Comment" },
+  GitladReviewBody = { link = "Normal" },
+  GitladReviewResolved = { link = "Comment" },
+  GitladReviewOutdated = { link = "DiagnosticWarn" },
+
   -- Rebase sequence (matching magit-sequence faces)
   GitladSequencePick = { link = "Normal" }, -- Pending actions (default fg)
   GitladSequenceDone = { link = "Comment" }, -- Completed commits (muted)
