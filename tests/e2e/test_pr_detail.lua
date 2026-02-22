@@ -178,6 +178,70 @@ T["pr detail view"]["shows reviews"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+T["pr detail view"]["? opens help popup"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_mock(child, repo)
+
+  -- Press ? to open help popup
+  child.type_keys("?")
+
+  -- Verify popup window exists (should be 2 windows now)
+  local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(win_count, 2)
+
+  -- Get popup content
+  child.lua([[
+    _G._popup_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_get_current_buf(), 0, -1, false)
+  ]])
+  local lines = child.lua_get([[_G._popup_lines]])
+
+  -- Verify sections are present
+  local found_actions = false
+  local found_navigation = false
+  local found_essential = false
+  local found_comment = false
+  local found_edit = false
+  local found_gj = false
+
+  for _, line in ipairs(lines) do
+    if line:match("^Actions") then
+      found_actions = true
+    end
+    if line:match("^Navigation") then
+      found_navigation = true
+    end
+    if line:match("^Essential commands") then
+      found_essential = true
+    end
+    if line:match("c%s+Add comment") then
+      found_comment = true
+    end
+    if line:match("e%s+Edit comment") then
+      found_edit = true
+    end
+    if line:match("gj%s+Next comment") then
+      found_gj = true
+    end
+  end
+
+  eq(found_actions, true)
+  eq(found_navigation, true)
+  eq(found_essential, true)
+  eq(found_comment, true)
+  eq(found_edit, true)
+  eq(found_gj, true)
+
+  -- Close help
+  child.type_keys("q")
+
+  helpers.cleanup_repo(child, repo)
+end
+
 T["pr detail view"]["filetype is set correctly"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)

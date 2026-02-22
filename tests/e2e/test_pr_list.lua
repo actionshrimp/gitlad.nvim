@@ -207,6 +207,70 @@ T["pr list view"]["q closes buffer"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+T["pr list view"]["? opens help popup"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_list_with_mock(child, repo)
+
+  -- Press ? to open help popup
+  child.type_keys("?")
+
+  -- Verify popup window exists (should be 2 windows now)
+  local win_count = child.lua_get([[#vim.api.nvim_list_wins()]])
+  eq(win_count, 2)
+
+  -- Get popup content
+  child.lua([[
+    _G._popup_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_get_current_buf(), 0, -1, false)
+  ]])
+  local lines = child.lua_get([[_G._popup_lines]])
+
+  -- Verify sections are present
+  local found_actions = false
+  local found_navigation = false
+  local found_essential = false
+  local found_cr = false
+  local found_gj = false
+  local found_gr = false
+
+  for _, line in ipairs(lines) do
+    if line:match("^Actions") then
+      found_actions = true
+    end
+    if line:match("^Navigation") then
+      found_navigation = true
+    end
+    if line:match("^Essential commands") then
+      found_essential = true
+    end
+    if line:match("<CR>%s+View PR") then
+      found_cr = true
+    end
+    if line:match("gj%s+Next PR") then
+      found_gj = true
+    end
+    if line:match("gr%s+Refresh") then
+      found_gr = true
+    end
+  end
+
+  eq(found_actions, true)
+  eq(found_navigation, true)
+  eq(found_essential, true)
+  eq(found_cr, true)
+  eq(found_gj, true)
+  eq(found_gr, true)
+
+  -- Close help
+  child.type_keys("q")
+
+  helpers.cleanup_repo(child, repo)
+end
+
 T["pr list view"]["filetype is set correctly"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)

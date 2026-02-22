@@ -114,6 +114,54 @@ function PRListBuffer:_setup_keymaps()
   keymap.set(bufnr, "n", "q", function()
     self:close()
   end, "Close PR list")
+
+  -- Help
+  keymap.set(bufnr, "n", "?", function()
+    self:_show_help()
+  end, "Show help")
+end
+
+--- Show help popup with PR list keybindings
+function PRListBuffer:_show_help()
+  local HelpView = require("gitlad.popups.help").HelpView
+
+  local sections = {
+    {
+      name = "Actions",
+      columns = 3,
+      items = {
+        { key = "<CR>", desc = "View PR" },
+        { key = "o", desc = "Open in browser" },
+        { key = "y", desc = "Yank PR number" },
+      },
+    },
+    {
+      name = "Navigation",
+      columns = 3,
+      items = {
+        { key = "gj", desc = "Next PR" },
+        { key = "gk", desc = "Previous PR" },
+      },
+    },
+    {
+      name = "Essential commands",
+      columns = 2,
+      items = {
+        {
+          key = "gr",
+          desc = "Refresh",
+          action = function()
+            self:refresh()
+          end,
+        },
+        { key = "q", desc = "Close buffer" },
+        { key = "?", desc = "This help" },
+      },
+    },
+  }
+
+  local help_view = HelpView.new(sections)
+  help_view:show()
 end
 
 --- Get current PR under cursor
