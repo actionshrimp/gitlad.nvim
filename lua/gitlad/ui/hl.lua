@@ -190,6 +190,10 @@ local highlight_groups = {
   GitladForgePRChangesRequested = { link = "DiagnosticError" },
   GitladForgePRReviewRequired = { link = "DiagnosticWarn" },
   GitladForgePRDraft = { link = "Comment" },
+  GitladForgePRTitle = { link = "Title" },
+  GitladForgeCommentAuthor = { link = "String" },
+  GitladForgeCommentTimestamp = { link = "Comment" },
+  GitladForgeLabel = { link = "Type" },
 
   -- Rebase sequence (matching magit-sequence faces)
   GitladSequencePick = { link = "Normal" }, -- Pending actions (default fg)
