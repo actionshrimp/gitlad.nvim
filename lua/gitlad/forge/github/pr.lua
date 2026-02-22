@@ -52,4 +52,29 @@ function M.list(api_url, token, owner, repo, opts, callback)
   end)
 end
 
+--- Get a single pull request by number (with comments and reviews)
+---@param api_url string GitHub API URL
+---@param token string Auth token
+---@param owner string Repository owner
+---@param repo string Repository name
+---@param number number PR number
+---@param callback fun(pr: ForgePullRequest|nil, err: string|nil)
+function M.get(api_url, token, owner, repo, number, callback)
+  local variables = {
+    owner = owner,
+    repo = repo,
+    number = number,
+  }
+
+  graphql.execute(api_url, token, graphql.queries.pr_detail, variables, function(data, err)
+    if err then
+      callback(nil, err)
+      return
+    end
+
+    local pr, parse_err = graphql.parse_pr_detail(data)
+    callback(pr, parse_err)
+  end)
+end
+
 return M

@@ -31,13 +31,12 @@ function M.new(owner, repo, api_url, token)
     pr.list(api_url, token, self.owner, self.repo, opts, callback)
   end
 
-  --- Get a single pull request by number
+  --- Get a single pull request by number (with comments and reviews)
   ---@param self ForgeProvider
   ---@param number number PR number
   ---@param callback fun(pr: ForgePullRequest|nil, err: string|nil)
   function provider:get_pr(number, callback)
-    -- Placeholder for now - will be implemented in Milestone 2
-    callback(nil, "Not yet implemented")
+    pr.get(api_url, token, self.owner, self.repo, number, callback)
   end
 
   return provider

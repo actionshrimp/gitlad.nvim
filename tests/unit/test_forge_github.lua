@@ -118,4 +118,84 @@ T["list_prs()"]["handles HTTP error"] = function()
   expect.equality(got_err ~= nil, true)
 end
 
+-- =============================================================================
+-- get_pr (with mocked HTTP)
+-- =============================================================================
+
+T["get_pr()"] = MiniTest.new_set({
+  hooks = {
+    post_case = function()
+      require("gitlad.forge.http")._set_executor(nil)
+    end,
+  },
+})
+
+T["get_pr()"]["calls HTTP with correct GraphQL query"] = function()
+  local http = require("gitlad.forge.http")
+  local captured_request = nil
+
+  http._set_executor(function(cmd, opts)
+    for i, v in ipairs(cmd) do
+      if v == "-d" then
+        captured_request = cmd[i + 1]
+      end
+    end
+    local fixture = io.open("tests/fixtures/github/pr_detail.json", "r")
+    local json_body = fixture:read("*a")
+    fixture:close()
+    opts.on_stdout(nil, vim.split(json_body .. "\n200", "\n"))
+    opts.on_exit(nil, 0)
+    return 1
+  end)
+
+  local provider = github.new("owner", "repo", "https://api.github.com", "test-token")
+  local got_pr = nil
+
+  provider:get_pr(42, function(pr, err)
+    got_pr = pr
+  end)
+
+  vim.wait(200, function()
+    return got_pr ~= nil
+  end, 10)
+
+  -- Verify request contains correct query
+  expect.equality(captured_request ~= nil, true)
+  local body = vim.json.decode(captured_request)
+  expect.equality(body.query:match("pullRequest%(number:") ~= nil, true)
+  eq(body.variables.owner, "owner")
+  eq(body.variables.repo, "repo")
+  eq(body.variables.number, 42)
+
+  -- Verify parsed PR
+  eq(got_pr.number, 42)
+  eq(got_pr.title, "Fix authentication bug in login flow")
+  eq(#got_pr.comments, 2)
+  eq(#got_pr.reviews, 1)
+  eq(#got_pr.timeline, 3)
+end
+
+T["get_pr()"]["handles HTTP error"] = function()
+  local http = require("gitlad.forge.http")
+
+  http._set_executor(function(cmd, opts)
+    opts.on_stderr(nil, { "Connection refused", "" })
+    opts.on_exit(nil, 7)
+    return 1
+  end)
+
+  local provider = github.new("owner", "repo", "https://api.github.com", "test-token")
+  local got_err = nil
+
+  provider:get_pr(42, function(pr, err)
+    got_err = err
+  end)
+
+  vim.wait(200, function()
+    return got_err ~= nil
+  end, 10)
+
+  expect.equality(got_err ~= nil, true)
+end
+
 return T
