@@ -29,16 +29,16 @@ A fast, well-tested git interface for Neovim inspired by magit, fugitive, and la
 
 ### Diff Viewing Strategy
 
-gitlad.nvim is building a **native diff viewer** to replace the diffview.nvim dependency:
+gitlad.nvim has a **native diff viewer** that replaces the diffview.nvim dependency:
 
 | What | Who handles it |
 |------|----------------|
 | **Status buffer inline diffs** (hunk preview, hunk staging) | gitlad.nvim (existing) |
-| **Full-buffer diff views** (side-by-side, commit diffs, file history) | gitlad.nvim native diff viewer (in progress, currently delegates to diffview.nvim) |
-| **PR review diffs** (inline comments, review threads) | gitlad.nvim native diff viewer + forge module |
-| **3-way merge conflict resolution** | Currently diffview.nvim, migrating to native |
+| **Full-buffer diff views** (side-by-side, commit diffs, file history) | gitlad.nvim native diff viewer |
+| **PR review diffs** (inline comments, review threads) | gitlad.nvim native diff viewer + forge module (Milestone 5) |
+| **3-way merge conflict resolution** | Planned for Milestone 6 |
 
-See PLAN.md Milestone 4 for the native diff viewer design.
+The native diff viewer opens in a new tab page with a file panel sidebar and two synchronized side-by-side buffers. It supports staged, unstaged, worktree, commit, range, stash, and PR diffs with word-level inline highlighting.
 
 ## Current Status
 
@@ -220,7 +220,7 @@ lua/gitlad/
 │   ├── branch.lua        # Branch popup (checkout, create, delete, rename)
 │   ├── cherrypick.lua    # Cherry-pick popup with conflict detection
 │   ├── commit.lua        # Commit popup with switches/options/actions
-│   ├── diff.lua          # Diff popup (migrating from diffview.nvim to native)
+│   ├── diff.lua          # Diff popup (routes to native diff viewer)
 │   ├── fetch.lua         # Fetch popup
 │   ├── forge.lua         # Forge popup (N keybinding, GitHub PRs)
 │   ├── help.lua          # Help popup showing all keybindings
@@ -254,12 +254,15 @@ lua/gitlad/
         ├── history.lua       # Git command history view
         ├── pr_list.lua       # PR list buffer
         ├── pr_detail.lua     # PR detail/discussion buffer
-        └── diff/             # Native diff viewer (in progress)
+        └── diff/             # Native diff viewer
             ├── init.lua      # DiffView coordinator
-            ├── panel.lua     # File panel sidebar
-            ├── buffer.lua    # Diff buffer pair management
+            ├── types.lua     # Type definitions
             ├── hunk.lua      # Hunk parsing, side-by-side alignment
-            └── review.lua    # Review comment overlay
+            ├── source.lua    # DiffSpec producers
+            ├── content.lua   # File content retrieval + alignment
+            ├── buffer.lua    # Side-by-side buffer pair
+            ├── panel.lua     # File panel sidebar + commit selector
+            └── inline.lua    # Word-level inline diff
 ```
 
 ### Key Patterns
@@ -422,6 +425,16 @@ This makes the plugin more comfortable for vim/evil users.
 | `gr` | Refresh |
 | `q` | Close |
 
+### Diff Viewer
+| Key | Action |
+|-----|--------|
+| `q` | Close diff view (close tab) |
+| `gj` / `gk` | Next/previous file |
+| `]c` / `[c` | Next/previous hunk |
+| `<CR>` | Select file (in panel) |
+| `gr` | Refresh |
+| `C-n` / `C-p` | Next/previous commit (PR mode) |
+
 ### Forge Popup Actions
 | Key | Action |
 |-----|--------|
@@ -455,7 +468,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `e` | Edit comment at cursor |
 | `y` | Yank PR number |
 | `o` | Open PR in browser |
-| `d` | View diff (placeholder for M3) |
+| `d` | View diff in native diff viewer |
 | `gr` | Refresh |
 | `q` | Close |
 | `?` | Show help |
@@ -518,7 +531,7 @@ See **PLAN.md** for the detailed development roadmap. Current focus:
 1. **Milestone 1**: Forge foundation — HTTP client, GitHub GraphQL, forge popup (`N`), PR list
 2. **Milestone 2**: PR management — detail view, comments, actions
 3. **Milestone 3**: CI checks viewer — check status in PR list, detail, and status buffer (done)
-4. **Milestone 4**: Native diff viewer — replacing diffview.nvim
+4. **Milestone 4**: Native diff viewer — replacing diffview.nvim (done)
 5. **Milestone 5**: PR review — inline comments in native diff viewer
 6. **Milestone 6**: Polish — 3-way merge, PR creation, notifications
 
