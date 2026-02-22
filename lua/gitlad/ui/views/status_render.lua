@@ -307,6 +307,13 @@ local function render(self)
         pr_line = pr_line .. " (" .. types.format_review_decision(decision) .. ")"
       end
       pr_line = pr_line .. " " .. types.format_diff_stat(pr_info.additions, pr_info.deletions)
+      -- Append compact checks indicator if available
+      if pr_info.checks_summary then
+        local checks_text = types.format_checks_compact(pr_info.checks_summary)
+        if checks_text ~= "" then
+          pr_line = pr_line .. " [" .. checks_text .. "]"
+        end
+      end
       table.insert(lines, pr_line)
     else
       -- Trigger lazy fetch (async, non-blocking)
