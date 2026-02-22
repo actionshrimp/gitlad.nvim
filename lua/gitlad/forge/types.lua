@@ -254,7 +254,10 @@ end
 ---@param completed_at? string ISO 8601 timestamp
 ---@return string duration e.g. "2m 30s", "" if timestamps missing
 function M.format_check_duration(started_at, completed_at)
-  if not started_at or started_at == "" or not completed_at or completed_at == "" then
+  if not started_at or started_at == "" or started_at == vim.NIL then
+    return ""
+  end
+  if not completed_at or completed_at == "" or completed_at == vim.NIL then
     return ""
   end
 

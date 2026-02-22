@@ -238,10 +238,10 @@ local function parse_checks_summary(commits_node, include_details)
           name = ctx.name or "unknown",
           status = status == "COMPLETED" and "completed" or "in_progress",
           conclusion = conclusion,
-          details_url = ctx.detailsUrl,
+          details_url = ctx.detailsUrl ~= vim.NIL and ctx.detailsUrl or nil,
           app_name = ctx.checkSuite and ctx.checkSuite.app and ctx.checkSuite.app.name or nil,
-          started_at = ctx.startedAt,
-          completed_at = ctx.completedAt,
+          started_at = ctx.startedAt ~= vim.NIL and ctx.startedAt or nil,
+          completed_at = ctx.completedAt ~= vim.NIL and ctx.completedAt or nil,
         }
         table.insert(checks, check)
       end
@@ -265,9 +265,9 @@ local function parse_checks_summary(commits_node, include_details)
           conclusion = state == "SUCCESS" and "success"
             or (state == "FAILURE" or state == "ERROR") and "failure"
             or nil,
-          details_url = ctx.targetUrl,
+          details_url = ctx.targetUrl ~= vim.NIL and ctx.targetUrl or nil,
           app_name = nil,
-          started_at = ctx.createdAt,
+          started_at = ctx.createdAt ~= vim.NIL and ctx.createdAt or nil,
           completed_at = nil,
         }
         table.insert(checks, check)

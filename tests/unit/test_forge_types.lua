@@ -338,4 +338,10 @@ T["format_check_duration()"]["returns empty for invalid timestamps"] = function(
   eq(types.format_check_duration("invalid", "also-invalid"), "")
 end
 
+T["format_check_duration()"]["returns empty for vim.NIL timestamps"] = function()
+  eq(types.format_check_duration(vim.NIL, "2026-02-20T10:01:00Z"), "")
+  eq(types.format_check_duration("2026-02-20T10:00:00Z", vim.NIL), "")
+  eq(types.format_check_duration(vim.NIL, vim.NIL), "")
+end
+
 return T
