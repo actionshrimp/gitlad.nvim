@@ -94,6 +94,16 @@ function M.new(owner, repo, api_url, token)
     )
   end
 
+  --- Submit a pull request review
+  ---@param self ForgeProvider
+  ---@param pr_node_id string GraphQL node ID of the PR
+  ---@param event string "APPROVE"|"REQUEST_CHANGES"|"COMMENT"
+  ---@param body string|nil Optional review body
+  ---@param callback fun(result: table|nil, err: string|nil)
+  function provider:submit_review(pr_node_id, event, body, callback)
+    review.submit_review(api_url, token, pr_node_id, event, body, callback)
+  end
+
   return provider
 end
 

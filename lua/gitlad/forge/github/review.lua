@@ -243,4 +243,55 @@ function M.reply_to_review_comment(
   end)
 end
 
+--- Submit a pull request review (approve, request changes, or comment)
+--- Uses GraphQL: addPullRequestReview mutation
+---@param api_url string GitHub API URL
+---@param token string Auth token
+---@param pr_node_id string GraphQL node ID of the pull request
+---@param event string "APPROVE"|"REQUEST_CHANGES"|"COMMENT"
+---@param body string|nil Optional review body
+---@param callback fun(result: table|nil, err: string|nil)
+function M.submit_review(api_url, token, pr_node_id, event, body, callback)
+  local graphql = require("gitlad.forge.github.graphql")
+
+  local variables = {
+    pullRequestId = pr_node_id,
+    event = event,
+    body = body,
+  }
+
+  graphql.execute(
+    api_url,
+    token,
+    graphql.mutations.add_pull_request_review,
+    variables,
+    function(data, err)
+      if err then
+        callback(nil, err)
+        return
+      end
+
+      if not data then
+        callback(nil, "No data in response")
+        return
+      end
+
+      -- Check for GraphQL errors
+      if data.errors and #data.errors > 0 then
+        local msgs = {}
+        for _, e in ipairs(data.errors) do
+          table.insert(msgs, e.message or "Unknown error")
+        end
+        callback(nil, "GraphQL error: " .. table.concat(msgs, "; "))
+        return
+      end
+
+      local review_data = data.data
+        and data.data.addPullRequestReview
+        and data.data.addPullRequestReview.pullRequestReview
+      callback(review_data, nil)
+    end
+  )
+end
+
 return M

@@ -660,6 +660,64 @@ function DiffView:reply_to_thread()
   })
 end
 
+--- Open the submit review popup (Approve / Request Changes / Comment).
+function DiffView:submit_review()
+  if not self.provider or not self.pr_number then
+    vim.notify("[gitlad] Not in a PR diff view", vim.log.levels.WARN)
+    return
+  end
+
+  if not self.provider.submit_review then
+    vim.notify("[gitlad] Provider does not support review submission", vim.log.levels.WARN)
+    return
+  end
+
+  if not self.review_state or not self.review_state.pr_node_id then
+    vim.notify("[gitlad] No PR node ID available. Try refreshing.", vim.log.levels.WARN)
+    return
+  end
+
+  local popup = require("gitlad.ui.popup")
+  local comment_editor = require("gitlad.ui.views.comment_editor")
+  local provider = self.provider
+  local pr_node_id = self.review_state.pr_node_id
+
+  local function do_submit(event, event_label)
+    comment_editor.open({
+      title = string.format("Review: %s PR #%d", event_label, self.pr_number),
+      on_submit = function(body)
+        vim.notify("[gitlad] Submitting review...", vim.log.levels.INFO)
+        provider:submit_review(pr_node_id, event, body, function(_, err)
+          vim.schedule(function()
+            if err then
+              vim.notify("[gitlad] Failed to submit review: " .. err, vim.log.levels.ERROR)
+              return
+            end
+            vim.notify("[gitlad] Review submitted: " .. event_label, vim.log.levels.INFO)
+            self:_fetch_review_threads()
+          end)
+        end)
+      end,
+    })
+  end
+
+  local review_popup = popup
+    .builder()
+    :name("Submit Review")
+    :action("a", "Approve", function()
+      do_submit("APPROVE", "Approve")
+    end)
+    :action("r", "Request changes", function()
+      do_submit("REQUEST_CHANGES", "Request changes")
+    end)
+    :action("c", "Comment", function()
+      do_submit("COMMENT", "Comment")
+    end)
+    :build()
+
+  review_popup:show()
+end
+
 --- Show a message in the diff buffers when there are no changes.
 function DiffView:_show_empty_message()
   local msg = { "", "  No changes" }
@@ -732,6 +790,10 @@ function DiffView:_setup_keymaps()
     keymap.set(bufnr, "n", "r", function()
       self:reply_to_thread()
     end, "Reply to review thread")
+
+    keymap.set(bufnr, "n", "R", function()
+      self:submit_review()
+    end, "Submit review")
   end
 end
 
