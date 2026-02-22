@@ -7,6 +7,7 @@
 local M = {}
 
 local pr = require("gitlad.forge.github.pr")
+local review = require("gitlad.forge.github.review")
 
 --- Create a new GitHub provider instance
 ---@param owner string Repository owner
@@ -31,13 +32,30 @@ function M.new(owner, repo, api_url, token)
     pr.list(api_url, token, self.owner, self.repo, opts, callback)
   end
 
-  --- Get a single pull request by number
+  --- Get a single pull request by number (with comments and reviews)
   ---@param self ForgeProvider
   ---@param number number PR number
   ---@param callback fun(pr: ForgePullRequest|nil, err: string|nil)
   function provider:get_pr(number, callback)
-    -- Placeholder for now - will be implemented in Milestone 2
-    callback(nil, "Not yet implemented")
+    pr.get(api_url, token, self.owner, self.repo, number, callback)
+  end
+
+  --- Add a comment to a PR
+  ---@param self ForgeProvider
+  ---@param pr_number number PR number
+  ---@param body string Comment body
+  ---@param callback fun(result: table|nil, err: string|nil)
+  function provider:add_comment(pr_number, body, callback)
+    review.add_comment(api_url, token, self.owner, self.repo, pr_number, body, callback)
+  end
+
+  --- Edit an existing comment
+  ---@param self ForgeProvider
+  ---@param comment_id number Numeric database ID of the comment
+  ---@param body string New comment body
+  ---@param callback fun(result: table|nil, err: string|nil)
+  function provider:edit_comment(comment_id, body, callback)
+    review.edit_comment(api_url, token, self.owner, self.repo, comment_id, body, callback)
   end
 
   return provider

@@ -19,6 +19,15 @@ T["forge popup"]["module loads without error"] = function()
   eq(type(forge_popup._checkout_pr), "function")
 end
 
+T["forge popup"]["has action functions for PR management"] = function()
+  local forge_popup = require("gitlad.popups.forge")
+  eq(type(forge_popup._create_pr), "function")
+  eq(type(forge_popup._merge_pr), "function")
+  eq(type(forge_popup._close_pr), "function")
+  eq(type(forge_popup._reopen_pr), "function")
+  eq(type(forge_popup._open_in_browser), "function")
+end
+
 T["forge popup"]["_show_popup builds popup with correct title"] = function()
   -- Mock provider
   local provider = {

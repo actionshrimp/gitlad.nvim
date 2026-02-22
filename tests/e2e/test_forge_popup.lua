@@ -145,4 +145,68 @@ T["forge popup"]["_show_popup opens popup with provider info"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+T["forge popup"]["_show_popup includes PR action keys"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
+  -- Directly call _show_popup with a mock provider
+  child.lua([[
+    local forge_popup = require("gitlad.popups.forge")
+    local mock_provider = {
+      provider_type = "github",
+      owner = "testowner",
+      repo = "testrepo",
+      host = "github.com",
+      list_prs = function() end,
+      get_pr = function() end,
+    }
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+    forge_popup._show_popup(buf.repo_state, mock_provider)
+  ]])
+  helpers.wait_for_popup(child)
+
+  -- Verify popup content includes new actions
+  child.lua([[
+    popup_buf = vim.api.nvim_get_current_buf()
+    popup_lines = vim.api.nvim_buf_get_lines(popup_buf, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[popup_lines]])
+
+  local found_create = false
+  local found_merge = false
+  local found_close = false
+  local found_reopen = false
+  local found_open_browser = false
+  for _, line in ipairs(lines) do
+    if line:match("n%s+Create pull request") then
+      found_create = true
+    end
+    if line:match("m%s+Merge pull request") then
+      found_merge = true
+    end
+    if line:match("C%s+Close pull request") then
+      found_close = true
+    end
+    if line:match("R%s+Reopen pull request") then
+      found_reopen = true
+    end
+    if line:match("o%s+Open in browser") then
+      found_open_browser = true
+    end
+  end
+  eq(found_create, true)
+  eq(found_merge, true)
+  eq(found_close, true)
+  eq(found_reopen, true)
+  eq(found_open_browser, true)
+
+  child.type_keys("q")
+  helpers.cleanup_repo(child, repo)
+end
+
 return T

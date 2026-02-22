@@ -83,11 +83,12 @@ function PRListBuffer:_setup_keymaps()
     self:_goto_prev_pr()
   end, "Previous PR")
 
-  -- View PR detail (placeholder)
+  -- View PR detail
   keymap.set(bufnr, "n", "<CR>", function()
     local pr = self:_get_current_pr()
     if pr then
-      vim.notify("[gitlad] PR #" .. pr.number .. ": " .. pr.title, vim.log.levels.INFO)
+      local pr_detail_view = require("gitlad.ui.views.pr_detail")
+      pr_detail_view.open(self.repo_state, self.provider, pr.number)
     end
   end, "View PR")
 

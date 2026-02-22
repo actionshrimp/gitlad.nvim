@@ -293,6 +293,27 @@ local function render(self)
     table.insert(lines, push_line)
   end
 
+  -- PR summary line (lazy-loaded from forge)
+  if cfg.forge and cfg.forge.show_pr_in_status ~= false then
+    local pr_info = self.repo_state.pr_info
+    if pr_info then
+      local types = require("gitlad.forge.types")
+      local pr_line = "PR:       #" .. pr_info.number .. " " .. pr_info.title
+      local decision = pr_info.review_decision
+      if decision == vim.NIL then
+        decision = nil
+      end
+      if decision then
+        pr_line = pr_line .. " (" .. types.format_review_decision(decision) .. ")"
+      end
+      pr_line = pr_line .. " " .. types.format_diff_stat(pr_info.additions, pr_info.deletions)
+      table.insert(lines, pr_line)
+    else
+      -- Trigger lazy fetch (async, non-blocking)
+      self.repo_state:fetch_pr_info()
+    end
+  end
+
   -- Sequencer state (cherry-pick/revert/rebase/merge in progress)
   if status.cherry_pick_in_progress then
     local short_oid = status.sequencer_head_oid and status.sequencer_head_oid:sub(1, 7) or "unknown"
