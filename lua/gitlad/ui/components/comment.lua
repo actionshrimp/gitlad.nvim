@@ -11,12 +11,14 @@ local types = require("gitlad.forge.types")
 
 ---@class CommentRenderOptions
 ---@field wrap_width? number Wrap text at this width (default: 80)
+---@field checks_collapsed? boolean Whether checks section is collapsed (default: false)
 
 ---@class CommentLineInfo
 ---@field type string Line type discriminator
 ---@field pr? ForgePullRequest PR reference for header lines
 ---@field comment? ForgeComment Comment reference
 ---@field review? ForgeReview Review reference
+---@field check? ForgeCheck Check reference for check lines
 
 ---@class CommentRenderResult
 ---@field lines string[] Formatted lines
@@ -129,6 +131,30 @@ function M.render(pr, opts)
       add_line(line, { type = "pr_body", pr = pr })
     end
     result.ranges["body"] = { start = body_start, end_line = #result.lines }
+  end
+
+  -- === Checks Section (if available) ===
+  if pr.checks_summary and pr.checks_summary.total > 0 then
+    local checks_component = require("gitlad.ui.components.checks")
+    local checks_result = checks_component.render(pr.checks_summary, {
+      collapsed = opts.checks_collapsed or false,
+    })
+
+    -- Merge checks lines into result with offset
+    local checks_offset = #result.lines
+    for ci, cline in ipairs(checks_result.lines) do
+      add_line(cline, checks_result.line_info[ci])
+    end
+
+    -- Merge ranges with offset
+    for name, range in pairs(checks_result.ranges) do
+      result.ranges[name] = {
+        start = range.start + checks_offset,
+        end_line = range.end_line + checks_offset,
+      }
+    end
+
+    add_line("", nil)
   end
 
   -- Separator
@@ -301,6 +327,16 @@ function M.apply_highlights(bufnr, ns, start_line, result)
       if label_start then
         hl.set(bufnr, ns, line_idx, label_start - 1 + 8, #line, "GitladForgeLabel")
       end
+    elseif info.type == "checks_header" or info.type == "check" then
+      -- Delegate to checks component highlighting
+      local checks_component = require("gitlad.ui.components.checks")
+      -- Build a minimal single-line result for the checks highlighter
+      local single_result = {
+        lines = { line },
+        line_info = { [1] = info },
+        ranges = {},
+      }
+      checks_component.apply_highlights(bufnr, ns, line_idx, single_result)
     elseif info.type == "separator" then
       hl.set(bufnr, ns, line_idx, 0, #line, "Comment")
     elseif info.type == "section_header" then
