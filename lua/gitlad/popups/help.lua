@@ -499,6 +499,20 @@ local function create_sections(status_buffer)
       },
     },
 
+    -- Diff view - 3 columns (informational, no actions from status buffer)
+    {
+      name = "Diff view",
+      columns = 3,
+      items = {
+        { key = "q", desc = "Close diff view" },
+        { key = "gj", desc = "Next file" },
+        { key = "gk", desc = "Previous file" },
+        { key = "]c", desc = "Next hunk" },
+        { key = "[c", desc = "Previous hunk" },
+        { key = "gr", desc = "Refresh" },
+      },
+    },
+
     -- Essential commands - 2 columns
     {
       name = "Essential commands",

@@ -134,10 +134,10 @@ function PRDetailBuffer:_setup_keymaps()
     self:_toggle_checks()
   end, "Toggle checks section")
 
-  -- Diff (placeholder for Milestone 3)
+  -- View diff in native diff viewer
   keymap.set(bufnr, "n", "d", function()
-    vim.notify("[gitlad] Native diff viewer coming in Milestone 3", vim.log.levels.INFO)
-  end, "View diff (coming soon)")
+    self:_view_diff()
+  end, "View diff")
 
   -- Help
   keymap.set(bufnr, "n", "?", function()
@@ -353,6 +353,44 @@ function PRDetailBuffer:_edit_comment()
       end)
     end,
   })
+end
+
+--- Open the native diff viewer for this PR
+function PRDetailBuffer:_view_diff()
+  if not self.pr then
+    vim.notify("[gitlad] No PR data loaded", vim.log.levels.WARN)
+    return
+  end
+
+  local source = require("gitlad.ui.views.diff.source")
+  local diff_view = require("gitlad.ui.views.diff")
+
+  local pr_info = {
+    number = self.pr.number,
+    title = self.pr.title,
+    base_ref = self.pr.base_ref,
+    head_ref = self.pr.head_ref,
+    base_oid = self.pr.base_oid or self.pr.base_ref or "main",
+    head_oid = self.pr.head_oid or self.pr.head_ref or "HEAD",
+    commits = {},
+  }
+
+  vim.notify("[gitlad] Loading PR diff...", vim.log.levels.INFO)
+
+  source.produce_pr(self.repo_state.repo_root, pr_info, nil, function(spec, err)
+    if err then
+      vim.schedule(function()
+        vim.notify("[gitlad] Failed to load PR diff: " .. err, vim.log.levels.ERROR)
+      end)
+      return
+    end
+
+    vim.schedule(function()
+      if spec then
+        diff_view.open(spec)
+      end
+    end)
+  end)
 end
 
 --- Refresh PR detail from provider
