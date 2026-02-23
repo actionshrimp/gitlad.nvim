@@ -487,4 +487,264 @@ T["thread_at_cursor()"]["returns nil for empty positions"] = function()
   eq(line, nil)
 end
 
+-- =============================================================================
+-- apply_overlays filler lines
+-- =============================================================================
+
+--- Create a real buffer pair for overlay testing.
+--- Each buffer gets `num_lines` lines of content so extmarks can be placed.
+---@param num_lines? number Default 20
+---@return DiffBufferPair
+local function make_buffer_pair(num_lines)
+  num_lines = num_lines or 20
+  local left = vim.api.nvim_create_buf(false, true)
+  local right = vim.api.nvim_create_buf(false, true)
+  local lines = {}
+  for i = 1, num_lines do
+    table.insert(lines, "line " .. i)
+  end
+  vim.api.nvim_buf_set_lines(left, 0, -1, false, lines)
+  vim.api.nvim_buf_set_lines(right, 0, -1, false, lines)
+  return {
+    left_bufnr = left,
+    right_bufnr = right,
+    left_winnr = 0,
+    right_winnr = 0,
+  }
+end
+
+--- Count virt_lines extmarks for a specific highlight group on a buffer at a given line.
+---@param bufnr number
+---@param line_idx number 0-indexed line
+---@param hl_group string Highlight group to look for
+---@return number total Total virt_lines matching hl_group
+local function count_virt_lines_with_hl(bufnr, line_idx, hl_group)
+  local ns_id = review.get_namespace()
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns_id, { line_idx, 0 }, { line_idx, -1 }, {
+    details = true,
+  })
+  local total = 0
+  for _, mark in ipairs(marks) do
+    local details = mark[4]
+    if details.virt_lines then
+      for _, vl in ipairs(details.virt_lines) do
+        for _, chunk in ipairs(vl) do
+          if chunk[2] == hl_group then
+            total = total + 1
+          end
+        end
+      end
+    end
+  end
+  return total
+end
+
+--- Count all virt_lines extmarks on a buffer at a given line (any highlight group).
+---@param bufnr number
+---@param line_idx number 0-indexed line
+---@return number total Total virt_lines
+local function count_all_virt_lines(bufnr, line_idx)
+  local ns_id = review.get_namespace()
+  local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns_id, { line_idx, 0 }, { line_idx, -1 }, {
+    details = true,
+  })
+  local total = 0
+  for _, mark in ipairs(marks) do
+    local details = mark[4]
+    if details.virt_lines then
+      total = total + #details.virt_lines
+    end
+  end
+  return total
+end
+
+T["apply_overlays() filler lines"] = MiniTest.new_set()
+
+T["apply_overlays() filler lines"]["RIGHT thread places filler on LEFT"] = function()
+  local bp = make_buffer_pair()
+  local threads = {
+    make_thread({ id = "T1", line = 5, diff_side = "RIGHT" }),
+  }
+  local line_map = make_line_map({
+    { 1, 1 },
+    { 2, 2 },
+    { 3, 3 },
+    { 4, 4 },
+    { 5, 5 },
+    { 6, 6 },
+  })
+
+  review.apply_overlays(bp, threads, line_map, { T1 = true }, nil)
+
+  -- Collapsed thread = 1 virt_line on RIGHT → 1 filler on LEFT
+  local left_fillers = count_virt_lines_with_hl(bp.left_bufnr, 4, "GitladReviewFiller")
+  eq(left_fillers, 1)
+
+  -- No filler on RIGHT
+  local right_fillers = count_virt_lines_with_hl(bp.right_bufnr, 4, "GitladReviewFiller")
+  eq(right_fillers, 0)
+end
+
+T["apply_overlays() filler lines"]["LEFT thread places filler on RIGHT"] = function()
+  local bp = make_buffer_pair()
+  local threads = {
+    make_thread({ id = "T1", line = 3, diff_side = "LEFT" }),
+  }
+  local line_map = make_line_map({
+    { 1, 1 },
+    { 2, 2 },
+    { 3, 3 },
+    { 4, 4 },
+  })
+
+  review.apply_overlays(bp, threads, line_map, { T1 = true }, nil)
+
+  -- Collapsed = 1 virt_line on LEFT → 1 filler on RIGHT
+  local right_fillers = count_virt_lines_with_hl(bp.right_bufnr, 2, "GitladReviewFiller")
+  eq(right_fillers, 1)
+
+  local left_fillers = count_virt_lines_with_hl(bp.left_bufnr, 2, "GitladReviewFiller")
+  eq(left_fillers, 0)
+end
+
+T["apply_overlays() filler lines"]["expanded thread filler count matches virt_line count"] = function()
+  local bp = make_buffer_pair()
+  -- Thread with 2 comments → format_expanded produces several virt_lines
+  local threads = {
+    make_thread({
+      id = "T1",
+      line = 5,
+      diff_side = "RIGHT",
+      comments = {
+        {
+          id = "C1",
+          author = { login = "alice" },
+          body = "First comment",
+          created_at = "2026-02-20T10:00:00Z",
+          updated_at = "",
+        },
+        {
+          id = "C2",
+          author = { login = "bob" },
+          body = "Reply",
+          created_at = "2026-02-20T11:00:00Z",
+          updated_at = "",
+        },
+      },
+    }),
+  }
+  local line_map = make_line_map({
+    { 1, 1 },
+    { 2, 2 },
+    { 3, 3 },
+    { 4, 4 },
+    { 5, 5 },
+    { 6, 6 },
+  })
+
+  -- Expanded (not collapsed)
+  review.apply_overlays(bp, threads, line_map, { T1 = false }, nil)
+
+  -- Count virt_lines on right (the thread) and filler on left — should match
+  local right_vl = count_all_virt_lines(bp.right_bufnr, 4)
+  local left_fillers = count_virt_lines_with_hl(bp.left_bufnr, 4, "GitladReviewFiller")
+  eq(left_fillers, right_vl)
+  -- Should be > 1 (expanded thread has multiple lines)
+  expect.equality(left_fillers > 1, true)
+end
+
+T["apply_overlays() filler lines"]["multiple threads same line accumulate correctly"] = function()
+  local bp = make_buffer_pair()
+  local threads = {
+    make_thread({ id = "T1", line = 5, diff_side = "RIGHT" }),
+    make_thread({ id = "T2", line = 5, diff_side = "RIGHT" }),
+  }
+  local line_map = make_line_map({
+    { 1, 1 },
+    { 2, 2 },
+    { 3, 3 },
+    { 4, 4 },
+    { 5, 5 },
+  })
+
+  -- Both collapsed = 1 + 1 = 2 virt_lines on RIGHT → 2 fillers on LEFT
+  review.apply_overlays(bp, threads, line_map, { T1 = true, T2 = true }, nil)
+
+  local left_fillers = count_virt_lines_with_hl(bp.left_bufnr, 4, "GitladReviewFiller")
+  eq(left_fillers, 2)
+end
+
+T["apply_overlays() filler lines"]["threads on both sides balanced — no filler"] = function()
+  local bp = make_buffer_pair()
+  local threads = {
+    make_thread({ id = "T1", line = 5, diff_side = "RIGHT" }),
+    make_thread({ id = "T2", line = 5, diff_side = "LEFT" }),
+  }
+  local line_map = make_line_map({
+    { 1, 1 },
+    { 2, 2 },
+    { 3, 3 },
+    { 4, 4 },
+    { 5, 5 },
+  })
+
+  -- Both collapsed = 1 each side → balanced → no filler
+  review.apply_overlays(bp, threads, line_map, { T1 = true, T2 = true }, nil)
+
+  local left_fillers = count_virt_lines_with_hl(bp.left_bufnr, 4, "GitladReviewFiller")
+  local right_fillers = count_virt_lines_with_hl(bp.right_bufnr, 4, "GitladReviewFiller")
+  eq(left_fillers, 0)
+  eq(right_fillers, 0)
+end
+
+T["apply_overlays() filler lines"]["threads on both sides unbalanced — correct filler count"] = function()
+  local bp = make_buffer_pair()
+  -- RIGHT side: 2 collapsed threads (2 virt_lines)
+  -- LEFT side: 1 collapsed thread (1 virt_line)
+  -- Diff = 1 → 1 filler on LEFT
+  local threads = {
+    make_thread({ id = "T1", line = 5, diff_side = "RIGHT" }),
+    make_thread({ id = "T2", line = 5, diff_side = "RIGHT" }),
+    make_thread({ id = "T3", line = 5, diff_side = "LEFT" }),
+  }
+  local line_map = make_line_map({
+    { 1, 1 },
+    { 2, 2 },
+    { 3, 3 },
+    { 4, 4 },
+    { 5, 5 },
+  })
+
+  review.apply_overlays(bp, threads, line_map, { T1 = true, T2 = true, T3 = true }, nil)
+
+  local left_fillers = count_virt_lines_with_hl(bp.left_bufnr, 4, "GitladReviewFiller")
+  local right_fillers = count_virt_lines_with_hl(bp.right_bufnr, 4, "GitladReviewFiller")
+  eq(left_fillers, 1) -- LEFT gets 1 filler to match RIGHT's extra
+  eq(right_fillers, 0)
+end
+
+T["apply_overlays() filler lines"]["pending comment gets filler on opposite side"] = function()
+  local bp = make_buffer_pair()
+  local pending = {
+    { path = "src/main.lua", line = 5, side = "RIGHT", body = "Pending note" },
+  }
+  local line_map = make_line_map({
+    { 1, 1 },
+    { 2, 2 },
+    { 3, 3 },
+    { 4, 4 },
+    { 5, 5 },
+  })
+
+  -- No review threads, just pending comment
+  review.apply_overlays(bp, {}, line_map, {}, pending)
+
+  -- 1 pending virt_line on RIGHT → 1 filler on LEFT
+  local left_fillers = count_virt_lines_with_hl(bp.left_bufnr, 4, "GitladReviewFiller")
+  eq(left_fillers, 1)
+
+  local right_fillers = count_virt_lines_with_hl(bp.right_bufnr, 4, "GitladReviewFiller")
+  eq(right_fillers, 0)
+end
+
 return T

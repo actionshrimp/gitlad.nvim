@@ -228,6 +228,10 @@ function M.apply_overlays(buffer_pair, file_threads, line_map, collapsed, pendin
   end
   local positions = {}
 
+  -- Track virt_line counts per buffer line per side for filler alignment
+  -- { [buf_line] = { left = N, right = N } }
+  local virt_counts = {}
+
   -- Get sorted line numbers for deterministic rendering
   local sorted_lines = {}
   for buf_line, _ in pairs(thread_positions) do
@@ -246,8 +250,9 @@ function M.apply_overlays(buffer_pair, file_threads, line_map, collapsed, pendin
       end
 
       -- Determine which buffer to place the overlay on
+      local side = thread.diff_side == "LEFT" and "left" or "right"
       local target_bufnr
-      if thread.diff_side == "LEFT" then
+      if side == "left" then
         target_bufnr = buffer_pair.left_bufnr
       else
         target_bufnr = buffer_pair.right_bufnr
@@ -299,13 +304,22 @@ function M.apply_overlays(buffer_pair, file_threads, line_map, collapsed, pendin
           virt_lines_above = false,
         })
       end
+
+      -- Record virt_line count for filler alignment
+      if not virt_counts[buf_line] then
+        virt_counts[buf_line] = { left = 0, right = 0 }
+      end
+      virt_counts[buf_line][side] = virt_counts[buf_line][side] + #virt_lines
     end
   end
 
   -- Render pending comments
   if has_pending then
-    M._apply_pending_overlays(buffer_pair, pending_comments, line_map)
+    M._apply_pending_overlays(buffer_pair, pending_comments, line_map, virt_counts)
   end
+
+  -- Filler pass: add blank virt_lines on the side with fewer lines to keep panes aligned
+  M._apply_filler_lines(buffer_pair, virt_counts)
 
   return positions
 end
@@ -314,7 +328,8 @@ end
 ---@param buffer_pair DiffBufferPair
 ---@param pending_comments PendingComment[]
 ---@param line_map AlignedLineInfo[]
-function M._apply_pending_overlays(buffer_pair, pending_comments, line_map)
+---@param virt_counts table<number, {left: number, right: number}> Virt line counts to update
+function M._apply_pending_overlays(buffer_pair, pending_comments, line_map, virt_counts)
   for _, pc in ipairs(pending_comments) do
     -- Find the buffer line for this pending comment
     for buf_line, info in ipairs(line_map) do
@@ -326,7 +341,8 @@ function M._apply_pending_overlays(buffer_pair, pending_comments, line_map)
       end
 
       if match then
-        local target_bufnr = pc.side == "LEFT" and buffer_pair.left_bufnr or buffer_pair.right_bufnr
+        local side = pc.side == "LEFT" and "left" or "right"
+        local target_bufnr = side == "left" and buffer_pair.left_bufnr or buffer_pair.right_bufnr
         local line_idx = buf_line - 1
 
         -- Pending sign
@@ -337,7 +353,7 @@ function M._apply_pending_overlays(buffer_pair, pending_comments, line_map)
             priority = 110,
           })
 
-          -- Pending comment preview
+          -- Pending comment preview (1 virt_line)
           local body_preview = pc.body:gsub("\n", " ")
           if #body_preview > 60 then
             body_preview = body_preview:sub(1, 57) .. "..."
@@ -352,11 +368,56 @@ function M._apply_pending_overlays(buffer_pair, pending_comments, line_map)
             },
             virt_lines_above = false,
           })
+
+          -- Record for filler alignment
+          if not virt_counts[buf_line] then
+            virt_counts[buf_line] = { left = 0, right = 0 }
+          end
+          virt_counts[buf_line][side] = virt_counts[buf_line][side] + 1
         end
 
         break
       end
     end
+  end
+end
+
+--- Apply filler virtual lines on the opposite buffer to keep panes visually aligned.
+--- For each buffer line, if one side has more virt_lines than the other, adds
+--- blank filler lines on the side with fewer to match.
+---@param buffer_pair DiffBufferPair
+---@param virt_counts table<number, {left: number, right: number}>
+function M._apply_filler_lines(buffer_pair, virt_counts)
+  for buf_line, counts in pairs(virt_counts) do
+    local diff = counts.left - counts.right
+    if diff == 0 then
+      goto continue
+    end
+
+    local line_idx = buf_line - 1
+    local target_bufnr, filler_count
+    if diff > 0 then
+      -- Left has more lines, add filler to right
+      target_bufnr = buffer_pair.right_bufnr
+      filler_count = diff
+    else
+      -- Right has more lines, add filler to left
+      target_bufnr = buffer_pair.left_bufnr
+      filler_count = -diff
+    end
+
+    if vim.api.nvim_buf_is_valid(target_bufnr) then
+      local filler_lines = {}
+      for _ = 1, filler_count do
+        table.insert(filler_lines, { { " ", "GitladReviewFiller" } })
+      end
+      pcall(vim.api.nvim_buf_set_extmark, target_bufnr, ns, line_idx, 0, {
+        virt_lines = filler_lines,
+        virt_lines_above = false,
+      })
+    end
+
+    ::continue::
   end
 end
 
