@@ -167,6 +167,22 @@ function M.ref_for_source(source, side)
     else
       return "HEAD"
     end
+  elseif source_type == "three_way" then
+    if side == "left" then
+      return "HEAD"
+    elseif side == "mid" then
+      return "INDEX"
+    else
+      return "WORKTREE"
+    end
+  elseif source_type == "merge" then
+    if side == "left" then
+      return ":2:" -- OURS
+    elseif side == "mid" then
+      return ":1:" -- BASE
+    else
+      return ":3:" -- THEIRS
+    end
   end
 
   -- Unknown source type fallback

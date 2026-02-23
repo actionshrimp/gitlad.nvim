@@ -254,26 +254,64 @@ function M._diff_ref_against(repo_state, ref, base)
 end
 
 --- 3-way staging view (HEAD/index/working tree)
---- Opens diffview showing all files in a 3-pane layout: HEAD | INDEX | WORKING
---- Index buffers are editable - writing to them updates the git index.
---- Working tree buffers are also editable.
---- If file_path is provided, that file will be pre-selected.
+--- Opens native 3-pane diff viewer: HEAD | INDEX | WORKTREE.
+--- Falls back to diffview.nvim if native viewer is not configured.
 ---@param repo_state RepoState
 ---@param file_path? string Optional file path to pre-select
 function M._diff_3way(repo_state, file_path)
-  local has_diffview, diffview = check_diffview()
+  if use_native() then
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_three_way(repo_state.repo_root, function(spec, err)
+      if err then
+        vim.schedule(function()
+          vim.notify("[gitlad] " .. err, vim.log.levels.ERROR)
+        end)
+        return
+      end
+      vim.schedule(function()
+        local diff_view = require("gitlad.ui.views.diff")
+        diff_view.open(spec, { initial_file = file_path })
+      end)
+    end)
+  else
+    local has_diffview, diffview = check_diffview()
 
-  if has_diffview then
-    -- Pass --staging-3way to force ALL files into 3-pane view (HEAD | INDEX | WORKING)
-    -- This works even for files that only have staged OR unstaged changes
-    local args = { "--staging-3way" }
-    if file_path then
-      table.insert(args, "--selected-file=" .. file_path)
+    if has_diffview then
+      local args = { "--staging-3way" }
+      if file_path then
+        table.insert(args, "--selected-file=" .. file_path)
+      end
+      diffview.open(args)
+    else
+      vim.notify(
+        "[gitlad] 3-way staging view requires diffview.nvim. Install with: { 'sindrets/diffview.nvim' }",
+        vim.log.levels.WARN
+      )
     end
-    diffview.open(args)
+  end
+end
+
+--- 3-way merge conflict view (OURS/BASE/THEIRS)
+--- Opens native 3-pane diff viewer showing merge conflicts.
+---@param repo_state RepoState
+function M._diff_merge_3way(repo_state)
+  if use_native() then
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_merge(repo_state.repo_root, function(spec, err)
+      if err then
+        vim.schedule(function()
+          vim.notify("[gitlad] " .. err, vim.log.levels.ERROR)
+        end)
+        return
+      end
+      vim.schedule(function()
+        local diff_view = require("gitlad.ui.views.diff")
+        diff_view.open(spec)
+      end)
+    end)
   else
     vim.notify(
-      "[gitlad] 3-way staging view requires diffview.nvim. Install with: { 'sindrets/diffview.nvim' }",
+      "[gitlad] 3-way merge view requires native diff viewer (set diff.viewer = 'native')",
       vim.log.levels.WARN
     )
   end
@@ -374,6 +412,14 @@ function M.open(repo_state, context)
   if context.section == "staged" or context.section == "unstaged" then
     builder:action("3", "3-way (HEAD/index/worktree)", function()
       M._diff_3way(repo_state, context.file_path)
+    end)
+  end
+
+  -- Add merge 3-way view when merge is in progress
+  local status = repo_state.status
+  if status and status.merge_in_progress then
+    builder:action("m", "3-way merge (ours/base/theirs)", function()
+      M._diff_merge_3way(repo_state)
     end)
   end
 

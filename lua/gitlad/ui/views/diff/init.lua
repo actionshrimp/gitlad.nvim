@@ -14,7 +14,18 @@ local M = {}
 local buffer_mod = require("gitlad.ui.views.diff.buffer")
 local panel_mod = require("gitlad.ui.views.diff.panel")
 local content = require("gitlad.ui.views.diff.content")
+local save_mod = require("gitlad.ui.views.diff.save")
 local keymap = require("gitlad.utils.keymap")
+
+--- Check if a source type supports editable buffers.
+---@param source_type DiffSourceType
+---@return boolean
+local function is_editable_source(source_type)
+  return source_type == "staged"
+    or source_type == "unstaged"
+    or source_type == "worktree"
+    or source_type == "three_way"
+end
 
 -- The single active DiffView instance (only one at a time)
 local active_view = nil
@@ -26,7 +37,9 @@ local active_view = nil
 ---@class DiffView
 ---@field diff_spec DiffSpec Current diff spec
 ---@field panel DiffPanel File panel sidebar
----@field buffer_pair DiffBufferPair Side-by-side buffers
+---@field buffer_pair DiffBufferPair|nil Side-by-side buffers (2-pane mode)
+---@field buffer_triple DiffBufferTriple|nil Triple buffers (3-pane mode)
+---@field three_way boolean Whether this is a 3-way view
 ---@field tab_page number Tab page number
 ---@field selected_file number Currently displayed file index (1-based)
 ---@field provider ForgeProvider|nil Forge provider (for PR review)
@@ -45,6 +58,8 @@ function DiffView._new(diff_spec)
   local self = setmetatable({}, DiffView)
   self.diff_spec = diff_spec
   self.selected_file = 0
+  self.three_way = false
+  self.buffer_triple = nil
   self._closed = false
   self._autocmd_id = nil
   return self
@@ -86,8 +101,9 @@ function DiffView:_setup_layout()
     end,
   })
 
-  -- Create the buffer pair
-  self.buffer_pair = buffer_mod.new(left_winnr, right_winnr)
+  -- Create the buffer pair (editable for local diff sources)
+  local editable = is_editable_source(self.diff_spec.source.type)
+  self.buffer_pair = buffer_mod.new(left_winnr, right_winnr, { editable = editable })
 
   -- Set up keymaps on both diff buffers
   self:_setup_keymaps()
@@ -112,6 +128,94 @@ function DiffView:_setup_layout()
           self:_on_tab_closed()
         end)
         return true -- Remove autocmd
+      end
+    end,
+  })
+end
+
+--- Set up the tab page layout for 3-way view: [panel | left | mid | right].
+function DiffView:_setup_layout_three_way()
+  local buffer_triple_mod = require("gitlad.ui.views.diff.buffer_triple")
+
+  -- Create a new tab page
+  vim.cmd("tabnew")
+  self.tab_page = vim.api.nvim_get_current_tabpage()
+
+  -- Set tab label
+  vim.api.nvim_tabpage_set_var(self.tab_page, "gitlad_label", self.diff_spec.title)
+
+  -- We start with a single window. Split to create 4 panes:
+  -- [panel | left | mid | right]
+  local right_winnr = vim.api.nvim_get_current_win()
+
+  -- Create mid window by splitting right
+  vim.cmd("vsplit")
+  local mid_winnr = vim.api.nvim_get_current_win()
+
+  -- Create left window by splitting mid
+  vim.cmd("vsplit")
+  local left_winnr = vim.api.nvim_get_current_win()
+
+  -- Create panel window to the left of everything
+  vim.cmd("aboveleft vsplit")
+  local panel_winnr = vim.api.nvim_get_current_win()
+  vim.api.nvim_win_set_width(panel_winnr, 35)
+
+  -- Set winbar labels for the three diff panes
+  local source_type = self.diff_spec.source.type
+  local left_label, mid_label, right_label
+  if source_type == "merge" then
+    left_label = " OURS (HEAD)"
+    mid_label = " BASE"
+    right_label = " THEIRS (MERGE_HEAD)"
+  else
+    left_label = " HEAD"
+    mid_label = " INDEX"
+    right_label = " WORKTREE"
+  end
+  vim.api.nvim_set_option_value("winbar", left_label, { win = left_winnr, scope = "local" })
+  vim.api.nvim_set_option_value("winbar", mid_label, { win = mid_winnr, scope = "local" })
+  vim.api.nvim_set_option_value("winbar", right_label, { win = right_winnr, scope = "local" })
+
+  -- Create the panel with callbacks
+  self.panel = panel_mod.new(panel_winnr, {
+    width = 35,
+    on_select_file = function(index)
+      self:select_file(index)
+    end,
+    on_select_commit = function() end,
+    on_close = function()
+      self:close()
+    end,
+  })
+
+  -- Create the buffer triple (editable for three_way, not for merge)
+  local editable = is_editable_source(self.diff_spec.source.type)
+  self.buffer_triple =
+    buffer_triple_mod.new(left_winnr, mid_winnr, right_winnr, { editable = editable })
+
+  -- Set up keymaps on all 3 diff buffers
+  self:_setup_keymaps()
+
+  -- Set up autocmd to detect when tab is closed externally
+  self._autocmd_id = vim.api.nvim_create_autocmd("TabClosed", {
+    callback = function()
+      if self._closed then
+        return true
+      end
+      local tabs = vim.api.nvim_list_tabpages()
+      local found = false
+      for _, tab in ipairs(tabs) do
+        if tab == self.tab_page then
+          found = true
+          break
+        end
+      end
+      if not found then
+        vim.schedule(function()
+          self:_on_tab_closed()
+        end)
+        return true
       end
     end,
   })
@@ -165,7 +269,7 @@ function DiffView:_render_initial(initial_file)
   end
 end
 
---- Display the file at the given index in the side-by-side buffers.
+--- Display the file at the given index in the diff buffers.
 ---@param index number 1-based file index
 function DiffView:select_file(index)
   local file_pairs = self.diff_spec.file_pairs
@@ -173,13 +277,32 @@ function DiffView:select_file(index)
     return
   end
 
-  local file_pair = file_pairs[index]
-  local aligned = content.align_sides(file_pair)
-  self.buffer_pair:set_content(aligned, file_pair.new_path)
-  self.selected_file = index
+  -- Guard: prompt if switching to a different file with unsaved changes
+  if index ~= self.selected_file and self:_has_unsaved_changes() then
+    if not self:_prompt_unsaved("Switch files") then
+      return
+    end
+  end
 
-  -- Apply review overlays if we have review state
-  self:_apply_review_overlays(file_pair.new_path)
+  if self.three_way then
+    -- 3-way mode: use three_way alignment
+    local three_way_mod = require("gitlad.ui.views.diff.three_way")
+    local three_way_files = self.diff_spec.three_way_files
+    if three_way_files and three_way_files[index] then
+      local aligned = three_way_mod.align_three_way(three_way_files[index])
+      self.buffer_triple:set_content(aligned, file_pairs[index].new_path)
+    end
+  else
+    -- 2-pane mode: use standard alignment
+    local file_pair = file_pairs[index]
+    local aligned = content.align_sides(file_pair)
+    self.buffer_pair:set_content(aligned, file_pair.new_path)
+
+    -- Apply review overlays if we have review state
+    self:_apply_review_overlays(file_pair.new_path)
+  end
+
+  self.selected_file = index
 
   -- Update panel selection (render with new selection)
   self.panel.selected_file = index
@@ -313,23 +436,48 @@ function DiffView:prev_commit()
   self:select_commit(prev_idx)
 end
 
+--- Get the current line_map from whichever buffer mode is active.
+---@return ThreeWayLineInfo[]|AlignedLineInfo[]|nil
+function DiffView:_get_line_map()
+  if self.three_way then
+    return self.buffer_triple and self.buffer_triple.line_map
+  else
+    return self.buffer_pair and self.buffer_pair.line_map
+  end
+end
+
+--- Check if the current window is one of the diff buffer windows.
+---@param win number Window handle
+---@return boolean
+function DiffView:_is_diff_window(win)
+  if self.three_way then
+    return self.buffer_triple
+      and (
+        win == self.buffer_triple.left_winnr
+        or win == self.buffer_triple.mid_winnr
+        or win == self.buffer_triple.right_winnr
+      )
+  else
+    return self.buffer_pair
+      and (win == self.buffer_pair.left_winnr or win == self.buffer_pair.right_winnr)
+  end
+end
+
 --- Navigate to the next hunk boundary within the current file.
 function DiffView:goto_next_hunk()
-  if not self.buffer_pair or not self.buffer_pair.line_map then
+  local line_map = self:_get_line_map()
+  if not line_map then
     return
   end
 
-  -- Get current cursor position from whichever diff buffer is active
   local current_line = 1
   local current_win = vim.api.nvim_get_current_win()
-  if current_win == self.buffer_pair.left_winnr or current_win == self.buffer_pair.right_winnr then
+  if self:_is_diff_window(current_win) then
     current_line = vim.api.nvim_win_get_cursor(current_win)[1]
   end
 
-  -- Find the next hunk boundary after current line
-  for i, info in ipairs(self.buffer_pair.line_map) do
+  for i, info in ipairs(line_map) do
     if info.is_hunk_boundary and i > current_line then
-      -- Move cursor in the active diff window
       if vim.api.nvim_win_is_valid(current_win) then
         vim.api.nvim_win_set_cursor(current_win, { i, 0 })
       end
@@ -340,19 +488,19 @@ end
 
 --- Navigate to the previous hunk boundary within the current file.
 function DiffView:goto_prev_hunk()
-  if not self.buffer_pair or not self.buffer_pair.line_map then
+  local line_map = self:_get_line_map()
+  if not line_map then
     return
   end
 
   local current_line = 1
   local current_win = vim.api.nvim_get_current_win()
-  if current_win == self.buffer_pair.left_winnr or current_win == self.buffer_pair.right_winnr then
+  if self:_is_diff_window(current_win) then
     current_line = vim.api.nvim_win_get_cursor(current_win)[1]
   end
 
-  -- Find the previous hunk boundary before current line
-  for i = #self.buffer_pair.line_map, 1, -1 do
-    local info = self.buffer_pair.line_map[i]
+  for i = #line_map, 1, -1 do
+    local info = line_map[i]
     if info.is_hunk_boundary and i < current_line then
       if vim.api.nvim_win_is_valid(current_win) then
         vim.api.nvim_win_set_cursor(current_win, { i, 0 })
@@ -812,20 +960,51 @@ end
 function DiffView:_show_empty_message()
   local msg = { "", "  No changes" }
 
-  -- Unlock, set, re-lock left buffer
-  vim.bo[self.buffer_pair.left_bufnr].modifiable = true
-  vim.api.nvim_buf_set_lines(self.buffer_pair.left_bufnr, 0, -1, false, msg)
-  vim.bo[self.buffer_pair.left_bufnr].modifiable = false
+  local buffers
+  if self.three_way and self.buffer_triple then
+    buffers = self.buffer_triple:get_buffers()
+  elseif self.buffer_pair then
+    buffers = { self.buffer_pair.left_bufnr, self.buffer_pair.right_bufnr }
+  else
+    return
+  end
 
-  -- Unlock, set, re-lock right buffer
-  vim.bo[self.buffer_pair.right_bufnr].modifiable = true
-  vim.api.nvim_buf_set_lines(self.buffer_pair.right_bufnr, 0, -1, false, msg)
-  vim.bo[self.buffer_pair.right_bufnr].modifiable = false
+  for _, bufnr in ipairs(buffers) do
+    vim.bo[bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, msg)
+    vim.bo[bufnr].modifiable = false
+  end
 end
 
---- Set up keymaps on both diff buffers.
+--- Set up keymaps on diff buffers (2 or 3 depending on mode).
 function DiffView:_setup_keymaps()
-  for _, bufnr in ipairs({ self.buffer_pair.left_bufnr, self.buffer_pair.right_bufnr }) do
+  local buffers
+  if self.three_way and self.buffer_triple then
+    buffers = self.buffer_triple:get_buffers()
+  else
+    buffers = { self.buffer_pair.left_bufnr, self.buffer_pair.right_bufnr }
+  end
+
+  -- Set up BufWriteCmd for editable buffers
+  local editable = is_editable_source(self.diff_spec.source.type)
+  if editable then
+    local editable_buffers = {}
+    if self.three_way and self.buffer_triple then
+      editable_buffers = { self.buffer_triple.mid_bufnr, self.buffer_triple.right_bufnr }
+    elseif self.buffer_pair then
+      editable_buffers = { self.buffer_pair.right_bufnr }
+    end
+    for _, ebuf in ipairs(editable_buffers) do
+      vim.api.nvim_create_autocmd("BufWriteCmd", {
+        buffer = ebuf,
+        callback = function()
+          self:_do_save(ebuf)
+        end,
+      })
+    end
+  end
+
+  for _, bufnr in ipairs(buffers) do
     keymap.set(bufnr, "n", "q", function()
       self:close()
     end, "Close diff view")
@@ -891,6 +1070,137 @@ function DiffView:_setup_keymaps()
   end
 end
 
+--- Handle save for an editable diff buffer.
+--- Strips filler lines, routes to the correct save target, then refreshes.
+---@param bufnr number The buffer being saved
+function DiffView:_do_save(bufnr)
+  local source_type = self.diff_spec.source.type
+  local repo_root = self.diff_spec.repo_root
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file < 1 or self.selected_file > #file_pairs then
+    return
+  end
+  local path = file_pairs[self.selected_file].new_path
+
+  -- Determine save target based on source type and which buffer
+  local save_fn
+  if self.three_way and self.buffer_triple then
+    local lines = self.buffer_triple:get_real_lines(bufnr)
+    if bufnr == self.buffer_triple.mid_bufnr then
+      -- Mid buffer = INDEX
+      save_fn = function(cb)
+        save_mod.save_index(repo_root, path, lines, cb)
+      end
+    elseif bufnr == self.buffer_triple.right_bufnr then
+      -- Right buffer = WORKTREE
+      save_fn = function(cb)
+        save_mod.save_worktree(repo_root, path, lines, cb)
+      end
+    end
+  elseif self.buffer_pair then
+    local lines = self.buffer_pair:get_real_lines(bufnr)
+    if source_type == "staged" then
+      -- Right buffer saves to INDEX
+      save_fn = function(cb)
+        save_mod.save_index(repo_root, path, lines, cb)
+      end
+    else
+      -- unstaged/worktree: right buffer saves to WORKTREE (disk)
+      save_fn = function(cb)
+        save_mod.save_worktree(repo_root, path, lines, cb)
+      end
+    end
+  end
+
+  if not save_fn then
+    return
+  end
+
+  save_fn(function(err)
+    vim.schedule(function()
+      if self._closed then
+        return
+      end
+      if err then
+        vim.notify("[gitlad] Save failed: " .. err, vim.log.levels.ERROR)
+        return
+      end
+      -- Mark buffer as saved
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.bo[bufnr].modified = false
+      end
+      vim.notify("[gitlad] Saved " .. path, vim.log.levels.INFO)
+      -- Refresh to re-diff and re-align
+      self:refresh()
+    end)
+  end)
+end
+
+--- Check if any buffer in the view has unsaved changes.
+---@return boolean
+function DiffView:_has_unsaved_changes()
+  if self.three_way and self.buffer_triple then
+    return self.buffer_triple:has_unsaved_changes()
+  elseif self.buffer_pair then
+    return self.buffer_pair:has_unsaved_changes()
+  end
+  return false
+end
+
+--- Prompt the user about unsaved changes.
+--- Returns true if the user wants to proceed (discard), false if they want to cancel.
+---@param action string Description of what will happen (e.g., "switch files", "close")
+---@return boolean proceed
+function DiffView:_prompt_unsaved(action)
+  local choice = vim.fn.confirm(
+    string.format("Buffer has unsaved changes. %s anyway?", action),
+    "&Save\n&Discard\n&Cancel",
+    3
+  )
+  if choice == 1 then
+    -- Save first, then proceed
+    -- Save all modified editable buffers
+    if self.three_way and self.buffer_triple then
+      if self.buffer_triple.mid_bufnr and vim.bo[self.buffer_triple.mid_bufnr].modified then
+        self:_do_save(self.buffer_triple.mid_bufnr)
+      end
+      if self.buffer_triple.right_bufnr and vim.bo[self.buffer_triple.right_bufnr].modified then
+        self:_do_save(self.buffer_triple.right_bufnr)
+      end
+    elseif self.buffer_pair and self.buffer_pair.right_bufnr then
+      if vim.bo[self.buffer_pair.right_bufnr].modified then
+        self:_do_save(self.buffer_pair.right_bufnr)
+      end
+    end
+    return true
+  elseif choice == 2 then
+    -- Discard and proceed
+    -- Reset modified flag on all editable buffers
+    if self.three_way and self.buffer_triple then
+      if
+        self.buffer_triple.mid_bufnr and vim.api.nvim_buf_is_valid(self.buffer_triple.mid_bufnr)
+      then
+        vim.bo[self.buffer_triple.mid_bufnr].modified = false
+      end
+      if
+        self.buffer_triple.right_bufnr and vim.api.nvim_buf_is_valid(self.buffer_triple.right_bufnr)
+      then
+        vim.bo[self.buffer_triple.right_bufnr].modified = false
+      end
+    elseif
+      self.buffer_pair
+      and self.buffer_pair.right_bufnr
+      and vim.api.nvim_buf_is_valid(self.buffer_pair.right_bufnr)
+    then
+      vim.bo[self.buffer_pair.right_bufnr].modified = false
+    end
+    return true
+  else
+    -- Cancel
+    return false
+  end
+end
+
 --- Refresh the diff view by re-running the source producer.
 function DiffView:refresh()
   local source = self.diff_spec.source
@@ -946,6 +1256,10 @@ function DiffView:refresh()
     src.produce_stash(repo_root, source.ref, on_result)
   elseif source.type == "pr" then
     src.produce_pr(repo_root, source.pr_info, source.selected_commit, on_result)
+  elseif source.type == "three_way" then
+    src.produce_three_way(repo_root, on_result)
+  elseif source.type == "merge" then
+    src.produce_merge(repo_root, on_result)
   end
 
   -- Also re-fetch review threads on refresh
@@ -955,10 +1269,20 @@ function DiffView:refresh()
 end
 
 --- Close the entire diff view, cleaning up all resources.
-function DiffView:close()
+---@param opts? { force?: boolean } Options (force skips unsaved changes prompt)
+function DiffView:close(opts)
   if self._closed then
     return
   end
+
+  -- Guard: prompt if closing with unsaved changes (unless forced)
+  opts = opts or {}
+  if not opts.force and self:_has_unsaved_changes() then
+    if not self:_prompt_unsaved("Close") then
+      return
+    end
+  end
+
   self._closed = true
 
   -- Remove autocmd
@@ -967,12 +1291,15 @@ function DiffView:close()
     self._autocmd_id = nil
   end
 
-  -- Destroy panel and buffer pair
+  -- Destroy panel and buffer pair/triple
   if self.panel then
     self.panel:destroy()
   end
   if self.buffer_pair then
     self.buffer_pair:destroy()
+  end
+  if self.buffer_triple then
+    self.buffer_triple:destroy()
   end
 
   -- Close the tab page if it still exists and is not the only tab
@@ -1004,7 +1331,7 @@ function DiffView:_on_tab_closed()
     self._autocmd_id = nil
   end
 
-  -- Destroy panel and buffer pair (buffers may already be gone)
+  -- Destroy panel and buffer pair/triple (buffers may already be gone)
   if self.panel then
     pcall(function()
       self.panel:destroy()
@@ -1013,6 +1340,11 @@ function DiffView:_on_tab_closed()
   if self.buffer_pair then
     pcall(function()
       self.buffer_pair:destroy()
+    end)
+  end
+  if self.buffer_triple then
+    pcall(function()
+      self.buffer_triple:destroy()
     end)
   end
 
@@ -1042,7 +1374,16 @@ function M.open(diff_spec, opts)
   local view = DiffView._new(diff_spec)
   view.provider = opts.provider or nil
   view.pr_number = opts.pr_number or nil
-  view:_setup_layout()
+
+  -- Use 3-way layout for three_way/merge sources
+  local source_type = diff_spec.source.type
+  if source_type == "three_way" or source_type == "merge" then
+    view.three_way = true
+    view:_setup_layout_three_way()
+  else
+    view:_setup_layout()
+  end
+
   view:_render_initial(opts.initial_file)
 
   active_view = view

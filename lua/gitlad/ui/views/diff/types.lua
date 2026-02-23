@@ -52,7 +52,7 @@
 ---@field head_oid string Head commit OID
 ---@field commits DiffPRCommit[] Commits in the PR
 
----@alias DiffSourceType "staged"|"unstaged"|"worktree"|"commit"|"range"|"stash"|"pr"
+---@alias DiffSourceType "staged"|"unstaged"|"worktree"|"commit"|"range"|"stash"|"pr"|"three_way"|"merge"
 
 ---@class DiffSource
 ---@field type DiffSourceType
@@ -66,5 +66,35 @@
 ---@field file_pairs DiffFilePair[] Files changed in this diff
 ---@field title string Display title for the diff viewer tab
 ---@field repo_root string Repository root path
+---@field three_way_files ThreeWayFileDiff[]|nil Files for 3-way view (only when source.type == "three_way" or "merge")
+
+-- =============================================================================
+-- Three-Way Diff Types
+-- =============================================================================
+
+---@class ThreeWayFileDiff
+---@field path string File path
+---@field staged_hunks DiffSideBySideHunk[] Hunks from staged diff (HEAD → INDEX)
+---@field unstaged_hunks DiffSideBySideHunk[] Hunks from unstaged diff (INDEX → WORKTREE)
+---@field status_staged string|nil File status in staged diff ("M", "A", "D", etc.)
+---@field status_unstaged string|nil File status in unstaged diff
+---@field additions number Total lines added (staged + unstaged)
+---@field deletions number Total lines deleted (staged + unstaged)
+
+---@class ThreeWayLineInfo
+---@field left_type DiffLineType Type of the left (HEAD) line
+---@field mid_type DiffLineType Type of the middle (INDEX) line
+---@field right_type DiffLineType Type of the right (WORKTREE) line
+---@field left_lineno number|nil HEAD file line number
+---@field mid_lineno number|nil INDEX file line number
+---@field right_lineno number|nil WORKTREE file line number
+---@field hunk_index number|nil Which hunk region this belongs to (1-based)
+---@field is_hunk_boundary boolean True for first line of a hunk region
+
+---@class ThreeWayAlignedContent
+---@field left_lines string[] Lines for left (HEAD) buffer
+---@field mid_lines string[] Lines for middle (INDEX) buffer
+---@field right_lines string[] Lines for right (WORKTREE) buffer
+---@field line_map ThreeWayLineInfo[] Maps buffer line index (1-based) to metadata
 
 return {}

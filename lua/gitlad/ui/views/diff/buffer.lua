@@ -38,6 +38,9 @@ function M._format_lineno(lineno)
   return string.format("%4d", lineno)
 end
 
+---@class DiffBufferOpts
+---@field editable? boolean Make the right buffer editable (default false)
+
 ---@class DiffBufferPair
 ---@field left_bufnr number Left buffer number
 ---@field right_bufnr number Right buffer number
@@ -48,6 +51,8 @@ end
 ---@field line_map AlignedLineInfo[] Maps buffer line to metadata
 ---@field file_path string Current file path (for treesitter)
 ---@field _ns number Namespace for diff highlights
+---@field _filler_ns number Namespace for filler line extmarks (editable mode)
+---@field _editable boolean Whether right buffer is editable
 local DiffBufferPair = {}
 DiffBufferPair.__index = DiffBufferPair
 
@@ -55,8 +60,10 @@ DiffBufferPair.__index = DiffBufferPair
 --- the given windows. Configures both windows for synchronized scrolling.
 ---@param left_winnr number Left window number
 ---@param right_winnr number Right window number
+---@param buf_opts? DiffBufferOpts Options (editable, etc.)
 ---@return DiffBufferPair
-function M.new(left_winnr, right_winnr)
+function M.new(left_winnr, right_winnr, buf_opts)
+  buf_opts = buf_opts or {}
   local self = setmetatable({}, DiffBufferPair)
 
   self.left_winnr = left_winnr
@@ -66,20 +73,29 @@ function M.new(left_winnr, right_winnr)
   self.line_map = {}
   self.file_path = ""
   self._ns = vim.api.nvim_create_namespace("gitlad_diff_view")
+  self._filler_ns = vim.api.nvim_create_namespace("gitlad_diff_filler")
+  self._editable = buf_opts.editable or false
 
-  -- Create left scratch buffer
+  -- Create left scratch buffer (always read-only)
   self.left_bufnr = vim.api.nvim_create_buf(false, true)
   vim.bo[self.left_bufnr].buftype = "nofile"
   vim.bo[self.left_bufnr].bufhidden = "wipe"
   vim.bo[self.left_bufnr].swapfile = false
   vim.bo[self.left_bufnr].modifiable = false
 
-  -- Create right scratch buffer
+  -- Create right buffer
   self.right_bufnr = vim.api.nvim_create_buf(false, true)
-  vim.bo[self.right_bufnr].buftype = "nofile"
-  vim.bo[self.right_bufnr].bufhidden = "wipe"
-  vim.bo[self.right_bufnr].swapfile = false
-  vim.bo[self.right_bufnr].modifiable = false
+  if self._editable then
+    -- Editable: use acwrite so we control the save operation
+    vim.bo[self.right_bufnr].buftype = "acwrite"
+    vim.bo[self.right_bufnr].swapfile = false
+    vim.bo[self.right_bufnr].modifiable = true
+  else
+    vim.bo[self.right_bufnr].buftype = "nofile"
+    vim.bo[self.right_bufnr].bufhidden = "wipe"
+    vim.bo[self.right_bufnr].swapfile = false
+    vim.bo[self.right_bufnr].modifiable = false
+  end
 
   -- Assign buffers to windows
   vim.api.nvim_win_set_buf(left_winnr, self.left_bufnr)
@@ -87,15 +103,15 @@ function M.new(left_winnr, right_winnr)
 
   -- Configure window options for both windows
   for _, winnr in ipairs({ left_winnr, right_winnr }) do
-    local opts = { win = winnr, scope = "local" }
-    vim.api.nvim_set_option_value("scrollbind", true, opts)
-    vim.api.nvim_set_option_value("cursorbind", true, opts)
-    vim.api.nvim_set_option_value("wrap", false, opts)
-    vim.api.nvim_set_option_value("number", false, opts)
-    vim.api.nvim_set_option_value("signcolumn", "no", opts)
-    vim.api.nvim_set_option_value("foldcolumn", "0", opts)
-    vim.api.nvim_set_option_value("foldmethod", "manual", opts)
-    vim.api.nvim_set_option_value("foldenable", false, opts)
+    local win_opts = { win = winnr, scope = "local" }
+    vim.api.nvim_set_option_value("scrollbind", true, win_opts)
+    vim.api.nvim_set_option_value("cursorbind", true, win_opts)
+    vim.api.nvim_set_option_value("wrap", false, win_opts)
+    vim.api.nvim_set_option_value("number", false, win_opts)
+    vim.api.nvim_set_option_value("signcolumn", "no", win_opts)
+    vim.api.nvim_set_option_value("foldcolumn", "0", win_opts)
+    vim.api.nvim_set_option_value("foldmethod", "manual", win_opts)
+    vim.api.nvim_set_option_value("foldenable", false, win_opts)
   end
 
   return self
@@ -147,9 +163,27 @@ function DiffBufferPair:set_content(aligned, file_path)
   -- Apply diff highlights
   self:apply_diff_highlights()
 
-  -- Re-lock both buffers
+  -- Re-lock left buffer (always read-only)
   vim.bo[self.left_bufnr].modifiable = false
-  vim.bo[self.right_bufnr].modifiable = false
+
+  if self._editable then
+    -- Track filler lines with extmarks on the right buffer
+    vim.api.nvim_buf_clear_namespace(self.right_bufnr, self._filler_ns, 0, -1)
+    for i, info in ipairs(self.line_map) do
+      if info.right_type == "filler" then
+        vim.api.nvim_buf_set_extmark(self.right_bufnr, self._filler_ns, i - 1, 0, {})
+      end
+    end
+
+    -- Set buffer name for acwrite
+    vim.api.nvim_buf_set_name(self.right_bufnr, "gitlad://diff/" .. file_path)
+
+    -- Mark as unmodified after loading content
+    vim.bo[self.right_bufnr].modified = false
+  else
+    -- Re-lock right buffer
+    vim.bo[self.right_bufnr].modifiable = false
+  end
 
   -- Sync scroll positions
   vim.cmd("syncbind")
@@ -214,6 +248,45 @@ function DiffBufferPair:apply_diff_highlights()
       end
     end
   end
+end
+
+--- Get real (non-filler) lines from a buffer, stripping filler-extmarked lines.
+--- Only works for editable buffers that have filler extmarks set.
+---@param bufnr number Buffer number to extract lines from
+---@return string[] lines Real content lines with fillers removed
+function DiffBufferPair:get_real_lines(bufnr)
+  local all_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  if not self._editable then
+    return all_lines
+  end
+
+  -- Get all filler extmark positions
+  local filler_marks = vim.api.nvim_buf_get_extmarks(bufnr, self._filler_ns, 0, -1, {})
+  local filler_set = {}
+  for _, mark in ipairs(filler_marks) do
+    filler_set[mark[2]] = true -- mark[2] is the 0-indexed line number
+  end
+
+  -- Filter out filler lines
+  local real = {}
+  for i, line in ipairs(all_lines) do
+    if not filler_set[i - 1] then
+      table.insert(real, line)
+    end
+  end
+  return real
+end
+
+--- Check if the right buffer (or any editable buffer) has unsaved changes.
+---@return boolean
+function DiffBufferPair:has_unsaved_changes()
+  if not self._editable then
+    return false
+  end
+  if self.right_bufnr and vim.api.nvim_buf_is_valid(self.right_bufnr) then
+    return vim.bo[self.right_bufnr].modified
+  end
+  return false
 end
 
 --- Clean up buffers. Deletes both buffers if they are still valid.

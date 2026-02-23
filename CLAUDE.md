@@ -36,9 +36,10 @@ gitlad.nvim has a **native diff viewer** that replaces the diffview.nvim depende
 | **Status buffer inline diffs** (hunk preview, hunk staging) | gitlad.nvim (existing) |
 | **Full-buffer diff views** (side-by-side, commit diffs, file history) | gitlad.nvim native diff viewer |
 | **PR review diffs** (inline comments, review threads) | gitlad.nvim native diff viewer + forge module (Milestone 5) |
-| **3-way merge conflict resolution** | Planned for Milestone 6 |
+| **3-way staging view** (HEAD/INDEX/WORKTREE) | gitlad.nvim native diff viewer |
+| **3-way merge conflict resolution** (OURS/BASE/THEIRS) | gitlad.nvim native diff viewer |
 
-The native diff viewer opens in a new tab page with a file panel sidebar and two synchronized side-by-side buffers. It supports staged, unstaged, worktree, commit, range, stash, and PR diffs with word-level inline highlighting.
+The native diff viewer opens in a new tab page with a file panel sidebar and synchronized side-by-side buffers (2-pane or 3-pane). It supports staged, unstaged, worktree, commit, range, stash, PR, 3-way staging, and 3-way merge diffs with word-level inline highlighting.
 
 ## Current Status
 
@@ -260,9 +261,12 @@ lua/gitlad/
             ├── hunk.lua      # Hunk parsing, side-by-side alignment
             ├── source.lua    # DiffSpec producers
             ├── content.lua   # File content retrieval + alignment
-            ├── buffer.lua    # Side-by-side buffer pair
-            ├── panel.lua     # File panel sidebar + commit selector
-            └── inline.lua    # Word-level inline diff
+            ├── save.lua          # Save operations (worktree/index)
+            ├── buffer.lua        # Side-by-side buffer pair (2-pane)
+            ├── buffer_triple.lua # Three-way buffer triple (3-pane)
+            ├── three_way.lua     # 3-way alignment algorithm (pure Lua)
+            ├── panel.lua         # File panel sidebar + commit selector
+            └── inline.lua        # Word-level inline diff
 ```
 
 ### Key Patterns
@@ -433,6 +437,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `]c` / `[c` | Next/previous hunk |
 | `<CR>` | Select file (in panel) |
 | `gr` | Refresh |
+| `:w` | Save edits (staged/unstaged/worktree/3-way only) |
 | `C-n` / `C-p` | Next/previous commit (PR mode) |
 | `]t` / `[t` | Next/previous review thread (PR mode) |
 | `<Tab>` | Toggle review thread expand/collapse |
@@ -440,6 +445,8 @@ This makes the plugin more comfortable for vim/evil users.
 | `r` | Reply to review thread at cursor |
 | `R` | Submit review (approve/request changes/comment) |
 | `P` | Toggle pending review mode |
+
+**Editable diff buffers:** In staged, unstaged, worktree, and 3-way diff views, the INDEX and/or WORKTREE buffers are editable. Use `:w` to save changes (staged writes to git index, unstaged/worktree writes to disk). After saving, the view auto-refreshes to re-diff and re-align. Navigating to another file or closing with unsaved changes prompts to save/discard/cancel.
 
 ### Forge Popup Actions
 | Key | Action |
@@ -539,7 +546,7 @@ See **PLAN.md** for the detailed development roadmap. Current focus:
 3. **Milestone 3**: CI checks viewer — check status in PR list, detail, and status buffer (done)
 4. **Milestone 4**: Native diff viewer — replacing diffview.nvim (done)
 5. **Milestone 5**: PR review — inline comments in native diff viewer
-6. **Milestone 6**: Polish — 3-way merge, PR creation, notifications
+6. **Milestone 6**: Polish — 3-way merge (6.1 done), PR creation, notifications
 
 Milestones 1-2 (forge) and Milestone 4 (diff viewer) are independent and can proceed in parallel.
 

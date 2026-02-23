@@ -17,14 +17,6 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ```lua
 {
   "actionshrimp/gitlad.nvim",
-  dependencies = {
-    {
-      -- Fork with 3-way staging support (magit/ediff style).
-      -- The original sindrets/diffview.nvim also works if you prefer.
-      "actionshrimp/diffview.nvim",
-      branch = "3-way-staging",
-    },
-  },
   config = function()
     require("gitlad").setup()
   end,
@@ -42,7 +34,8 @@ Then open any git repo and run `:Gitlad`.
 - **Interactive rebase editor** with pick/reword/edit/squash/fixup/drop
 - **Upstream tracking** - Unpushed/unpulled commits, ahead/behind counts
 - **Git command history** - `$` shows every git command run with output and exit codes
-- **diffview.nvim integration** - Full-buffer diffs and 3-way merge conflict resolution
+- **Native diff viewer** - Side-by-side diffs, editable buffers, 3-way staging/merge views, word-level inline highlights
+- **GitHub integration** - PR list, detail view, inline review comments via `N` popup
 
 ## Performance
 
