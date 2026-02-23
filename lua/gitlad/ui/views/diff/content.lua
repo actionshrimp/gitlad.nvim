@@ -102,7 +102,7 @@ end
 
 --- Return the git ref string needed to retrieve file content for a DiffSource side.
 ---@param source DiffSource The diff source specification
----@param side "left"|"right" Which side of the diff
+---@param side "left"|"mid"|"right" Which side of the diff
 ---@return string ref The git ref to use with get_file_content
 function M.ref_for_source(source, side)
   local source_type = source.type
@@ -179,7 +179,7 @@ function M.ref_for_source(source, side)
     if side == "left" then
       return ":2:" -- OURS
     elseif side == "mid" then
-      return ":1:" -- BASE
+      return "WORKTREE" -- Worktree file with conflict markers
     else
       return ":3:" -- THEIRS
     end

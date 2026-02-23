@@ -165,9 +165,9 @@ function DiffView:_setup_layout_three_way()
   local source_type = self.diff_spec.source.type
   local left_label, mid_label, right_label
   if source_type == "merge" then
-    left_label = " OURS (HEAD)"
-    mid_label = " BASE"
-    right_label = " THEIRS (MERGE_HEAD)"
+    left_label = " OURS"
+    mid_label = " WORKTREE"
+    right_label = " THEIRS"
   else
     left_label = " HEAD"
     mid_label = " INDEX"
@@ -1095,9 +1095,16 @@ function DiffView:_do_save(bufnr)
   if self.three_way and self.buffer_triple then
     local lines = self.buffer_triple:get_real_lines(bufnr)
     if bufnr == self.buffer_triple.mid_bufnr then
-      -- Mid buffer = INDEX
-      save_fn = function(cb)
-        save_mod.save_index(repo_root, path, lines, cb)
+      if source_type == "merge" then
+        -- Merge: mid buffer = WORKTREE (save to disk)
+        save_fn = function(cb)
+          save_mod.save_worktree(repo_root, path, lines, cb)
+        end
+      else
+        -- Three-way staging: mid buffer = INDEX
+        save_fn = function(cb)
+          save_mod.save_index(repo_root, path, lines, cb)
+        end
       end
     elseif bufnr == self.buffer_triple.right_bufnr then
       -- Right buffer = WORKTREE
