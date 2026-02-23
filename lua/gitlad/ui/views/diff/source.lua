@@ -72,6 +72,10 @@ function M._build_title(source, file_pairs)
     return "Diff " .. (source.range or "unknown") .. suffix
   elseif source.type == "stash" then
     return "Stash " .. (source.ref or "unknown") .. suffix
+  elseif source.type == "three_way" then
+    return "3-way HEAD|INDEX|WORKTREE" .. suffix
+  elseif source.type == "merge" then
+    return "3-way OURS|BASE|THEIRS" .. suffix
   elseif source.type == "pr" then
     local pr_info = source.pr_info
     if not pr_info then
@@ -232,6 +236,239 @@ function M.produce_pr(repo_root, pr_info, selected_index, cb)
     selected_commit = selected_index,
   }
   run_diff(source, args, repo_root, cb)
+end
+
+--- Produce a DiffSpec for a 3-way staging view (HEAD|INDEX|WORKTREE).
+--- Runs `git diff --cached` and `git diff` in parallel, merges results.
+---@param repo_root string Repository root path
+---@param cb fun(diff_spec: DiffSpec|nil, err: string|nil) Callback
+function M.produce_three_way(repo_root, cb)
+  local three_way = require("gitlad.ui.views.diff.three_way")
+  local staged_result, unstaged_result
+  local done_count = 0
+
+  local function on_both_done()
+    done_count = done_count + 1
+    if done_count < 2 then
+      return
+    end
+
+    -- Check for errors
+    if staged_result.err then
+      cb(nil, "Staged diff failed: " .. staged_result.err)
+      return
+    end
+    if unstaged_result.err then
+      cb(nil, "Unstaged diff failed: " .. unstaged_result.err)
+      return
+    end
+
+    -- Merge file lists
+    local three_way_files =
+      three_way.merge_file_lists(staged_result.file_pairs, unstaged_result.file_pairs)
+
+    -- Build a combined file_pairs list for the panel (using path, status, stats)
+    local file_pairs = {}
+    for _, tw_file in ipairs(three_way_files) do
+      local status = tw_file.status_staged or tw_file.status_unstaged or "M"
+      table.insert(file_pairs, {
+        old_path = tw_file.path,
+        new_path = tw_file.path,
+        status = status,
+        hunks = {}, -- Not used directly; alignment is via three_way module
+        additions = tw_file.additions,
+        deletions = tw_file.deletions,
+        is_binary = false,
+      })
+    end
+
+    local source = { type = "three_way" }
+    local title = M._build_title(source, file_pairs)
+
+    cb({
+      source = source,
+      file_pairs = file_pairs,
+      title = title,
+      repo_root = repo_root,
+      three_way_files = three_way_files,
+    }, nil)
+  end
+
+  -- Run both diffs in parallel
+  cli.run_async({ "diff", "--cached" }, { cwd = repo_root }, function(result)
+    if result.code ~= 0 then
+      staged_result = { file_pairs = {}, err = table.concat(result.stderr, "\n") }
+    else
+      staged_result = { file_pairs = hunk.parse_unified_diff(result.stdout), err = nil }
+    end
+    on_both_done()
+  end)
+
+  cli.run_async({ "diff" }, { cwd = repo_root }, function(result)
+    if result.code ~= 0 then
+      unstaged_result = { file_pairs = {}, err = table.concat(result.stderr, "\n") }
+    else
+      unstaged_result = { file_pairs = hunk.parse_unified_diff(result.stdout), err = nil }
+    end
+    on_both_done()
+  end)
+end
+
+--- Produce a DiffSpec for a 3-way merge conflict view (OURS|BASE|THEIRS).
+--- Lists conflicted files from `git status --porcelain=v2`, retrieves stage contents,
+--- and computes diffs from BASE.
+---@param repo_root string Repository root path
+---@param cb fun(diff_spec: DiffSpec|nil, err: string|nil) Callback
+function M.produce_merge(repo_root, cb)
+  local three_way = require("gitlad.ui.views.diff.three_way")
+
+  -- Get list of conflicted (unmerged) files from porcelain v2
+  cli.run_async(
+    { "status", "--porcelain=v2" },
+    { cwd = repo_root, internal = true },
+    function(status_result)
+      if status_result.code ~= 0 then
+        cb(nil, "Failed to get git status: " .. table.concat(status_result.stderr, "\n"))
+        return
+      end
+
+      -- Parse unmerged entries (lines starting with "u ")
+      local conflicted_paths = {}
+      for _, line in ipairs(status_result.stdout) do
+        if line:match("^u ") then
+          -- Porcelain v2 unmerged format: u <xy> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
+          local path = line:match("^u %S+ %S+ %S+ %S+ %S+ %S+ %S+ %S+ %S+ (.+)$")
+          if path then
+            table.insert(conflicted_paths, path)
+          end
+        end
+      end
+
+      if #conflicted_paths == 0 then
+        -- No conflicts: return empty diff
+        local source = { type = "merge" }
+        cb({
+          source = source,
+          file_pairs = {},
+          title = M._build_title(source, {}),
+          repo_root = repo_root,
+          three_way_files = {},
+        }, nil)
+        return
+      end
+
+      -- For each conflicted file, run diffs: BASE→OURS and BASE→THEIRS
+      -- BASE = :1:path, OURS = :2:path, THEIRS = :3:path
+      local remaining = #conflicted_paths * 2 -- Two diffs per file
+      local file_diffs = {} -- Indexed by path
+      local had_error = false
+
+      for _, path in ipairs(conflicted_paths) do
+        file_diffs[path] = { ours_pairs = nil, theirs_pairs = nil }
+
+        -- BASE→OURS diff
+        cli.run_async(
+          { "diff", ":1:" .. path, ":2:" .. path },
+          { cwd = repo_root, internal = true },
+          function(result)
+            if had_error then
+              return
+            end
+            if result.code ~= 0 then
+              -- May fail if stage doesn't exist (e.g., added in both)
+              file_diffs[path].ours_pairs = {}
+            else
+              file_diffs[path].ours_pairs = hunk.parse_unified_diff(result.stdout)
+            end
+            remaining = remaining - 1
+            if remaining == 0 then
+              M._finalize_merge(repo_root, conflicted_paths, file_diffs, three_way, cb)
+            end
+          end
+        )
+
+        -- BASE→THEIRS diff
+        cli.run_async(
+          { "diff", ":1:" .. path, ":3:" .. path },
+          { cwd = repo_root, internal = true },
+          function(result)
+            if had_error then
+              return
+            end
+            if result.code ~= 0 then
+              file_diffs[path].theirs_pairs = {}
+            else
+              file_diffs[path].theirs_pairs = hunk.parse_unified_diff(result.stdout)
+            end
+            remaining = remaining - 1
+            if remaining == 0 then
+              M._finalize_merge(repo_root, conflicted_paths, file_diffs, three_way, cb)
+            end
+          end
+        )
+      end
+    end
+  )
+end
+
+--- Finalize merge diff spec from collected per-file diffs.
+---@param repo_root string
+---@param paths string[]
+---@param file_diffs table<string, { ours_pairs: DiffFilePair[], theirs_pairs: DiffFilePair[] }>
+---@param three_way table The three_way module
+---@param cb fun(diff_spec: DiffSpec|nil, err: string|nil)
+function M._finalize_merge(repo_root, paths, file_diffs, three_way, cb)
+  -- Build ThreeWayFileDiff for each conflicted file
+  -- For merge: staged_hunks = BASE→OURS, unstaged_hunks = BASE→THEIRS
+  -- (reusing the same alignment algorithm with BASE as anchor)
+  local three_way_files = {}
+  local file_pairs = {}
+
+  for _, path in ipairs(paths) do
+    local data = file_diffs[path]
+    local ours = data.ours_pairs and data.ours_pairs[1]
+    local theirs = data.theirs_pairs and data.theirs_pairs[1]
+
+    local additions = 0
+    local deletions = 0
+    if ours then
+      additions = additions + ours.additions
+      deletions = deletions + ours.deletions
+    end
+    if theirs then
+      additions = additions + theirs.additions
+      deletions = deletions + theirs.deletions
+    end
+
+    table.insert(three_way_files, {
+      path = path,
+      staged_hunks = ours and ours.hunks or {},
+      unstaged_hunks = theirs and theirs.hunks or {},
+      status_staged = ours and ours.status or nil,
+      status_unstaged = theirs and theirs.status or nil,
+      additions = additions,
+      deletions = deletions,
+    })
+
+    table.insert(file_pairs, {
+      old_path = path,
+      new_path = path,
+      status = "U", -- Unmerged
+      hunks = {},
+      additions = additions,
+      deletions = deletions,
+      is_binary = false,
+    })
+  end
+
+  local source = { type = "merge" }
+  cb({
+    source = source,
+    file_pairs = file_pairs,
+    title = M._build_title(source, file_pairs),
+    repo_root = repo_root,
+    three_way_files = three_way_files,
+  }, nil)
 end
 
 return M

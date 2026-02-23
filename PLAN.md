@@ -348,8 +348,12 @@ Track pending comments in-memory, show with distinct highlight. Submit all as si
 **Goal**: 3-way merge, PR creation workflow, remaining polish.
 **Depends on**: Milestones 1-5.
 
-### 6.1 3-Way Merge View
-Extend native diff viewer to 3-pane: BASE | LOCAL | REMOTE. Replaces `d 3` diffview delegation.
+### 6.1 3-Way Diff View (DONE)
+Native 3-pane diff viewer with two use cases:
+- **3-way staging** (`d 3`): HEAD | INDEX | WORKTREE — see changes through the staging pipeline
+- **3-way merge** (`d m` during merge): OURS | BASE | THEIRS — view merge conflicts
+
+Implementation: `three_way.lua` (pure alignment algorithm), `buffer_triple.lua` (3-pane buffer management), `source.produce_three_way()` / `source.produce_merge()`. All panes are read-only, scrollbound, with word-level inline diff.
 
 ### 6.2 PR Creation Workflow
 `n` in forge popup: prompt title (default: last commit), open body editor, select base branch, `gh pr create`.
