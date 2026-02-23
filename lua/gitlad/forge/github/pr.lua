@@ -77,6 +77,45 @@ function M.get(api_url, token, owner, repo, number, callback)
   end)
 end
 
+--- Search pull requests using GitHub search query
+---@param api_url string GitHub API URL
+---@param token string Auth token
+---@param search_query string GitHub search query string
+---@param limit number Max results to return
+---@param callback fun(prs: ForgePullRequest[]|nil, err: string|nil)
+function M.search(api_url, token, search_query, limit, callback)
+  local variables = {
+    searchQuery = search_query,
+    first = limit,
+  }
+
+  graphql.execute(api_url, token, graphql.queries.pr_search, variables, function(data, err)
+    if err then
+      callback(nil, err)
+      return
+    end
+
+    local prs, parse_err = graphql.parse_pr_search(data)
+    callback(prs, parse_err)
+  end)
+end
+
+--- Get the authenticated user's login
+---@param api_url string GitHub API URL
+---@param token string Auth token
+---@param callback fun(login: string|nil, err: string|nil)
+function M.get_viewer(api_url, token, callback)
+  graphql.execute(api_url, token, graphql.queries.viewer, {}, function(data, err)
+    if err then
+      callback(nil, err)
+      return
+    end
+
+    local login, parse_err = graphql.parse_viewer(data)
+    callback(login, parse_err)
+  end)
+end
+
 --- Get review threads for a pull request
 ---@param api_url string GitHub API URL
 ---@param token string Auth token

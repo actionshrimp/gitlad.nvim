@@ -712,4 +712,172 @@ T["parse_pr_commits()"]["handles missing optional fields with defaults"] = funct
   eq(commits[1].deletions, 0)
 end
 
+-- =============================================================================
+-- queries.viewer
+-- =============================================================================
+
+T["queries"]["viewer query string is defined"] = function()
+  expect.equality(type(graphql.queries.viewer), "string")
+  expect.equality(graphql.queries.viewer:match("viewer") ~= nil, true)
+  expect.equality(graphql.queries.viewer:match("login") ~= nil, true)
+end
+
+-- =============================================================================
+-- parse_viewer
+-- =============================================================================
+
+T["parse_viewer()"] = MiniTest.new_set()
+
+T["parse_viewer()"]["parses fixture data correctly"] = function()
+  local data = load_fixture("viewer.json")
+  local login, err = graphql.parse_viewer(data)
+  eq(err, nil)
+  eq(login, "octocat")
+end
+
+T["parse_viewer()"]["returns error for nil data"] = function()
+  local login, err = graphql.parse_viewer(nil)
+  eq(login, nil)
+  expect.equality(err ~= nil, true)
+end
+
+T["parse_viewer()"]["returns error for GraphQL errors"] = function()
+  local data = {
+    errors = {
+      { message = "Bad credentials" },
+    },
+  }
+  local login, err = graphql.parse_viewer(data)
+  eq(login, nil)
+  expect.equality(err:match("GraphQL error") ~= nil, true)
+  expect.equality(err:match("Bad credentials") ~= nil, true)
+end
+
+T["parse_viewer()"]["returns error for missing viewer"] = function()
+  local data = { data = {} }
+  local login, err = graphql.parse_viewer(data)
+  eq(login, nil)
+  expect.equality(err:match("Viewer not found") ~= nil, true)
+end
+
+T["parse_viewer()"]["returns error for viewer without login"] = function()
+  local data = { data = { viewer = {} } }
+  local login, err = graphql.parse_viewer(data)
+  eq(login, nil)
+  expect.equality(err:match("Viewer not found") ~= nil, true)
+end
+
+-- =============================================================================
+-- queries.pr_search
+-- =============================================================================
+
+T["queries"]["pr_search query string is defined"] = function()
+  expect.equality(type(graphql.queries.pr_search), "string")
+  expect.equality(graphql.queries.pr_search:match("search") ~= nil, true)
+  expect.equality(graphql.queries.pr_search:match("PullRequest") ~= nil, true)
+end
+
+-- =============================================================================
+-- parse_pr_search
+-- =============================================================================
+
+T["parse_pr_search()"] = MiniTest.new_set()
+
+T["parse_pr_search()"]["parses fixture data correctly"] = function()
+  local data = load_fixture("pr_search.json")
+  local prs, err = graphql.parse_pr_search(data)
+  eq(err, nil)
+  eq(#prs, 3)
+
+  -- First PR
+  eq(prs[1].number, 42)
+  eq(prs[1].title, "Fix authentication bug in login flow")
+  eq(prs[1].state, "open")
+  eq(prs[1].draft, false)
+  eq(prs[1].author.login, "octocat")
+  eq(prs[1].head_ref, "fix/auth-bug")
+  eq(prs[1].base_ref, "main")
+  eq(prs[1].review_decision, "APPROVED")
+  eq(#prs[1].labels, 2)
+  eq(prs[1].additions, 10)
+  eq(prs[1].deletions, 3)
+end
+
+T["parse_pr_search()"]["parses draft PR correctly"] = function()
+  local data = load_fixture("pr_search.json")
+  local prs, err = graphql.parse_pr_search(data)
+  eq(err, nil)
+  eq(prs[2].number, 41)
+  eq(prs[2].draft, true)
+end
+
+T["parse_pr_search()"]["returns error for nil data"] = function()
+  local prs, err = graphql.parse_pr_search(nil)
+  eq(prs, nil)
+  expect.equality(err ~= nil, true)
+end
+
+T["parse_pr_search()"]["returns error for GraphQL errors"] = function()
+  local data = {
+    errors = {
+      { message = "Something went wrong" },
+    },
+  }
+  local prs, err = graphql.parse_pr_search(data)
+  eq(prs, nil)
+  expect.equality(err:match("GraphQL error") ~= nil, true)
+end
+
+T["parse_pr_search()"]["returns error for missing search data"] = function()
+  local data = { data = {} }
+  local prs, err = graphql.parse_pr_search(data)
+  eq(prs, nil)
+  expect.equality(err:match("No search data") ~= nil, true)
+end
+
+T["parse_pr_search()"]["handles empty results"] = function()
+  local data = {
+    data = {
+      search = {
+        nodes = {},
+      },
+    },
+  }
+  local prs, err = graphql.parse_pr_search(data)
+  eq(err, nil)
+  eq(#prs, 0)
+end
+
+T["parse_pr_search()"]["skips non-PR nodes"] = function()
+  local data = {
+    data = {
+      search = {
+        nodes = {
+          {
+            number = 42,
+            title = "A real PR",
+            state = "OPEN",
+            isDraft = false,
+            author = { login = "user" },
+            headRefName = "test",
+            baseRefName = "main",
+            labels = { nodes = {} },
+            additions = 0,
+            deletions = 0,
+            createdAt = "",
+            updatedAt = "",
+            url = "",
+          },
+          {}, -- Empty node (e.g. an Issue that doesn't match PullRequest fragment)
+          { title = "An issue without number" }, -- Another non-PR node
+        },
+      },
+    },
+  }
+  local prs, err = graphql.parse_pr_search(data)
+  eq(err, nil)
+  eq(#prs, 1)
+  eq(prs[1].number, 42)
+end
+
 return T
