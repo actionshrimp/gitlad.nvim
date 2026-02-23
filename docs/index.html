@@ -388,8 +388,8 @@
       </div>
       <div class="card">
         <span class="icon">&#128279;</span>
-        <h3>diffview.nvim integration</h3>
-        <p>Full-buffer diffs, side-by-side views, and 3-way merge conflict resolution delegated to diffview.nvim.</p>
+        <h3>Native diff viewer</h3>
+        <p>Built-in side-by-side diffs, editable buffers, 3-way staging and merge views, and word-level inline highlights.</p>
       </div>
     </div>
   </div>
@@ -415,14 +415,6 @@
 <code><span class="comment">-- lua/plugins/gitlad.lua</span>
 <span class="keyword">return</span> {
   <span class="string">"actionshrimp/gitlad.nvim"</span>,
-  dependencies = {
-    <span class="comment">-- Fork with 3-way staging (magit/ediff style).</span>
-    <span class="comment">-- The original sindrets/diffview.nvim also works.</span>
-    {
-      <span class="string">"actionshrimp/diffview.nvim"</span>,
-      branch = <span class="string">"3-way-staging"</span>,
-    },
-  },
   config = <span class="keyword">function</span>()
     <span class="func">require</span>(<span class="string">"gitlad"</span>).<span class="func">setup</span>()
   <span class="keyword">end</span>,

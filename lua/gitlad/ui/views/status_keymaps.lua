@@ -289,7 +289,7 @@ local function setup_keymaps(self)
     self:_goto_prev_section()
   end, "Previous section")
 
-  -- Visit file (RET opens file, or diffview for conflicts)
+  -- Visit file (RET opens file, or merge view for conflicts)
   keymap.set(bufnr, "n", "<CR>", function()
     self:_visit_file()
   end, "Visit file")
