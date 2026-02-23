@@ -154,4 +154,42 @@ T["gutter"]["render"]["returns formatted lineno when data exists"] = function()
   gutter.clear(bufnr)
 end
 
+-- =============================================================================
+-- foldtext tests
+-- =============================================================================
+
+T["gutter"]["foldtext"] = MiniTest.new_set()
+
+T["gutter"]["foldtext"]["module exports foldtext function"] = function()
+  local gutter = require("gitlad.ui.views.diff.gutter")
+  eq(type(gutter.foldtext), "function")
+end
+
+T["gutter"]["foldtext"]["formats fold count correctly"] = function()
+  local gutter = require("gitlad.ui.views.diff.gutter")
+
+  -- Simulate vim.v values for a fold from line 5 to line 14 (10 lines)
+  vim.v.foldstart = 5
+  vim.v.foldend = 14
+  local result = gutter.foldtext()
+  eq(result, "     ···· 10 unchanged lines ····")
+
+  -- Simulate a 2-line fold
+  vim.v.foldstart = 1
+  vim.v.foldend = 2
+  result = gutter.foldtext()
+  eq(result, "     ···· 2 unchanged lines ····")
+end
+
+T["gutter"]["foldtext"]["has 5-char leading space for gutter alignment"] = function()
+  local gutter = require("gitlad.ui.views.diff.gutter")
+
+  vim.v.foldstart = 1
+  vim.v.foldend = 100
+  local result = gutter.foldtext()
+  -- Should start with exactly 5 spaces
+  eq(result:sub(1, 5), "     ")
+  eq(result:sub(6, 6) ~= " ", true)
+end
+
 return T

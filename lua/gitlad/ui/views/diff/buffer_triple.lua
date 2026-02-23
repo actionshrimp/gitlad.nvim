@@ -325,6 +325,36 @@ function DiffBufferTriple:apply_diff_highlights()
   end
 end
 
+--- Apply folds to all three windows to hide large context regions between changes.
+--- Uses three_way.compute_fold_ranges() to determine which regions to fold.
+---@param line_map ThreeWayLineInfo[] Line metadata from alignment
+---@param context_lines? number Lines of context around changes (default 3)
+function DiffBufferTriple:apply_folds(line_map, context_lines)
+  local three_way = require("gitlad.ui.views.diff.three_way")
+  local fold_ranges = three_way.compute_fold_ranges(line_map, context_lines)
+
+  if #fold_ranges == 0 then
+    return
+  end
+
+  -- Apply folds in all three windows
+  for _, winnr in ipairs({ self.left_winnr, self.mid_winnr, self.right_winnr }) do
+    if vim.api.nvim_win_is_valid(winnr) then
+      vim.api.nvim_win_call(winnr, function()
+        -- Set foldtext before creating folds
+        vim.wo[winnr].foldtext = 'v:lua.require("gitlad.ui.views.diff.gutter").foldtext()'
+        vim.wo[winnr].foldenable = true
+        -- Clear existing folds
+        vim.cmd("normal! zE")
+        -- Create folds for each range
+        for _, range in ipairs(fold_ranges) do
+          vim.cmd(range[1] .. "," .. range[2] .. "fold")
+        end
+      end)
+    end
+  end
+end
+
 --- Get real (non-filler) lines from a buffer, stripping filler-extmarked lines.
 --- Only works for editable buffers that have filler extmarks set.
 ---@param bufnr number Buffer number to extract lines from

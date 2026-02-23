@@ -291,6 +291,7 @@ function DiffView:select_file(index)
     if three_way_files and three_way_files[index] then
       local aligned = three_way_mod.align_three_way(three_way_files[index])
       self.buffer_triple:set_content(aligned, file_pairs[index].new_path)
+      self.buffer_triple:apply_folds(aligned.line_map)
     end
   else
     -- 2-pane mode: use standard alignment

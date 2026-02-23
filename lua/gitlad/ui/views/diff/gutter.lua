@@ -48,4 +48,13 @@ function M.render()
   return M._format_lineno(nil)
 end
 
+--- Foldtext function for diff view folds.
+--- Displays a centered indicator showing how many unchanged lines are folded.
+--- Leading spaces (5 chars) align with the statuscolumn gutter width.
+---@return string
+function M.foldtext()
+  local count = vim.v.foldend - vim.v.foldstart + 1
+  return string.format("     ···· %d unchanged lines ····", count)
+end
+
 return M
