@@ -15,6 +15,7 @@ local buffer_mod = require("gitlad.ui.views.diff.buffer")
 local panel_mod = require("gitlad.ui.views.diff.panel")
 local content = require("gitlad.ui.views.diff.content")
 local save_mod = require("gitlad.ui.views.diff.save")
+local cli = require("gitlad.git.cli")
 local keymap = require("gitlad.utils.keymap")
 
 --- Check if a source type supports editable buffers.
@@ -1075,7 +1076,45 @@ function DiffView:_setup_keymaps()
     keymap.set(bufnr, "n", "P", function()
       self:toggle_pending_mode()
     end, "Toggle pending review mode")
+
+    -- Merge-specific: stage resolved file
+    if self.diff_spec.source.type == "merge" then
+      keymap.set(bufnr, "n", "s", function()
+        self:stage_current_file()
+      end, "Stage resolved file")
+    end
   end
+end
+
+--- Stage the currently displayed file (for merge conflict resolution).
+--- Runs `git add -- <path>` and refreshes the view.
+function DiffView:stage_current_file()
+  if self.diff_spec.source.type ~= "merge" then
+    return
+  end
+
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file < 1 or self.selected_file > #file_pairs then
+    return
+  end
+
+  local path = file_pairs[self.selected_file].new_path
+  local repo_root = self.diff_spec.repo_root
+
+  cli.run_async({ "add", "--", path }, { cwd = repo_root }, function(result)
+    vim.schedule(function()
+      if self._closed then
+        return
+      end
+      if result.code ~= 0 then
+        local err = table.concat(result.stderr, "\n")
+        vim.notify("[gitlad] Failed to stage " .. path .. ": " .. err, vim.log.levels.ERROR)
+        return
+      end
+      vim.notify("[gitlad] Staged " .. path, vim.log.levels.INFO)
+      self:refresh()
+    end)
+  end)
 end
 
 --- Handle save for an editable diff buffer.

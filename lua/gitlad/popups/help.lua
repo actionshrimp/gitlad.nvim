@@ -521,6 +521,7 @@ local function create_sections(status_buffer)
         { key = "r", desc = "Reply to thread" },
         { key = "R", desc = "Submit review" },
         { key = "P", desc = "Toggle pending mode" },
+        { key = "s", desc = "Stage file (merge)" },
       },
     },
 
