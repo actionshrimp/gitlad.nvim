@@ -168,6 +168,11 @@ function OutputViewer:complete(exit_code)
         self:close()
       end)
     )
+  else
+    -- Focus the window on failure so user can dismiss with 'q'
+    if self._winnr and vim.api.nvim_win_is_valid(self._winnr) then
+      vim.api.nvim_set_current_win(self._winnr)
+    end
   end
 end
 
