@@ -15,6 +15,7 @@ local buffer_mod = require("gitlad.ui.views.diff.buffer")
 local panel_mod = require("gitlad.ui.views.diff.panel")
 local content = require("gitlad.ui.views.diff.content")
 local save_mod = require("gitlad.ui.views.diff.save")
+local cli = require("gitlad.git.cli")
 local keymap = require("gitlad.utils.keymap")
 
 --- Check if a source type supports editable buffers.
@@ -165,9 +166,9 @@ function DiffView:_setup_layout_three_way()
   local source_type = self.diff_spec.source.type
   local left_label, mid_label, right_label
   if source_type == "merge" then
-    left_label = " OURS (HEAD)"
-    mid_label = " BASE"
-    right_label = " THEIRS (MERGE_HEAD)"
+    left_label = " OURS"
+    mid_label = " WORKTREE"
+    right_label = " THEIRS"
   else
     left_label = " HEAD"
     mid_label = " INDEX"
@@ -189,10 +190,15 @@ function DiffView:_setup_layout_three_way()
     end,
   })
 
-  -- Create the buffer triple (editable for three_way, not for merge)
-  local editable = is_editable_source(self.diff_spec.source.type)
+  -- Create the buffer triple with appropriate editability mode
+  local editable_mode = "none"
+  if source_type == "three_way" then
+    editable_mode = "mid_and_right"
+  elseif source_type == "merge" then
+    editable_mode = "mid_only"
+  end
   self.buffer_triple =
-    buffer_triple_mod.new(left_winnr, mid_winnr, right_winnr, { editable = editable })
+    buffer_triple_mod.new(left_winnr, mid_winnr, right_winnr, { editable = editable_mode })
 
   -- Set up keymaps on all 3 diff buffers
   self:_setup_keymaps()
@@ -987,22 +993,24 @@ function DiffView:_setup_keymaps()
   end
 
   -- Set up BufWriteCmd for editable buffers
-  local editable = is_editable_source(self.diff_spec.source.type)
-  if editable then
-    local editable_buffers = {}
-    if self.three_way and self.buffer_triple then
+  local editable_buffers = {}
+  if self.three_way and self.buffer_triple then
+    local mode = self.buffer_triple._editable
+    if mode == "mid_only" then
+      editable_buffers = { self.buffer_triple.mid_bufnr }
+    elseif mode == "mid_and_right" then
       editable_buffers = { self.buffer_triple.mid_bufnr, self.buffer_triple.right_bufnr }
-    elseif self.buffer_pair then
-      editable_buffers = { self.buffer_pair.right_bufnr }
     end
-    for _, ebuf in ipairs(editable_buffers) do
-      vim.api.nvim_create_autocmd("BufWriteCmd", {
-        buffer = ebuf,
-        callback = function()
-          self:_do_save(ebuf)
-        end,
-      })
-    end
+  elseif self.buffer_pair and is_editable_source(self.diff_spec.source.type) then
+    editable_buffers = { self.buffer_pair.right_bufnr }
+  end
+  for _, ebuf in ipairs(editable_buffers) do
+    vim.api.nvim_create_autocmd("BufWriteCmd", {
+      buffer = ebuf,
+      callback = function()
+        self:_do_save(ebuf)
+      end,
+    })
   end
 
   for _, bufnr in ipairs(buffers) do
@@ -1068,7 +1076,45 @@ function DiffView:_setup_keymaps()
     keymap.set(bufnr, "n", "P", function()
       self:toggle_pending_mode()
     end, "Toggle pending review mode")
+
+    -- Merge-specific: stage resolved file
+    if self.diff_spec.source.type == "merge" then
+      keymap.set(bufnr, "n", "s", function()
+        self:stage_current_file()
+      end, "Stage resolved file")
+    end
   end
+end
+
+--- Stage the currently displayed file (for merge conflict resolution).
+--- Runs `git add -- <path>` and refreshes the view.
+function DiffView:stage_current_file()
+  if self.diff_spec.source.type ~= "merge" then
+    return
+  end
+
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file < 1 or self.selected_file > #file_pairs then
+    return
+  end
+
+  local path = file_pairs[self.selected_file].new_path
+  local repo_root = self.diff_spec.repo_root
+
+  cli.run_async({ "add", "--", path }, { cwd = repo_root }, function(result)
+    vim.schedule(function()
+      if self._closed then
+        return
+      end
+      if result.code ~= 0 then
+        local err = table.concat(result.stderr, "\n")
+        vim.notify("[gitlad] Failed to stage " .. path .. ": " .. err, vim.log.levels.ERROR)
+        return
+      end
+      vim.notify("[gitlad] Staged " .. path, vim.log.levels.INFO)
+      self:refresh()
+    end)
+  end)
 end
 
 --- Handle save for an editable diff buffer.
@@ -1088,9 +1134,16 @@ function DiffView:_do_save(bufnr)
   if self.three_way and self.buffer_triple then
     local lines = self.buffer_triple:get_real_lines(bufnr)
     if bufnr == self.buffer_triple.mid_bufnr then
-      -- Mid buffer = INDEX
-      save_fn = function(cb)
-        save_mod.save_index(repo_root, path, lines, cb)
+      if source_type == "merge" then
+        -- Merge: mid buffer = WORKTREE (save to disk)
+        save_fn = function(cb)
+          save_mod.save_worktree(repo_root, path, lines, cb)
+        end
+      else
+        -- Three-way staging: mid buffer = INDEX
+        save_fn = function(cb)
+          save_mod.save_index(repo_root, path, lines, cb)
+        end
       end
     elseif bufnr == self.buffer_triple.right_bufnr then
       -- Right buffer = WORKTREE

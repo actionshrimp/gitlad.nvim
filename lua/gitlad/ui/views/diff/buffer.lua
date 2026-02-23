@@ -30,7 +30,7 @@ M._hl_for_type = {
 }
 
 ---@class DiffBufferOpts
----@field editable? boolean Make the right buffer editable (default false)
+---@field editable? boolean|"none"|"mid_only"|"mid_and_right" Make buffers editable (default false)
 
 ---@class DiffBufferPair
 ---@field left_bufnr number Left buffer number

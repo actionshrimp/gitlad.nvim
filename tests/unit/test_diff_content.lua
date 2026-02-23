@@ -611,4 +611,18 @@ T["ref_for_source"]["pr: falls back to ref names when OIDs missing"] = function(
   eq(content.ref_for_source(source, "right"), "feature")
 end
 
+T["ref_for_source"]["three_way: left is HEAD, mid is INDEX, right is WORKTREE"] = function()
+  local source = { type = "three_way" }
+  eq(content.ref_for_source(source, "left"), "HEAD")
+  eq(content.ref_for_source(source, "mid"), "INDEX")
+  eq(content.ref_for_source(source, "right"), "WORKTREE")
+end
+
+T["ref_for_source"]["merge: left is OURS, mid is WORKTREE, right is THEIRS"] = function()
+  local source = { type = "merge" }
+  eq(content.ref_for_source(source, "left"), ":2:")
+  eq(content.ref_for_source(source, "mid"), "WORKTREE")
+  eq(content.ref_for_source(source, "right"), ":3:")
+end
+
 return T

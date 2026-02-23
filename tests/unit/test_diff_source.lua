@@ -485,4 +485,132 @@ T["integration"]["PR single commit builds correct args and title"] = function()
   eq(spec.title, "PR #42: Add tests (ddd4444) (1 file)")
 end
 
+-- =============================================================================
+-- _build_title for merge source
+-- =============================================================================
+
+T["_build_title"]["builds merge title with WORKTREE label"] = function()
+  local s = { type = "merge" }
+  local files = { {}, {} }
+  eq(source._build_title(s, files), "3-way OURS|WORKTREE|THEIRS (2 files)")
+end
+
+T["_build_title"]["builds merge title with empty diff"] = function()
+  local s = { type = "merge" }
+  eq(source._build_title(s, {}), "3-way OURS|WORKTREE|THEIRS (empty)")
+end
+
+-- =============================================================================
+-- _finalize_merge
+-- =============================================================================
+
+T["_finalize_merge"] = MiniTest.new_set()
+
+T["_finalize_merge"]["builds three_way_files and file_pairs from ours/theirs diffs"] = function()
+  local paths = { "file.lua" }
+  local file_diffs = {
+    ["file.lua"] = {
+      ours_pairs = {
+        {
+          old_path = "a/file.lua",
+          new_path = "b/file.lua",
+          status = "M",
+          hunks = {
+            {
+              header = { old_start = 1, old_count = 3, new_start = 1, new_count = 3 },
+              pairs = {},
+            },
+          },
+          additions = 5,
+          deletions = 2,
+          is_binary = false,
+        },
+      },
+      theirs_pairs = {
+        {
+          old_path = "a/file.lua",
+          new_path = "b/file.lua",
+          status = "M",
+          hunks = {
+            {
+              header = { old_start = 1, old_count = 3, new_start = 1, new_count = 3 },
+              pairs = {},
+            },
+          },
+          additions = 3,
+          deletions = 1,
+          is_binary = false,
+        },
+      },
+    },
+  }
+
+  local result_spec
+  source._finalize_merge("/repo", paths, file_diffs, function(spec, err)
+    eq(err, nil)
+    result_spec = spec
+  end)
+
+  eq(result_spec ~= nil, true)
+  eq(result_spec.source.type, "merge")
+  eq(#result_spec.file_pairs, 1)
+  eq(result_spec.file_pairs[1].status, "U")
+  eq(result_spec.file_pairs[1].additions, 8) -- 5 + 3
+  eq(result_spec.file_pairs[1].deletions, 3) -- 2 + 1
+  eq(#result_spec.three_way_files, 1)
+  eq(result_spec.three_way_files[1].path, "file.lua")
+  eq(#result_spec.three_way_files[1].staged_hunks, 1)
+  eq(#result_spec.three_way_files[1].unstaged_hunks, 1)
+end
+
+T["_finalize_merge"]["handles missing ours (no :2: stage)"] = function()
+  local paths = { "new_file.lua" }
+  local file_diffs = {
+    ["new_file.lua"] = {
+      ours_pairs = {},
+      theirs_pairs = {
+        {
+          old_path = "a/new_file.lua",
+          new_path = "b/new_file.lua",
+          status = "A",
+          hunks = {
+            { header = { old_start = 0, old_count = 0, new_start = 1, new_count = 3 }, pairs = {} },
+          },
+          additions = 3,
+          deletions = 0,
+          is_binary = false,
+        },
+      },
+    },
+  }
+
+  local result_spec
+  source._finalize_merge("/repo", paths, file_diffs, function(spec, err)
+    eq(err, nil)
+    result_spec = spec
+  end)
+
+  eq(#result_spec.three_way_files, 1)
+  eq(#result_spec.three_way_files[1].staged_hunks, 0) -- No ours hunks
+  eq(#result_spec.three_way_files[1].unstaged_hunks, 1) -- Has theirs hunks
+end
+
+T["_finalize_merge"]["handles multiple conflicted files"] = function()
+  local paths = { "a.lua", "b.lua" }
+  local file_diffs = {
+    ["a.lua"] = { ours_pairs = {}, theirs_pairs = {} },
+    ["b.lua"] = { ours_pairs = {}, theirs_pairs = {} },
+  }
+
+  local result_spec
+  source._finalize_merge("/repo", paths, file_diffs, function(spec, err)
+    eq(err, nil)
+    result_spec = spec
+  end)
+
+  eq(#result_spec.file_pairs, 2)
+  eq(result_spec.file_pairs[1].new_path, "a.lua")
+  eq(result_spec.file_pairs[2].new_path, "b.lua")
+end
+
 return T

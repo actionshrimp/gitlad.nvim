@@ -52,7 +52,7 @@ M._hl_for_type = {
 ---@field file_path string Current file path (for treesitter)
 ---@field _ns number Namespace for diff highlights
 ---@field _filler_ns number Namespace for filler line extmarks (editable mode)
----@field _editable boolean Whether mid/right buffers are editable
+---@field _editable "none"|"mid_only"|"mid_and_right" Editability mode
 local DiffBufferTriple = {}
 DiffBufferTriple.__index = DiffBufferTriple
 
@@ -77,7 +77,19 @@ function M.new(left_winnr, mid_winnr, right_winnr, buf_opts)
   self.file_path = ""
   self._ns = vim.api.nvim_create_namespace("gitlad_diff_three_way")
   self._filler_ns = vim.api.nvim_create_namespace("gitlad_diff_filler_triple")
-  self._editable = buf_opts.editable or false
+
+  -- Normalize editable: boolean true → "mid_and_right", false/nil → "none"
+  local editable = buf_opts.editable
+  if editable == true then
+    self._editable = "mid_and_right"
+  elseif editable == false or editable == nil then
+    self._editable = "none"
+  else
+    self._editable = editable --[[@as "none"|"mid_only"|"mid_and_right"]]
+  end
+
+  local mid_editable = self._editable == "mid_only" or self._editable == "mid_and_right"
+  local right_editable = self._editable == "mid_and_right"
 
   -- Create left scratch buffer (always read-only)
   self.left_bufnr = vim.api.nvim_create_buf(false, true)
@@ -86,9 +98,9 @@ function M.new(left_winnr, mid_winnr, right_winnr, buf_opts)
   vim.bo[self.left_bufnr].swapfile = false
   vim.bo[self.left_bufnr].modifiable = false
 
-  -- Create mid buffer (INDEX — editable in three_way mode)
+  -- Create mid buffer (editable in mid_only and mid_and_right modes)
   self.mid_bufnr = vim.api.nvim_create_buf(false, true)
-  if self._editable then
+  if mid_editable then
     vim.bo[self.mid_bufnr].buftype = "acwrite"
     vim.bo[self.mid_bufnr].swapfile = false
     vim.bo[self.mid_bufnr].modifiable = true
@@ -99,9 +111,9 @@ function M.new(left_winnr, mid_winnr, right_winnr, buf_opts)
     vim.bo[self.mid_bufnr].modifiable = false
   end
 
-  -- Create right buffer (WORKTREE — editable in three_way mode)
+  -- Create right buffer (editable only in mid_and_right mode)
   self.right_bufnr = vim.api.nvim_create_buf(false, true)
-  if self._editable then
+  if right_editable then
     vim.bo[self.right_bufnr].buftype = "acwrite"
     vim.bo[self.right_bufnr].swapfile = false
     vim.bo[self.right_bufnr].modifiable = true
@@ -206,29 +218,43 @@ function DiffBufferTriple:set_content(aligned, file_path)
   -- Re-lock left buffer (always read-only)
   vim.bo[self.left_bufnr].modifiable = false
 
-  if self._editable then
-    -- Track filler lines with extmarks on mid and right buffers
+  local mid_editable = self._editable == "mid_only" or self._editable == "mid_and_right"
+  local right_editable = self._editable == "mid_and_right"
+
+  if mid_editable then
+    -- Track filler lines with extmarks on mid buffer
     vim.api.nvim_buf_clear_namespace(self.mid_bufnr, self._filler_ns, 0, -1)
-    vim.api.nvim_buf_clear_namespace(self.right_bufnr, self._filler_ns, 0, -1)
     for i, info in ipairs(self.line_map) do
       if info.mid_type == "filler" then
         vim.api.nvim_buf_set_extmark(self.mid_bufnr, self._filler_ns, i - 1, 0, {})
       end
+    end
+
+    -- Set buffer name for acwrite
+    local mid_label = self._editable == "mid_only" and "worktree" or "index"
+    vim.api.nvim_buf_set_name(self.mid_bufnr, "gitlad://diff/" .. mid_label .. "/" .. file_path)
+
+    -- Mark as unmodified after loading content
+    vim.bo[self.mid_bufnr].modified = false
+  else
+    vim.bo[self.mid_bufnr].modifiable = false
+  end
+
+  if right_editable then
+    -- Track filler lines with extmarks on right buffer
+    vim.api.nvim_buf_clear_namespace(self.right_bufnr, self._filler_ns, 0, -1)
+    for i, info in ipairs(self.line_map) do
       if info.right_type == "filler" then
         vim.api.nvim_buf_set_extmark(self.right_bufnr, self._filler_ns, i - 1, 0, {})
       end
     end
 
-    -- Set buffer names for acwrite
-    vim.api.nvim_buf_set_name(self.mid_bufnr, "gitlad://diff/index/" .. file_path)
+    -- Set buffer name for acwrite
     vim.api.nvim_buf_set_name(self.right_bufnr, "gitlad://diff/worktree/" .. file_path)
 
     -- Mark as unmodified after loading content
-    vim.bo[self.mid_bufnr].modified = false
     vim.bo[self.right_bufnr].modified = false
   else
-    -- Re-lock mid and right buffers
-    vim.bo[self.mid_bufnr].modifiable = false
     vim.bo[self.right_bufnr].modifiable = false
   end
 
@@ -361,7 +387,12 @@ end
 ---@return string[] lines Real content lines with fillers removed
 function DiffBufferTriple:get_real_lines(bufnr)
   local all_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  if not self._editable then
+
+  -- Only strip fillers for editable buffers that have extmarks
+  local is_editable_buf = (
+    bufnr == self.mid_bufnr and (self._editable == "mid_only" or self._editable == "mid_and_right")
+  ) or (bufnr == self.right_bufnr and self._editable == "mid_and_right")
+  if not is_editable_buf then
     return all_lines
   end
 
@@ -385,18 +416,22 @@ end
 --- Check if any editable buffer (mid or right) has unsaved changes.
 ---@return boolean
 function DiffBufferTriple:has_unsaved_changes()
-  if not self._editable then
+  if self._editable == "none" then
     return false
   end
+  local mid_editable = self._editable == "mid_only" or self._editable == "mid_and_right"
+  local right_editable = self._editable == "mid_and_right"
   if
-    self.mid_bufnr
+    mid_editable
+    and self.mid_bufnr
     and vim.api.nvim_buf_is_valid(self.mid_bufnr)
     and vim.bo[self.mid_bufnr].modified
   then
     return true
   end
   if
-    self.right_bufnr
+    right_editable
+    and self.right_bufnr
     and vim.api.nvim_buf_is_valid(self.right_bufnr)
     and vim.bo[self.right_bufnr].modified
   then
