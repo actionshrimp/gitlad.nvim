@@ -106,6 +106,40 @@ T["output viewer"]["complete is idempotent"] = function()
   viewer:close()
 end
 
+T["output viewer"]["focuses window on failure"] = function()
+  local output = require("gitlad.ui.views.output")
+
+  -- Open a viewer without focus (simulating lazy mode behavior)
+  local viewer = output.open({ title = "Test", focus = false })
+  local before_win = vim.api.nvim_get_current_win()
+
+  -- Complete with failure
+  viewer:complete(1)
+
+  -- Current window should now be the output viewer
+  local after_win = vim.api.nvim_get_current_win()
+  eq(after_win ~= before_win, true)
+
+  viewer:close()
+end
+
+T["output viewer"]["does not focus window on success"] = function()
+  local output = require("gitlad.ui.views.output")
+
+  -- Open a viewer without focus
+  local viewer = output.open({ title = "Test", focus = false })
+  local before_win = vim.api.nvim_get_current_win()
+
+  -- Complete with success
+  viewer:complete(0)
+
+  -- Current window should NOT have changed (auto-close handles it)
+  local after_win = vim.api.nvim_get_current_win()
+  eq(after_win, before_win)
+
+  viewer:close()
+end
+
 T["output viewer"]["uses default title when not provided"] = function()
   local output = require("gitlad.ui.views.output")
   local viewer = output.open({})
