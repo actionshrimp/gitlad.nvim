@@ -9,85 +9,24 @@ local M = {}
 -- Import shared helper
 local status_staging = require("gitlad.ui.views.status_staging")
 local join_path = status_staging.join_path
-local has_conflict_markers = status_staging._has_conflict_markers
 
 -- Import diff cache key helper
 local status_render = require("gitlad.ui.views.status_render")
 local diff_cache_key = status_render.diff_cache_key
 
---- Open diffview for merge conflict resolution
+--- Open native 3-way merge viewer for conflict resolution
 ---@param repo_root string Repository root path
 ---@param file_path? string Optional specific file to focus on
----@param repo_state? RepoState Repository state to refresh when diffview closes
-local function open_diffview_merge(repo_root, file_path, repo_state)
-  local ok, diffview = pcall(require, "diffview")
-  if ok then
-    -- Capture list of conflicted files before opening diffview
-    local conflicted_files = {}
-    if repo_state and repo_state.status and repo_state.status.conflicted then
-      for _, entry in ipairs(repo_state.status.conflicted) do
-        table.insert(conflicted_files, entry.path)
-      end
-    end
-
-    -- Set up autocommand to check resolved files when diffview closes
-    if repo_state then
-      local group = vim.api.nvim_create_augroup("GitladDiffviewRefresh", { clear = true })
-      vim.api.nvim_create_autocmd("User", {
-        group = group,
-        pattern = "DiffviewViewClosed",
-        once = true,
-        callback = function()
-          vim.schedule(function()
-            -- Check each previously conflicted file for resolution
-            local resolved_files = {}
-            for _, path in ipairs(conflicted_files) do
-              local full_path = join_path(repo_root, path)
-              if not has_conflict_markers(full_path) then
-                table.insert(resolved_files, { path = path, section = "conflicted" })
-              end
-            end
-
-            -- Auto-stage resolved files
-            if #resolved_files > 0 then
-              repo_state:stage_files(resolved_files, function(success)
-                if success then
-                  local msg = #resolved_files == 1
-                      and string.format("Staged resolved file: %s", resolved_files[1].path)
-                    or string.format("Staged %d resolved files", #resolved_files)
-                  vim.notify("[gitlad] " .. msg, vim.log.levels.INFO)
-                end
-                -- Re-open status view (refresh happens via stage_files)
-                local status_view = require("gitlad.ui.views.status")
-                status_view.open()
-              end)
-            else
-              -- No files resolved, just refresh and re-open
-              repo_state:refresh_status(true)
-              local status_view = require("gitlad.ui.views.status")
-              status_view.open()
-            end
-          end)
-        end,
-      })
-    end
-
-    -- Open diffview which shows merge view when in merge state
-    diffview.open({})
+---@param repo_state? RepoState Repository state to refresh when diff view closes
+local function open_merge_view(repo_root, file_path, repo_state)
+  local diff_popup = require("gitlad.popups.diff")
+  if repo_state then
+    diff_popup._diff_merge_3way(repo_state)
   else
     -- Fallback: just open the file with conflict markers
     if file_path then
       local full_path = join_path(repo_root, file_path)
       vim.cmd("edit " .. vim.fn.fnameescape(full_path))
-      vim.notify(
-        "[gitlad] diffview.nvim not installed. Opening file with conflict markers.",
-        vim.log.levels.INFO
-      )
-    else
-      vim.notify(
-        "[gitlad] diffview.nvim not installed. Install with: { 'sindrets/diffview.nvim' }",
-        vim.log.levels.WARN
-      )
     end
   end
 end
@@ -242,7 +181,7 @@ local function visit_file(self)
     -- For conflicted files, open diffview merge tool instead of the raw file
     if section == "conflicted" then
       self:close()
-      open_diffview_merge(self.repo_state.repo_root, path, self.repo_state)
+      open_merge_view(self.repo_state.repo_root, path, self.repo_state)
       return
     end
 

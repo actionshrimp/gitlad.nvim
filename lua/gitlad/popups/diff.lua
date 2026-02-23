@@ -1,17 +1,12 @@
 ---@mod gitlad.popups.diff Diff popup
 ---@brief [[
---- Transient-style diff popup with configurable viewer backend.
+--- Transient-style diff popup with built-in side-by-side diff viewer.
 --- Context-aware: adapts actions based on cursor position (file vs commit).
----
---- Supports two viewers:
----   "native"   — built-in side-by-side diff viewer (default)
----   "diffview" — delegates to diffview.nvim
 ---@brief ]]
 
 local M = {}
 
 local popup = require("gitlad.ui.popup")
-local config = require("gitlad.config")
 
 ---@class DiffContext
 ---@field file_path? string File under cursor (if any)
@@ -22,44 +17,6 @@ local config = require("gitlad.config")
 ---@field base_ref? string Base ref being compared against (from refs buffer)
 ---@field ref_upstream? string Upstream tracking ref for the ref under cursor (e.g., origin/feature)
 ---@field current_upstream? string Upstream of the current (HEAD) branch (e.g., origin/main)
-
---- Check whether to use the native diff viewer
----@return boolean
-local function use_native()
-  return config.get().diff.viewer == "native"
-end
-
---- Check if diffview.nvim is available
----@return boolean has_diffview
----@return table|nil diffview The diffview module if available
-local function check_diffview()
-  local ok, diffview = pcall(require, "diffview")
-  return ok, ok and diffview or nil
-end
-
---- Open diffview with args, or show fallback
----@param args string[] Arguments to pass to diffview.open()
----@param fallback_cmd? string Fallback git command if diffview not available
-local function open_diffview(args, fallback_cmd)
-  local has_diffview, diffview = check_diffview()
-
-  if has_diffview then
-    diffview.open(args)
-  else
-    -- Fallback: show notification with install hint
-    local msg = "[gitlad] diffview.nvim not installed. "
-    if fallback_cmd then
-      msg = msg .. "Showing in terminal..."
-      vim.notify(msg, vim.log.levels.WARN)
-      vim.cmd("botright split")
-      vim.cmd("terminal " .. fallback_cmd)
-      vim.cmd("startinsert")
-    else
-      msg = msg .. "Install with: { 'sindrets/diffview.nvim' }"
-      vim.notify(msg, vim.log.levels.WARN)
-    end
-  end
-end
 
 --- Open the native diff viewer with the given DiffSpec
 ---@param spec DiffSpec|nil The diff specification
@@ -78,34 +35,22 @@ end
 --- Diff staged changes (index vs HEAD)
 ---@param repo_state RepoState
 function M._diff_staged(repo_state)
-  if use_native() then
-    local source = require("gitlad.ui.views.diff.source")
-    source.produce_staged(repo_state.repo_root, open_native)
-  else
-    open_diffview({ "--cached" }, "git diff --cached")
-  end
+  local source = require("gitlad.ui.views.diff.source")
+  source.produce_staged(repo_state.repo_root, open_native)
 end
 
 --- Diff unstaged changes (working tree vs index)
 ---@param repo_state RepoState
 function M._diff_unstaged(repo_state)
-  if use_native() then
-    local source = require("gitlad.ui.views.diff.source")
-    source.produce_unstaged(repo_state.repo_root, open_native)
-  else
-    open_diffview({}, "git diff")
-  end
+  local source = require("gitlad.ui.views.diff.source")
+  source.produce_unstaged(repo_state.repo_root, open_native)
 end
 
 --- Diff worktree (working tree vs HEAD)
 ---@param repo_state RepoState
 function M._diff_worktree(repo_state)
-  if use_native() then
-    local source = require("gitlad.ui.views.diff.source")
-    source.produce_worktree(repo_state.repo_root, open_native)
-  else
-    open_diffview({ "HEAD" }, "git diff HEAD")
-  end
+  local source = require("gitlad.ui.views.diff.source")
+  source.produce_worktree(repo_state.repo_root, open_native)
 end
 
 --- Show commit diff
@@ -116,12 +61,8 @@ function M._diff_commit(repo_state, commit)
     vim.notify("[gitlad] No commit under cursor", vim.log.levels.WARN)
     return
   end
-  if use_native() then
-    local source = require("gitlad.ui.views.diff.source")
-    source.produce_commit(repo_state.repo_root, commit.hash, open_native)
-  else
-    open_diffview({ commit.hash .. "^!" }, "git show " .. commit.hash)
-  end
+  local source = require("gitlad.ui.views.diff.source")
+  source.produce_commit(repo_state.repo_root, commit.hash, open_native)
 end
 
 --- Show stash diff
@@ -132,12 +73,8 @@ function M._diff_stash(repo_state, stash)
     vim.notify("[gitlad] No stash under cursor", vim.log.levels.WARN)
     return
   end
-  if use_native() then
-    local source = require("gitlad.ui.views.diff.source")
-    source.produce_stash(repo_state.repo_root, stash.ref, open_native)
-  else
-    open_diffview({ stash.ref .. "^!" }, "git stash show -p " .. stash.ref)
-  end
+  local source = require("gitlad.ui.views.diff.source")
+  source.produce_stash(repo_state.repo_root, stash.ref, open_native)
 end
 
 --- Compute the default range expression based on context.
@@ -183,12 +120,8 @@ function M._diff_range(repo_state, context)
     if not input or input == "" then
       return
     end
-    if use_native() then
-      local source = require("gitlad.ui.views.diff.source")
-      source.produce_range(repo_state.repo_root, input, open_native)
-    else
-      open_diffview({ input }, "git diff " .. input)
-    end
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_range(repo_state.repo_root, input, open_native)
   end)
 end
 
@@ -214,12 +147,8 @@ function M._diff_upstream(repo_state, context)
   end
 
   local range = upstream .. "..." .. context.ref
-  if use_native() then
-    local source = require("gitlad.ui.views.diff.source")
-    source.produce_range(repo_state.repo_root, range, open_native)
-  else
-    open_diffview({ range }, "git diff " .. range)
-  end
+  local source = require("gitlad.ui.views.diff.source")
+  source.produce_range(repo_state.repo_root, range, open_native)
 end
 
 --- Build range via guided 3-step flow (base ref -> range type -> other ref)
@@ -230,12 +159,8 @@ function M._diff_build_range(repo_state)
     if not range or range == "" then
       return
     end
-    if use_native() then
-      local source = require("gitlad.ui.views.diff.source")
-      source.produce_range(repo_state.repo_root, range, open_native)
-    else
-      open_diffview({ range }, "git diff " .. range)
-    end
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_range(repo_state.repo_root, range, open_native)
   end)
 end
 
@@ -245,76 +170,47 @@ end
 ---@param base string The base ref to compare against
 function M._diff_ref_against(repo_state, ref, base)
   local range = base .. ".." .. ref
-  if use_native() then
-    local source = require("gitlad.ui.views.diff.source")
-    source.produce_range(repo_state.repo_root, range, open_native)
-  else
-    open_diffview({ range }, "git diff " .. range)
-  end
+  local source = require("gitlad.ui.views.diff.source")
+  source.produce_range(repo_state.repo_root, range, open_native)
 end
 
 --- 3-way staging view (HEAD/index/working tree)
 --- Opens native 3-pane diff viewer: HEAD | INDEX | WORKTREE.
---- Falls back to diffview.nvim if native viewer is not configured.
 ---@param repo_state RepoState
 ---@param file_path? string Optional file path to pre-select
 function M._diff_3way(repo_state, file_path)
-  if use_native() then
-    local source = require("gitlad.ui.views.diff.source")
-    source.produce_three_way(repo_state.repo_root, function(spec, err)
-      if err then
-        vim.schedule(function()
-          vim.notify("[gitlad] " .. err, vim.log.levels.ERROR)
-        end)
-        return
-      end
+  local source = require("gitlad.ui.views.diff.source")
+  source.produce_three_way(repo_state.repo_root, function(spec, err)
+    if err then
       vim.schedule(function()
-        local diff_view = require("gitlad.ui.views.diff")
-        diff_view.open(spec, { initial_file = file_path })
+        vim.notify("[gitlad] " .. err, vim.log.levels.ERROR)
       end)
-    end)
-  else
-    local has_diffview, diffview = check_diffview()
-
-    if has_diffview then
-      local args = { "--staging-3way" }
-      if file_path then
-        table.insert(args, "--selected-file=" .. file_path)
-      end
-      diffview.open(args)
-    else
-      vim.notify(
-        "[gitlad] 3-way staging view requires diffview.nvim. Install with: { 'sindrets/diffview.nvim' }",
-        vim.log.levels.WARN
-      )
+      return
     end
-  end
+    vim.schedule(function()
+      local diff_view = require("gitlad.ui.views.diff")
+      diff_view.open(spec, { initial_file = file_path })
+    end)
+  end)
 end
 
 --- 3-way merge conflict view (OURS/BASE/THEIRS)
 --- Opens native 3-pane diff viewer showing merge conflicts.
 ---@param repo_state RepoState
 function M._diff_merge_3way(repo_state)
-  if use_native() then
-    local source = require("gitlad.ui.views.diff.source")
-    source.produce_merge(repo_state.repo_root, function(spec, err)
-      if err then
-        vim.schedule(function()
-          vim.notify("[gitlad] " .. err, vim.log.levels.ERROR)
-        end)
-        return
-      end
+  local source = require("gitlad.ui.views.diff.source")
+  source.produce_merge(repo_state.repo_root, function(spec, err)
+    if err then
       vim.schedule(function()
-        local diff_view = require("gitlad.ui.views.diff")
-        diff_view.open(spec)
+        vim.notify("[gitlad] " .. err, vim.log.levels.ERROR)
       end)
+      return
+    end
+    vim.schedule(function()
+      local diff_view = require("gitlad.ui.views.diff")
+      diff_view.open(spec)
     end)
-  else
-    vim.notify(
-      "[gitlad] 3-way merge view requires native diff viewer (set diff.viewer = 'native')",
-      vim.log.levels.WARN
-    )
-  end
+  end)
 end
 
 --- Context-aware diff (do what I mean)

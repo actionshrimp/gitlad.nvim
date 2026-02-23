@@ -120,20 +120,22 @@ local function setup_auto_expansion(bufnr, comment_char)
   })
 end
 
---- Show commit at point in diffview
+--- Show commit at point in the native diff viewer
 local function show_commit_at_point()
   local line = vim.api.nvim_get_current_line()
   local hash = line:match("(%x%x%x%x%x%x%x+)")
   if hash then
-    -- Try to use diffview if available
-    local ok, diffview = pcall(require, "diffview")
-    if ok then
-      diffview.open({ hash .. "^!" })
-    else
-      -- Fallback to git show in a split
-      vim.cmd("split")
-      vim.cmd("terminal git show " .. hash)
-    end
+    local source = require("gitlad.ui.views.diff.source")
+    source.produce_commit(vim.fn.getcwd(), hash, function(spec, err)
+      if err then
+        vim.notify("[gitlad] " .. err, vim.log.levels.ERROR)
+        return
+      end
+      vim.schedule(function()
+        local diff_view = require("gitlad.ui.views.diff")
+        diff_view.open(spec)
+      end)
+    end)
   end
 end
 
@@ -158,7 +160,7 @@ local function build_help_text(comment_char)
     c .. "   ZQ          abort (cancel rebase)",
     c .. "   C-c C-c     submit (also works in insert mode)",
     c .. "   C-c C-k     abort (also works in insert mode)",
-    c .. "   <CR>        show commit at point in diffview",
+    c .. "   <CR>        show commit at point in diff viewer",
     c .. "   q           close (prompts to save if modified)",
     c .. "",
     c .. " These lines can be re-ordered; they are executed from top to bottom.",

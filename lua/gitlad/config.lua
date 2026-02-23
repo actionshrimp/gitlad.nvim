@@ -37,7 +37,7 @@ local M = {}
 ---@field pr_info_ttl number Seconds before cached PR info is re-fetched on auto-refresh (default: 30). Manual refresh (gr) always bypasses this.
 
 ---@class GitladDiffConfig
----@field viewer "native"|"diffview" Diff viewer to use ("native" = built-in side-by-side, "diffview" = diffview.nvim)
+---@field viewer "native" Diff viewer to use ("native" = built-in side-by-side)
 
 ---@class GitladConfig
 ---@field signs GitladSigns
@@ -79,7 +79,7 @@ local defaults = {
     pr_info_ttl = 30, -- Seconds before auto-refresh re-fetches PR info (gr always bypasses)
   },
   diff = {
-    viewer = "native", -- "native" or "diffview"
+    viewer = "native",
   },
   show_tags_in_refs = false,
 }

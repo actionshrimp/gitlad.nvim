@@ -42,7 +42,6 @@ vim.g.mapleader = " "
 require("lazy").setup({
   { dir = plugin_root }, -- gitlad.nvim itself
   { "rebelot/kanagawa.nvim" },
-  { "sindrets/diffview.nvim" },
   {
     "nvim-treesitter/nvim-treesitter",
     build = ":TSUpdate",

@@ -51,11 +51,12 @@ The native diff viewer opens in a new tab page with a file panel sidebar and syn
 - Inline diff expansion with syntax highlighting
 - Git command history view (`$` keybinding)
 - Transient-style popup system (PopupBuilder)
-- All git operation popups: Commit, Push, Pull, Fetch, Branch, Log, Diff, Stash, Rebase, Cherry-pick, Revert, Reset, Merge
+- All git operation popups: Commit, Push, Pull, Fetch, Branch, Log, Diff, Stash, Rebase, Cherry-pick, Revert, Reset, Merge, Submodule, Worktree, Remote, Patch, Apply patches
 - Interactive rebase editor (evil-collection style)
 - Instant fixup/squash (`c F` / `c S`)
 - Sequencer state detection (cherry-pick/revert in progress)
-- Submodule popup, Refs popup/view, Reflog view, Blame view
+- Refs popup/view, Reflog view, Blame view
+- Native diff viewer (side-by-side, 3-way staging, 3-way merge, word-level inline highlights)
 - Streaming output viewer for git hook output
 - File watcher with stale indicator
 - 970+ tests across 75+ test files, CI configured
@@ -218,23 +219,28 @@ lua/gitlad/
 │   ├── keymap.lua        # Buffer-local keymap helpers
 │   └── prompt.lua        # Ref prompt with completion (magit-style)
 ├── popups/
+│   ├── am.lua            # Apply patches popup (git am)
+│   ├── blame.lua         # Blame popup (switches: -w, -M, -C)
 │   ├── branch.lua        # Branch popup (checkout, create, delete, rename)
 │   ├── cherrypick.lua    # Cherry-pick popup with conflict detection
 │   ├── commit.lua        # Commit popup with switches/options/actions
-│   ├── diff.lua          # Diff popup (routes to native diff viewer)
+│   ├── diff.lua          # Diff popup (native side-by-side viewer)
 │   ├── fetch.lua         # Fetch popup
 │   ├── forge.lua         # Forge popup (N keybinding, GitHub PRs)
 │   ├── help.lua          # Help popup showing all keybindings
 │   ├── log.lua           # Log popup and view
 │   ├── merge.lua         # Merge popup with conflict resolution
+│   ├── patch.lua         # Patch popup (format-patch)
 │   ├── pull.lua          # Pull popup with rebase/ff options
 │   ├── push.lua          # Push popup with force/upstream options
 │   ├── rebase.lua        # Rebase popup (interactive, onto, continue, abort)
 │   ├── refs.lua          # References popup for branch/tag comparison
+│   ├── remote.lua        # Remote popup (add, remove, rename, configure)
 │   ├── reset.lua         # Reset popup (mixed, soft, hard, keep)
 │   ├── revert.lua        # Revert popup with conflict detection
 │   ├── stash.lua         # Stash popup (push, pop, apply, drop)
-│   └── submodule.lua     # Submodule popup (init, update, add, deinit)
+│   ├── submodule.lua     # Submodule popup (init, update, add, deinit)
+│   └── worktree.lua      # Worktree popup (create, delete, move)
 └── ui/
     ├── popup/
     │   └── init.lua      # PopupBuilder - transient-style popup system
@@ -245,17 +251,22 @@ lua/gitlad/
     │   └── checks.lua    # CI checks section component
     ├── hl.lua            # Highlight groups and namespace management
     └── views/
-        ├── status.lua        # Main status buffer view
-        ├── log.lua           # Log view buffer
-        ├── refs.lua          # References view buffer
-        ├── blame.lua         # Side-by-side blame view
-        ├── commit_editor.lua # Commit message editor buffer
-        ├── rebase_editor.lua # Interactive rebase todo editor
-        ├── output.lua        # Streaming output viewer (git hooks)
-        ├── history.lua       # Git command history view
-        ├── pr_list.lua       # PR list buffer
-        ├── pr_detail.lua     # PR detail/discussion buffer
-        └── diff/             # Native diff viewer
+        ├── status.lua            # Main status buffer view
+        ├── status_keymaps.lua    # Status buffer keymap definitions
+        ├── status_navigation.lua # Status buffer navigation and file visiting
+        ├── status_render.lua     # Status buffer rendering
+        ├── status_staging.lua    # Status buffer staging operations
+        ├── log.lua               # Log view buffer
+        ├── reflog.lua            # Reflog view buffer
+        ├── refs.lua              # References view buffer
+        ├── blame.lua             # Side-by-side blame view
+        ├── commit_editor.lua     # Commit message editor buffer
+        ├── rebase_editor.lua     # Interactive rebase todo editor
+        ├── output.lua            # Streaming output viewer (git hooks)
+        ├── history.lua           # Git command history view
+        ├── pr_list.lua           # PR list buffer
+        ├── pr_detail.lua         # PR detail/discussion buffer
+        └── diff/                 # Native diff viewer
             ├── init.lua      # DiffView coordinator
             ├── types.lua     # Type definitions
             ├── hunk.lua      # Hunk parsing, side-by-side alignment
@@ -349,14 +360,18 @@ This makes the plugin more comfortable for vim/evil users.
 | `gj` / `gk` | Next/previous file or commit |
 | `M-n` / `M-p` | Next/previous section |
 | `TAB` | Expand/collapse section or diff |
+| `S-TAB` | Toggle all sections |
+| `1` / `2` / `3` / `4` | Visibility levels (headers/items/diffs/all) |
 | `RET` | Visit file at point |
+| `e` | Edit file at point |
 
 ### Staging
 | Key | Action |
 |-----|--------|
 | `s` | Stage item/hunk at point |
 | `u` | Unstage item/hunk at point |
-| `x` | Discard changes at point |
+| `gs` | Intent to add (git add -N) |
+| `x` | Discard changes at point / drop stash |
 | `S` | Stage all |
 | `U` | Unstage all |
 
@@ -377,11 +392,13 @@ This makes the plugin more comfortable for vim/evil users.
 | `_` | Revert |
 | `X` | Reset |
 | `'` | Submodule |
+| `Z` / `%` | Worktree |
+| `M` | Remotes |
+| `W` | Patch (format-patch) |
+| `w` | Apply patches (git am) |
 | `yr` | References |
 | `N` | Forge (GitHub PRs) |
 | `B` | Blame (from status view) |
-| `t` | Tag (not yet implemented) |
-| `!` | Run git command (not yet implemented) |
 
 ### Log Popup Reflog Actions
 | Key | Action |
@@ -399,6 +416,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `gr` | Refresh |
 | `q` | Close |
 | `A` | Cherry-pick popup |
+| `_` | Revert popup |
 | `X` | Reset popup |
 | `b` / `c` / `r` / `d` | Branch/Commit/Rebase/Diff popups |
 
@@ -428,6 +446,21 @@ This makes the plugin more comfortable for vim/evil users.
 | `B` | Blame popup (switches: -w, -M, -C) |
 | `gr` | Refresh |
 | `q` | Close |
+
+### Refs View
+| Key | Action |
+|-----|--------|
+| `gj` / `gk` | Next/previous ref |
+| `M-n` / `M-p` | Next/previous section |
+| `<CR>` / `<Tab>` | Toggle cherry commits |
+| `x` | Delete ref (normal or visual mode) |
+| `y` | Yank ref name |
+| `gr` | Refresh |
+| `q` | Close |
+| `?` | Show help |
+| `A` | Cherry-pick popup |
+| `X` | Reset popup |
+| `b` / `c` / `r` / `d` / `f` | Branch/Commit/Rebase/Diff/Fetch popups |
 
 ### Diff Viewer
 | Key | Action |
@@ -536,7 +569,8 @@ Action abbreviations (e.g. `f` → `fixup`) auto-expand when you leave insert mo
 |-----|--------|
 | `gr` | Refresh |
 | `q` | Close buffer |
-| `$` | Show git process output |
+| `$` | Show git command history |
+| `ys` | Yank section value (commit hash, file path, or stash name) |
 | `?` | Show help / all keybindings |
 
 ## Development Plan

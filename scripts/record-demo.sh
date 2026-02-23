@@ -45,7 +45,7 @@ if [ ! -d "$LAZY_PATH/.git" ]; then
     https://github.com/folke/lazy.nvim.git "$LAZY_PATH" 2>/dev/null
 fi
 
-for plugin in rebelot/kanagawa.nvim sindrets/diffview.nvim nvim-treesitter/nvim-treesitter; do
+for plugin in rebelot/kanagawa.nvim nvim-treesitter/nvim-treesitter; do
   name="${plugin##*/}"
   if [ ! -d "$PLUGIN_DIR/$name" ]; then
     echo "  Installing $name..."
