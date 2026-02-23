@@ -5,6 +5,8 @@
 --- All three windows are scrollbound and cursorbind for synchronized navigation.
 ---@brief ]]
 
+local gutter = require("gitlad.ui.views.diff.gutter")
+
 local M = {}
 
 --- Highlight group mapping for 3-way diff.
@@ -35,16 +37,6 @@ M._hl_for_type = {
     filler = "GitladDiffFiller",
   },
 }
-
---- Format a line number for virtual text display (right-justified to 4 chars).
----@param lineno number|nil Line number or nil for filler lines
----@return string formatted Right-justified line number string
-function M._format_lineno(lineno)
-  if lineno == nil then
-    return "    "
-  end
-  return string.format("%4d", lineno)
-end
 
 ---@class DiffBufferTriple
 ---@field left_bufnr number Left (HEAD) buffer number
@@ -131,7 +123,13 @@ function M.new(left_winnr, mid_winnr, right_winnr, buf_opts)
     vim.api.nvim_set_option_value("scrollbind", true, win_opts)
     vim.api.nvim_set_option_value("cursorbind", true, win_opts)
     vim.api.nvim_set_option_value("wrap", false, win_opts)
-    vim.api.nvim_set_option_value("number", false, win_opts)
+    vim.api.nvim_set_option_value("number", true, win_opts)
+    vim.api.nvim_set_option_value("numberwidth", 5, win_opts)
+    vim.api.nvim_set_option_value(
+      "statuscolumn",
+      '%#GitladDiffLineNr#%{v:lua.require("gitlad.ui.views.diff.gutter").render()}',
+      win_opts
+    )
     vim.api.nvim_set_option_value("signcolumn", "no", win_opts)
     vim.api.nvim_set_option_value("foldcolumn", "0", win_opts)
     vim.api.nvim_set_option_value("foldmethod", "manual", win_opts)
@@ -192,6 +190,19 @@ function DiffBufferTriple:set_content(aligned, file_path)
   -- Apply diff highlights
   self:apply_diff_highlights()
 
+  -- Populate gutter line numbers for statuscolumn
+  local left_linenos = {}
+  local mid_linenos = {}
+  local right_linenos = {}
+  for i, info in ipairs(self.line_map) do
+    left_linenos[i] = info.left_lineno
+    mid_linenos[i] = info.mid_lineno
+    right_linenos[i] = info.right_lineno
+  end
+  gutter.set(self.left_bufnr, left_linenos)
+  gutter.set(self.mid_bufnr, mid_linenos)
+  gutter.set(self.right_bufnr, right_linenos)
+
   -- Re-lock left buffer (always read-only)
   vim.bo[self.left_bufnr].modifiable = false
 
@@ -228,6 +239,7 @@ end
 --- Apply line-level highlights for all three panes.
 --- Left↔mid shows staged changes, mid↔right shows unstaged changes.
 --- Word-level inline diff computed for change pairs independently.
+--- Line numbers are handled by gutter.lua via statuscolumn.
 function DiffBufferTriple:apply_diff_highlights()
   local inline = require("gitlad.ui.views.diff.inline")
 
@@ -241,36 +253,27 @@ function DiffBufferTriple:apply_diff_highlights()
 
     -- Left side highlights
     local left_hl = M._hl_for_type.left[info.left_type]
-    local left_extmark_opts = {
-      virt_text = { { M._format_lineno(info.left_lineno), "GitladDiffLineNr" } },
-      virt_text_pos = "inline",
-    }
     if left_hl then
-      left_extmark_opts.line_hl_group = left_hl
+      vim.api.nvim_buf_set_extmark(self.left_bufnr, self._ns, line_idx, 0, {
+        line_hl_group = left_hl,
+      })
     end
-    vim.api.nvim_buf_set_extmark(self.left_bufnr, self._ns, line_idx, 0, left_extmark_opts)
 
     -- Mid side highlights
     local mid_hl = M._hl_for_type.mid[info.mid_type]
-    local mid_extmark_opts = {
-      virt_text = { { M._format_lineno(info.mid_lineno), "GitladDiffLineNr" } },
-      virt_text_pos = "inline",
-    }
     if mid_hl then
-      mid_extmark_opts.line_hl_group = mid_hl
+      vim.api.nvim_buf_set_extmark(self.mid_bufnr, self._ns, line_idx, 0, {
+        line_hl_group = mid_hl,
+      })
     end
-    vim.api.nvim_buf_set_extmark(self.mid_bufnr, self._ns, line_idx, 0, mid_extmark_opts)
 
     -- Right side highlights
     local right_hl = M._hl_for_type.right[info.right_type]
-    local right_extmark_opts = {
-      virt_text = { { M._format_lineno(info.right_lineno), "GitladDiffLineNr" } },
-      virt_text_pos = "inline",
-    }
     if right_hl then
-      right_extmark_opts.line_hl_group = right_hl
+      vim.api.nvim_buf_set_extmark(self.right_bufnr, self._ns, line_idx, 0, {
+        line_hl_group = right_hl,
+      })
     end
-    vim.api.nvim_buf_set_extmark(self.right_bufnr, self._ns, line_idx, 0, right_extmark_opts)
 
     -- Word-level inline diff: left↔mid (staged changes)
     if info.left_type == "change" and info.mid_type == "change" then
@@ -378,11 +381,14 @@ function DiffBufferTriple:get_buffers()
   return { self.left_bufnr, self.mid_bufnr, self.right_bufnr }
 end
 
---- Clean up buffers. Deletes all three buffers if they are still valid.
+--- Clean up buffers. Clears gutter data and deletes all three buffers if still valid.
 function DiffBufferTriple:destroy()
   for _, bufnr in ipairs({ self.left_bufnr, self.mid_bufnr, self.right_bufnr }) do
-    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-      vim.api.nvim_buf_delete(bufnr, { force = true })
+    if bufnr then
+      gutter.clear(bufnr)
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+      end
     end
   end
   self.left_bufnr = nil
