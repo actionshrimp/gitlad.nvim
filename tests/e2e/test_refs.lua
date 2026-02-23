@@ -332,7 +332,7 @@ T["refs view"]["buffer is not modifiable"] = function()
   cleanup_test_repo(child, repo)
 end
 
-T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
+T["refs view"]["has popup keymaps (b, A, X, d, f)"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
@@ -356,6 +356,7 @@ T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
       if km.lhs == "A" then _G.popup_keymaps.cherrypick = true end
       if km.lhs == "X" then _G.popup_keymaps.reset = true end
       if km.lhs == "d" then _G.popup_keymaps.diff = true end
+      if km.lhs == "f" then _G.popup_keymaps.fetch = true end
     end
   ]])
 
@@ -363,11 +364,47 @@ T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
   local has_cherrypick = child.lua_get("_G.popup_keymaps.cherrypick")
   local has_reset = child.lua_get("_G.popup_keymaps.reset")
   local has_diff = child.lua_get("_G.popup_keymaps.diff")
+  local has_fetch = child.lua_get("_G.popup_keymaps.fetch")
 
   eq(has_branch, true)
   eq(has_cherrypick, true)
   eq(has_reset, true)
   eq(has_diff, true)
+  eq(has_fetch, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["f opens fetch popup"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Branches")
+
+  -- Press f to open fetch popup
+  child.type_keys("f")
+  helpers.wait_for_popup(child)
+
+  -- Fetch popup should be visible
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Should show Fetch popup content
+  eq(content:match("Fetch") ~= nil, true)
+  eq(
+    content:match("Fetch from pushremote") ~= nil or content:match("Fetch from upstream") ~= nil,
+    true
+  )
 
   cleanup_test_repo(child, repo)
 end
@@ -427,6 +464,287 @@ T["refs view"]["has visual mode delete keymap x"] = function()
   local has_visual_delete = child.lua_get("_G.has_visual_delete")
   eq(has_visual_delete, true)
 
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["x on single ref prompts for confirmation"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+  helpers.git(child, repo, "branch to-delete")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "to-delete")
+
+  -- Mock vim.ui.select to capture the prompt
+  child.lua([[
+    _G.select_prompt = nil
+    _G.original_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      _G.select_prompt = opts.prompt
+      on_choice(nil) -- Cancel
+    end
+  ]])
+
+  -- Navigate to the to-delete branch
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("to%-delete") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Press x to delete
+  child.type_keys("x")
+  helpers.wait_short(child, 200)
+
+  -- Should have been prompted with branch name
+  local prompt = child.lua_get("_G.select_prompt")
+  eq(type(prompt), "string")
+  eq(prompt:match("to%-delete") ~= nil, true)
+  eq(prompt:match("Delete branch") ~= nil, true)
+
+  -- Restore
+  child.lua([[vim.ui.select = _G.original_select]])
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["x delete confirmed with Yes actually deletes branch"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+  helpers.git(child, repo, "branch to-delete")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "to-delete")
+
+  -- Mock vim.ui.select to auto-confirm Yes
+  child.lua([[
+    _G.original_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      on_choice("Yes")
+    end
+  ]])
+
+  -- Navigate to the to-delete branch
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("to%-delete") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Press x to delete
+  child.type_keys("x")
+  helpers.wait_short(child, 500)
+
+  -- Branch should be gone from git
+  local branches =
+    child.lua_get(string.format([[vim.fn.system("git -C %s branch --list to-delete")]], repo))
+  eq(vim.trim(branches), "")
+
+  -- Restore
+  child.lua([[vim.ui.select = _G.original_select]])
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["x delete cancelled with No keeps branch"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+  helpers.git(child, repo, "branch to-keep")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "to-keep")
+
+  -- Mock vim.ui.select to auto-cancel
+  child.lua([[
+    _G.original_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      on_choice("No")
+    end
+  ]])
+
+  -- Navigate to the to-keep branch
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    for i, line in ipairs(lines) do
+      if line:match("to%-keep") then
+        vim.api.nvim_win_set_cursor(0, {i, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Press x to delete
+  child.type_keys("x")
+  helpers.wait_short(child, 200)
+
+  -- Branch should still exist
+  local branches =
+    child.lua_get(string.format([[vim.fn.system("git -C %s branch --list to-keep")]], repo))
+  eq(vim.trim(branches):match("to%-keep") ~= nil, true)
+
+  -- Restore
+  child.lua([[vim.ui.select = _G.original_select]])
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["visual x on multiple refs shows count in prompt"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+  helpers.git(child, repo, "branch branch-a")
+  helpers.git(child, repo, "branch branch-b")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "branch-b")
+
+  -- Mock vim.ui.select to capture prompt
+  child.lua([[
+    _G.select_prompt = nil
+    _G.original_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      _G.select_prompt = opts.prompt
+      on_choice(nil) -- Cancel
+    end
+  ]])
+
+  -- Find the lines for branch-a and branch-b, select them visually
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    local first_line, last_line
+    for i, line in ipairs(lines) do
+      if line:match("branch%-a") then
+        first_line = first_line or i
+        last_line = i
+      end
+      if line:match("branch%-b") then
+        first_line = first_line or i
+        last_line = i
+      end
+    end
+    if first_line and last_line then
+      vim.api.nvim_win_set_cursor(0, {first_line, 0})
+      vim.cmd("normal! V")
+      vim.api.nvim_win_set_cursor(0, {last_line, 0})
+    end
+  ]])
+
+  -- Press x in visual mode
+  child.type_keys("x")
+  helpers.wait_short(child, 200)
+
+  -- Should have been prompted with count
+  local prompt = child.lua_get("_G.select_prompt")
+  eq(type(prompt), "string")
+  -- Prompt should mention a count >= 2 (may include main branch if it's between a and b)
+  eq(prompt:match("Delete %d+ refs") ~= nil, true)
+
+  -- Restore
+  child.lua([[vim.ui.select = _G.original_select]])
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["visual x confirmed deletes multiple branches"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+  helpers.git(child, repo, "branch del-a")
+  helpers.git(child, repo, "branch del-b")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "del-b")
+
+  -- Mock vim.ui.select to auto-confirm Yes
+  child.lua([[
+    _G.original_select = vim.ui.select
+    vim.ui.select = function(items, opts, on_choice)
+      on_choice("Yes")
+    end
+  ]])
+
+  -- Find and select del-a through del-b
+  child.lua([[
+    local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    local first_line, last_line
+    for i, line in ipairs(lines) do
+      if line:match("del%-a") then
+        first_line = first_line or i
+        last_line = i
+      end
+      if line:match("del%-b") then
+        first_line = first_line or i
+        last_line = i
+      end
+    end
+    if first_line and last_line then
+      vim.api.nvim_win_set_cursor(0, {first_line, 0})
+      vim.cmd("normal! V")
+      vim.api.nvim_win_set_cursor(0, {last_line, 0})
+    end
+  ]])
+
+  -- Press x in visual mode
+  child.type_keys("x")
+  helpers.wait_short(child, 500)
+
+  -- Both branches should be gone
+  local branches_a =
+    child.lua_get(string.format([[vim.fn.system("git -C %s branch --list del-a")]], repo))
+  local branches_b =
+    child.lua_get(string.format([[vim.fn.system("git -C %s branch --list del-b")]], repo))
+  eq(vim.trim(branches_a), "")
+  eq(vim.trim(branches_b), "")
+
+  -- Restore
+  child.lua([[vim.ui.select = _G.original_select]])
   cleanup_test_repo(child, repo)
 end
 
