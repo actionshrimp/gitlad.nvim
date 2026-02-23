@@ -14,6 +14,9 @@ local _providers = {}
 -- Cache auth token per session
 local _auth_token = nil
 
+-- Cache viewer login per session
+local _viewer_login = nil
+
 -- Allow overriding auth function for testing
 local _auth_fn = nil
 
@@ -27,6 +30,24 @@ end
 function M._clear_cache()
   _providers = {}
   _auth_token = nil
+  _viewer_login = nil
+end
+
+--- Get the authenticated viewer's login (cached per session)
+---@param provider ForgeProvider
+---@param callback fun(login: string|nil, err: string|nil)
+function M.get_viewer_login(provider, callback)
+  if _viewer_login then
+    callback(_viewer_login, nil)
+    return
+  end
+
+  provider:get_viewer(function(login, err)
+    if login then
+      _viewer_login = login
+    end
+    callback(login, err)
+  end)
 end
 
 --- Parse a git remote URL into forge provider info

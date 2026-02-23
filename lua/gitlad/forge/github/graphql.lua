@@ -68,6 +68,66 @@ query($owner: String!, $repo: String!, $states: [PullRequestState!], $first: Int
 }
 ]]
 
+M.queries.viewer = [[
+{ viewer { login } }
+]]
+
+M.queries.pr_search = [[
+query($searchQuery: String!, $first: Int!) {
+  search(query: $searchQuery, type: ISSUE, first: $first) {
+    nodes {
+      ... on PullRequest {
+        number
+        title
+        state
+        isDraft
+        author {
+          login
+          avatarUrl
+        }
+        headRefName
+        baseRefName
+        headRefOid
+        baseRefOid
+        reviewDecision
+        labels(first: 10) {
+          nodes {
+            name
+          }
+        }
+        additions
+        deletions
+        createdAt
+        updatedAt
+        url
+        body
+        commits(last: 1) {
+          nodes {
+            commit {
+              statusCheckRollup {
+                state
+                contexts(first: 100) {
+                  nodes {
+                    __typename
+                    ... on CheckRun {
+                      conclusion
+                      status
+                    }
+                    ... on StatusContext {
+                      cState: state
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+]]
+
 M.queries.pr_detail = [[
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -373,6 +433,45 @@ local function parse_checks_summary(commits_node, include_details)
   }
 end
 
+--- Parse a single PR node into a ForgePullRequest
+---@param node table A PR node from GraphQL response
+---@param include_check_details boolean Whether to include full check details
+---@return ForgePullRequest
+local function parse_pr_node(node, include_check_details)
+  local labels = {}
+  if node.labels and node.labels.nodes then
+    for _, label in ipairs(node.labels.nodes) do
+      table.insert(labels, label.name)
+    end
+  end
+
+  ---@type ForgePullRequest
+  local pr = {
+    number = node.number,
+    title = node.title,
+    state = (node.state or ""):lower(),
+    draft = node.isDraft or false,
+    author = {
+      login = (node.author and node.author.login) or "ghost",
+      avatar_url = node.author and node.author.avatarUrl,
+    },
+    head_ref = node.headRefName or "",
+    base_ref = node.baseRefName or "",
+    head_oid = node.headRefOid,
+    base_oid = node.baseRefOid,
+    review_decision = node.reviewDecision, -- can be nil
+    labels = labels,
+    additions = node.additions or 0,
+    deletions = node.deletions or 0,
+    created_at = node.createdAt or "",
+    updated_at = node.updatedAt or "",
+    url = node.url or "",
+    body = node.body,
+    checks_summary = parse_checks_summary(node.commits, include_check_details),
+  }
+  return pr
+end
+
 --- Parse a PR list GraphQL response into ForgePullRequest[]
 ---@param data table Decoded JSON response from GraphQL API
 ---@return ForgePullRequest[]|nil prs List of PRs
@@ -404,38 +503,67 @@ function M.parse_pr_list(data)
 
   local prs = {}
   for _, node in ipairs(pr_data.nodes) do
-    local labels = {}
-    if node.labels and node.labels.nodes then
-      for _, label in ipairs(node.labels.nodes) do
-        table.insert(labels, label.name)
-      end
-    end
+    table.insert(prs, parse_pr_node(node, false))
+  end
 
-    ---@type ForgePullRequest
-    local pr = {
-      number = node.number,
-      title = node.title,
-      state = (node.state or ""):lower(),
-      draft = node.isDraft or false,
-      author = {
-        login = (node.author and node.author.login) or "ghost",
-        avatar_url = node.author and node.author.avatarUrl,
-      },
-      head_ref = node.headRefName or "",
-      base_ref = node.baseRefName or "",
-      head_oid = node.headRefOid,
-      base_oid = node.baseRefOid,
-      review_decision = node.reviewDecision, -- can be nil
-      labels = labels,
-      additions = node.additions or 0,
-      deletions = node.deletions or 0,
-      created_at = node.createdAt or "",
-      updated_at = node.updatedAt or "",
-      url = node.url or "",
-      body = node.body,
-      checks_summary = parse_checks_summary(node.commits, false),
-    }
-    table.insert(prs, pr)
+  return prs, nil
+end
+
+--- Parse a viewer GraphQL response to get the current user's login
+---@param data table Decoded JSON response from GraphQL API
+---@return string|nil login The user's login
+---@return string|nil err Error message
+function M.parse_viewer(data)
+  if not data then
+    return nil, "No data in response"
+  end
+
+  -- Check for GraphQL errors
+  if data.errors and #data.errors > 0 then
+    local msgs = {}
+    for _, err in ipairs(data.errors) do
+      table.insert(msgs, err.message or "Unknown error")
+    end
+    return nil, "GraphQL error: " .. table.concat(msgs, "; ")
+  end
+
+  local viewer = data.data and data.data.viewer
+  if not viewer or not viewer.login then
+    return nil, "Viewer not found"
+  end
+
+  return viewer.login, nil
+end
+
+--- Parse a PR search GraphQL response into ForgePullRequest[]
+---@param data table Decoded JSON response from GraphQL API
+---@return ForgePullRequest[]|nil prs List of PRs
+---@return string|nil err Error message
+function M.parse_pr_search(data)
+  if not data then
+    return nil, "No data in response"
+  end
+
+  -- Check for GraphQL errors
+  if data.errors and #data.errors > 0 then
+    local msgs = {}
+    for _, err in ipairs(data.errors) do
+      table.insert(msgs, err.message or "Unknown error")
+    end
+    return nil, "GraphQL error: " .. table.concat(msgs, "; ")
+  end
+
+  local search = data.data and data.data.search
+  if not search or not search.nodes then
+    return nil, "No search data"
+  end
+
+  local prs = {}
+  for _, node in ipairs(search.nodes) do
+    -- Skip non-PR nodes (search can return issues too; PR nodes have `number`)
+    if node.number then
+      table.insert(prs, parse_pr_node(node, false))
+    end
   end
 
   return prs, nil

@@ -1,0 +1,85 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "number": 42,
+          "title": "Fix authentication bug in login flow",
+          "state": "OPEN",
+          "isDraft": false,
+          "author": {
+            "login": "octocat",
+            "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4"
+          },
+          "headRefName": "fix/auth-bug",
+          "baseRefName": "main",
+          "headRefOid": "abc1234",
+          "baseRefOid": "def5678",
+          "reviewDecision": "APPROVED",
+          "labels": {
+            "nodes": [
+              {"name": "bug"},
+              {"name": "priority:high"}
+            ]
+          },
+          "additions": 10,
+          "deletions": 3,
+          "createdAt": "2026-02-19T10:30:00Z",
+          "updatedAt": "2026-02-20T14:00:00Z",
+          "url": "https://github.com/owner/repo/pull/42",
+          "body": "Fixes the authentication bug that caused login failures."
+        },
+        {
+          "number": 41,
+          "title": "Add dark mode support",
+          "state": "OPEN",
+          "isDraft": true,
+          "author": {
+            "login": "octocat",
+            "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4"
+          },
+          "headRefName": "feature/dark-mode",
+          "baseRefName": "main",
+          "headRefOid": "111aaaa",
+          "baseRefOid": "222bbbb",
+          "reviewDecision": null,
+          "labels": {
+            "nodes": [
+              {"name": "enhancement"}
+            ]
+          },
+          "additions": 150,
+          "deletions": 20,
+          "createdAt": "2026-02-18T09:00:00Z",
+          "updatedAt": "2026-02-19T16:00:00Z",
+          "url": "https://github.com/owner/repo/pull/41",
+          "body": "WIP: Adding dark mode theme support."
+        },
+        {
+          "number": 40,
+          "title": "Refactor database queries for performance",
+          "state": "OPEN",
+          "isDraft": false,
+          "author": {
+            "login": "octocat",
+            "avatarUrl": "https://avatars.githubusercontent.com/u/3?v=4"
+          },
+          "headRefName": "refactor/db-queries",
+          "baseRefName": "main",
+          "headRefOid": "333cccc",
+          "baseRefOid": "444dddd",
+          "reviewDecision": "CHANGES_REQUESTED",
+          "labels": {
+            "nodes": []
+          },
+          "additions": 45,
+          "deletions": 89,
+          "createdAt": "2026-02-15T08:00:00Z",
+          "updatedAt": "2026-02-17T11:30:00Z",
+          "url": "https://github.com/owner/repo/pull/40",
+          "body": "Optimizes slow database queries."
+        }
+      ]
+    }
+  }
+}
