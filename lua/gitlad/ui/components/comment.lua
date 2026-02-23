@@ -118,6 +118,12 @@ function M.render(pr, opts)
     add_line("Labels: " .. table.concat(pr.labels, ", "), { type = "pr_metadata", pr = pr })
   end
 
+  -- Merge status line (if available)
+  if pr.mergeable or pr.merge_state_status then
+    local merge_text = types.format_merge_status(pr.mergeable, pr.merge_state_status)
+    add_line("Merge: " .. merge_text, { type = "pr_merge_status", pr = pr })
+  end
+
   result.ranges["header"] = { start = header_start, end_line = #result.lines }
 
   -- Separator
@@ -326,6 +332,15 @@ function M.apply_highlights(bufnr, ns, start_line, result)
       local label_start = line:find("Labels: ")
       if label_start then
         hl.set(bufnr, ns, line_idx, label_start - 1 + 8, #line, "GitladForgeLabel")
+      end
+    elseif info.type == "pr_merge_status" then
+      -- Highlight "Merge: " label
+      local prefix = "Merge: "
+      hl.set(bufnr, ns, line_idx, 0, #prefix, "Comment")
+      -- Highlight the status text with appropriate color
+      if info.pr then
+        local _, merge_hl = types.format_merge_status(info.pr.mergeable, info.pr.merge_state_status)
+        hl.set(bufnr, ns, line_idx, #prefix, #line, merge_hl)
       end
     elseif info.type == "checks_header" or info.type == "check" then
       -- Delegate to checks component highlighting

@@ -197,7 +197,7 @@ end
 ---@param cmd string[] Command array
 ---@param title string Viewer title
 ---@param on_success? fun() Optional success callback
-local function run_gh_command(repo_state, cmd, title, on_success)
+function M.run_gh_command(repo_state, cmd, title, on_success)
   local output = require("gitlad.ui.views.output")
   local viewer = output.create({
     title = title,
@@ -247,7 +247,7 @@ end
 --- Create a new PR (opens gh pr create --web)
 ---@param repo_state RepoState
 function M._create_pr(repo_state)
-  run_gh_command(repo_state, { "gh", "pr", "create", "--web" }, "Create PR", function()
+  M.run_gh_command(repo_state, { "gh", "pr", "create", "--web" }, "Create PR", function()
     vim.notify("[gitlad] PR creation opened in browser", vim.log.levels.INFO)
   end)
 end
@@ -274,7 +274,7 @@ function M._merge_pr(repo_state)
         return
       end
 
-      run_gh_command(
+      M.run_gh_command(
         repo_state,
         { "gh", "pr", "merge", tostring(pr_number), "--" .. choice },
         "Merge PR #" .. pr_number,
@@ -303,7 +303,7 @@ function M._close_pr(repo_state)
       return
     end
 
-    run_gh_command(
+    M.run_gh_command(
       repo_state,
       { "gh", "pr", "close", tostring(pr_number) },
       "Close PR #" .. pr_number,
@@ -328,7 +328,7 @@ function M._reopen_pr(repo_state)
       return
     end
 
-    run_gh_command(
+    M.run_gh_command(
       repo_state,
       { "gh", "pr", "reopen", tostring(pr_number) },
       "Reopen PR #" .. pr_number,
@@ -342,7 +342,7 @@ end
 --- Open the current branch's PR in browser
 ---@param repo_state RepoState
 function M._open_in_browser(repo_state)
-  run_gh_command(repo_state, { "gh", "pr", "view", "--web" }, "Open PR in browser", function()
+  M.run_gh_command(repo_state, { "gh", "pr", "view", "--web" }, "Open PR in browser", function()
     vim.notify("[gitlad] PR opened in browser", vim.log.levels.INFO)
   end)
 end

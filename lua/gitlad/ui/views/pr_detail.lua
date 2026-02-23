@@ -134,6 +134,11 @@ function PRDetailBuffer:_setup_keymaps()
     self:_toggle_checks()
   end, "Toggle checks section")
 
+  -- Merge PR
+  keymap.set(bufnr, "n", "m", function()
+    self:_merge_pr()
+  end, "Merge PR")
+
   -- View diff in native diff viewer
   keymap.set(bufnr, "n", "d", function()
     self:_view_diff()
@@ -157,6 +162,7 @@ function PRDetailBuffer:_show_help()
         { key = "c", desc = "Add comment" },
         { key = "e", desc = "Edit comment" },
         { key = "d", desc = "View diff" },
+        { key = "m", desc = "Merge PR" },
         { key = "<CR>", desc = "Open check in browser" },
         { key = "o", desc = "Open PR in browser" },
         { key = "y", desc = "Yank PR number" },
@@ -353,6 +359,81 @@ function PRDetailBuffer:_edit_comment()
       end)
     end,
   })
+end
+
+--- Build a list of merge warnings for the current PR
+---@return string[] warnings List of warning messages (empty if mergeable)
+function PRDetailBuffer:_check_merge_blockers()
+  local warnings = {}
+  local pr = self.pr
+
+  if pr.mergeable == "CONFLICTING" then
+    table.insert(warnings, "Has merge conflicts")
+  end
+
+  if pr.review_decision == "CHANGES_REQUESTED" then
+    table.insert(warnings, "Changes requested by reviewer")
+  elseif pr.review_decision == "REVIEW_REQUIRED" then
+    table.insert(warnings, "Review required")
+  end
+
+  if pr.checks_summary and pr.checks_summary.failure > 0 then
+    table.insert(warnings, pr.checks_summary.failure .. " check(s) failing")
+  elseif pr.checks_summary and pr.checks_summary.pending > 0 then
+    table.insert(warnings, pr.checks_summary.pending .. " check(s) still running")
+  end
+
+  return warnings
+end
+
+--- Merge the current PR
+function PRDetailBuffer:_merge_pr()
+  if not self.pr then
+    return
+  end
+
+  if self.pr.state ~= "open" then
+    vim.notify("[gitlad] PR #" .. self.pr.number .. " is not open", vim.log.levels.WARN)
+    return
+  end
+
+  local warnings = self:_check_merge_blockers()
+  local pr_number = self.pr.number
+  local forge_popup = require("gitlad.popups.forge")
+
+  local function do_merge()
+    vim.ui.select({ "merge", "squash", "rebase" }, {
+      prompt = "Merge strategy:",
+    }, function(choice)
+      if not choice then
+        return
+      end
+
+      forge_popup.run_gh_command(
+        self.repo_state,
+        { "gh", "pr", "merge", tostring(pr_number), "--" .. choice },
+        "Merge PR #" .. pr_number,
+        function()
+          vim.notify(
+            "[gitlad] PR #" .. pr_number .. " merged (" .. choice .. ")",
+            vim.log.levels.INFO
+          )
+          self:refresh()
+        end
+      )
+    end)
+  end
+
+  if #warnings > 0 then
+    local msg = "Warning:\n- " .. table.concat(warnings, "\n- ") .. "\n\nMerge anyway?"
+    vim.ui.select({ "Yes", "No" }, { prompt = msg }, function(choice)
+      if choice == "Yes" then
+        do_merge()
+      end
+    end)
+  else
+    do_merge()
+  end
 end
 
 --- Open the native diff viewer for this PR
