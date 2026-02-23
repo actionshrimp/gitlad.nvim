@@ -115,8 +115,17 @@ T["hook output"]["commit without hooks does not show output viewer"] = function(
   local win_count = child.lua_get([[vim.fn.winnr('$')]])
   eq(win_count, 1)
 
+  -- Poll for commit to appear in log (may take a moment under load)
+  local log
+  for _ = 1, 50 do
+    log = helpers.git(child, repo, "log --oneline 2>&1")
+    if log:match("test commit no hooks") then
+      break
+    end
+    vim.loop.sleep(100)
+  end
+
   -- Verify the commit was created
-  local log = helpers.git(child, repo, "log --oneline")
   eq(log:match("test commit no hooks") ~= nil, true)
 
   -- Clean up
