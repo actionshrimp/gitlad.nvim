@@ -189,10 +189,15 @@ function DiffView:_setup_layout_three_way()
     end,
   })
 
-  -- Create the buffer triple (editable for three_way, not for merge)
-  local editable = is_editable_source(self.diff_spec.source.type)
+  -- Create the buffer triple with appropriate editability mode
+  local editable_mode = "none"
+  if source_type == "three_way" then
+    editable_mode = "mid_and_right"
+  elseif source_type == "merge" then
+    editable_mode = "mid_only"
+  end
   self.buffer_triple =
-    buffer_triple_mod.new(left_winnr, mid_winnr, right_winnr, { editable = editable })
+    buffer_triple_mod.new(left_winnr, mid_winnr, right_winnr, { editable = editable_mode })
 
   -- Set up keymaps on all 3 diff buffers
   self:_setup_keymaps()
@@ -987,22 +992,24 @@ function DiffView:_setup_keymaps()
   end
 
   -- Set up BufWriteCmd for editable buffers
-  local editable = is_editable_source(self.diff_spec.source.type)
-  if editable then
-    local editable_buffers = {}
-    if self.three_way and self.buffer_triple then
+  local editable_buffers = {}
+  if self.three_way and self.buffer_triple then
+    local mode = self.buffer_triple._editable
+    if mode == "mid_only" then
+      editable_buffers = { self.buffer_triple.mid_bufnr }
+    elseif mode == "mid_and_right" then
       editable_buffers = { self.buffer_triple.mid_bufnr, self.buffer_triple.right_bufnr }
-    elseif self.buffer_pair then
-      editable_buffers = { self.buffer_pair.right_bufnr }
     end
-    for _, ebuf in ipairs(editable_buffers) do
-      vim.api.nvim_create_autocmd("BufWriteCmd", {
-        buffer = ebuf,
-        callback = function()
-          self:_do_save(ebuf)
-        end,
-      })
-    end
+  elseif self.buffer_pair and is_editable_source(self.diff_spec.source.type) then
+    editable_buffers = { self.buffer_pair.right_bufnr }
+  end
+  for _, ebuf in ipairs(editable_buffers) do
+    vim.api.nvim_create_autocmd("BufWriteCmd", {
+      buffer = ebuf,
+      callback = function()
+        self:_do_save(ebuf)
+      end,
+    })
   end
 
   for _, bufnr in ipairs(buffers) do

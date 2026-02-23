@@ -120,4 +120,116 @@ T["buffer_triple"]["_apply_filler_content"]["handles all three as filler"] = fun
   eq(right[1], "~")
 end
 
+-- =============================================================================
+-- Editable mode normalization tests
+-- =============================================================================
+
+T["buffer_triple"]["editable modes"] = MiniTest.new_set()
+
+T["buffer_triple"]["editable modes"]["boolean true normalizes to mid_and_right"] = function()
+  local bt = require("gitlad.ui.views.diff.buffer_triple")
+  local left_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local mid_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local right_win = vim.api.nvim_get_current_win()
+
+  local triple = bt.new(left_win, mid_win, right_win, { editable = true })
+  eq(triple._editable, "mid_and_right")
+  triple:destroy()
+end
+
+T["buffer_triple"]["editable modes"]["boolean false normalizes to none"] = function()
+  local bt = require("gitlad.ui.views.diff.buffer_triple")
+  local left_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local mid_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local right_win = vim.api.nvim_get_current_win()
+
+  local triple = bt.new(left_win, mid_win, right_win, { editable = false })
+  eq(triple._editable, "none")
+  triple:destroy()
+end
+
+T["buffer_triple"]["editable modes"]["nil normalizes to none"] = function()
+  local bt = require("gitlad.ui.views.diff.buffer_triple")
+  local left_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local mid_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local right_win = vim.api.nvim_get_current_win()
+
+  local triple = bt.new(left_win, mid_win, right_win, {})
+  eq(triple._editable, "none")
+  triple:destroy()
+end
+
+T["buffer_triple"]["editable modes"]["mid_only string passes through"] = function()
+  local bt = require("gitlad.ui.views.diff.buffer_triple")
+  local left_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local mid_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local right_win = vim.api.nvim_get_current_win()
+
+  local triple = bt.new(left_win, mid_win, right_win, { editable = "mid_only" })
+  eq(triple._editable, "mid_only")
+  triple:destroy()
+end
+
+T["buffer_triple"]["editable modes"]["mid_only sets mid to acwrite and right to nofile"] = function()
+  local bt = require("gitlad.ui.views.diff.buffer_triple")
+  local left_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local mid_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local right_win = vim.api.nvim_get_current_win()
+
+  local triple = bt.new(left_win, mid_win, right_win, { editable = "mid_only" })
+  eq(vim.bo[triple.mid_bufnr].buftype, "acwrite")
+  eq(vim.bo[triple.mid_bufnr].modifiable, true)
+  eq(vim.bo[triple.right_bufnr].buftype, "nofile")
+  eq(vim.bo[triple.right_bufnr].modifiable, false)
+  eq(vim.bo[triple.left_bufnr].buftype, "nofile")
+  eq(vim.bo[triple.left_bufnr].modifiable, false)
+  triple:destroy()
+end
+
+T["buffer_triple"]["editable modes"]["mid_and_right sets both to acwrite"] = function()
+  local bt = require("gitlad.ui.views.diff.buffer_triple")
+  local left_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local mid_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local right_win = vim.api.nvim_get_current_win()
+
+  local triple = bt.new(left_win, mid_win, right_win, { editable = "mid_and_right" })
+  eq(vim.bo[triple.mid_bufnr].buftype, "acwrite")
+  eq(vim.bo[triple.mid_bufnr].modifiable, true)
+  eq(vim.bo[triple.right_bufnr].buftype, "acwrite")
+  eq(vim.bo[triple.right_bufnr].modifiable, true)
+  eq(vim.bo[triple.left_bufnr].buftype, "nofile")
+  eq(vim.bo[triple.left_bufnr].modifiable, false)
+  triple:destroy()
+end
+
+T["buffer_triple"]["editable modes"]["none sets all to nofile read-only"] = function()
+  local bt = require("gitlad.ui.views.diff.buffer_triple")
+  local left_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local mid_win = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local right_win = vim.api.nvim_get_current_win()
+
+  local triple = bt.new(left_win, mid_win, right_win, { editable = "none" })
+  eq(vim.bo[triple.left_bufnr].buftype, "nofile")
+  eq(vim.bo[triple.left_bufnr].modifiable, false)
+  eq(vim.bo[triple.mid_bufnr].buftype, "nofile")
+  eq(vim.bo[triple.mid_bufnr].modifiable, false)
+  eq(vim.bo[triple.right_bufnr].buftype, "nofile")
+  eq(vim.bo[triple.right_bufnr].modifiable, false)
+  triple:destroy()
+end
+
 return T
