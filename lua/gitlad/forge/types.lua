@@ -22,6 +22,8 @@ local M = {}
 ---@field author ForgeUser PR author
 ---@field head_ref string Head branch name
 ---@field base_ref string Base branch name
+---@field head_oid? string Head commit OID (full SHA)
+---@field base_oid? string Base commit OID (full SHA)
 ---@field review_decision? string "APPROVED"|"CHANGES_REQUESTED"|"REVIEW_REQUIRED"|nil
 ---@field labels string[] Label names
 ---@field additions number Lines added

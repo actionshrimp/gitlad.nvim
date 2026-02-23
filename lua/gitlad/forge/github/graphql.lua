@@ -27,6 +27,8 @@ query($owner: String!, $repo: String!, $states: [PullRequestState!], $first: Int
         }
         headRefName
         baseRefName
+        headRefOid
+        baseRefOid
         reviewDecision
         labels(first: 10) {
           nodes {
@@ -80,6 +82,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
       headRefName
       baseRefName
+      headRefOid
+      baseRefOid
       reviewDecision
       labels(first: 10) {
         nodes {
@@ -419,6 +423,8 @@ function M.parse_pr_list(data)
       },
       head_ref = node.headRefName or "",
       base_ref = node.baseRefName or "",
+      head_oid = node.headRefOid,
+      base_oid = node.baseRefOid,
       review_decision = node.reviewDecision, -- can be nil
       labels = labels,
       additions = node.additions or 0,
@@ -568,6 +574,8 @@ function M.parse_pr_detail(data)
     },
     head_ref = node.headRefName or "",
     base_ref = node.baseRefName or "",
+    head_oid = node.headRefOid,
+    base_oid = node.baseRefOid,
     review_decision = node.reviewDecision, -- can be nil
     labels = labels,
     additions = node.additions or 0,
