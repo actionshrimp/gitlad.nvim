@@ -20,6 +20,7 @@ luarocks/
 
 # Claude Code (settings.json is shared, settings.local.json is personal)
 .claude/settings.local.json
+.claude/worktrees
 
 # direnv (contains account-specific config)
 .envrc
