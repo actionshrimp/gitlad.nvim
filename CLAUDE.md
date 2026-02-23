@@ -464,6 +464,7 @@ This makes the plugin more comfortable for vim/evil users.
 | Key | Action |
 |-----|--------|
 | `gj` / `gk` | Next/previous PR |
+| `<Tab>` | Toggle section collapse/expand |
 | `<CR>` | View PR detail |
 | `y` | Yank PR number |
 | `o` | Open in browser |
