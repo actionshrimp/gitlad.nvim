@@ -511,6 +511,7 @@ local function create_sections(status_buffer)
         { key = "[c", desc = "Previous hunk" },
         { key = "<CR>", desc = "Select file" },
         { key = "gr", desc = "Refresh" },
+        { key = ":w", desc = "Save edits" },
         { key = "<C-n>", desc = "Next commit (PR)" },
         { key = "<C-p>", desc = "Prev commit (PR)" },
         { key = "]t", desc = "Next review thread" },

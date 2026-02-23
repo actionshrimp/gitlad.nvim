@@ -59,6 +59,8 @@ end
 ---@field line_map ThreeWayLineInfo[] Maps buffer line to metadata
 ---@field file_path string Current file path (for treesitter)
 ---@field _ns number Namespace for diff highlights
+---@field _filler_ns number Namespace for filler line extmarks (editable mode)
+---@field _editable boolean Whether mid/right buffers are editable
 local DiffBufferTriple = {}
 DiffBufferTriple.__index = DiffBufferTriple
 
@@ -67,8 +69,10 @@ DiffBufferTriple.__index = DiffBufferTriple
 ---@param left_winnr number Left window number
 ---@param mid_winnr number Middle window number
 ---@param right_winnr number Right window number
+---@param buf_opts? DiffBufferOpts Options (editable, etc.)
 ---@return DiffBufferTriple
-function M.new(left_winnr, mid_winnr, right_winnr)
+function M.new(left_winnr, mid_winnr, right_winnr, buf_opts)
+  buf_opts = buf_opts or {}
   local self = setmetatable({}, DiffBufferTriple)
 
   self.left_winnr = left_winnr
@@ -80,21 +84,41 @@ function M.new(left_winnr, mid_winnr, right_winnr)
   self.line_map = {}
   self.file_path = ""
   self._ns = vim.api.nvim_create_namespace("gitlad_diff_three_way")
+  self._filler_ns = vim.api.nvim_create_namespace("gitlad_diff_filler_triple")
+  self._editable = buf_opts.editable or false
 
-  -- Create three scratch buffers
-  local buffers = {}
-  for i = 1, 3 do
-    local bufnr = vim.api.nvim_create_buf(false, true)
-    vim.bo[bufnr].buftype = "nofile"
-    vim.bo[bufnr].bufhidden = "wipe"
-    vim.bo[bufnr].swapfile = false
-    vim.bo[bufnr].modifiable = false
-    buffers[i] = bufnr
+  -- Create left scratch buffer (always read-only)
+  self.left_bufnr = vim.api.nvim_create_buf(false, true)
+  vim.bo[self.left_bufnr].buftype = "nofile"
+  vim.bo[self.left_bufnr].bufhidden = "wipe"
+  vim.bo[self.left_bufnr].swapfile = false
+  vim.bo[self.left_bufnr].modifiable = false
+
+  -- Create mid buffer (INDEX — editable in three_way mode)
+  self.mid_bufnr = vim.api.nvim_create_buf(false, true)
+  if self._editable then
+    vim.bo[self.mid_bufnr].buftype = "acwrite"
+    vim.bo[self.mid_bufnr].swapfile = false
+    vim.bo[self.mid_bufnr].modifiable = true
+  else
+    vim.bo[self.mid_bufnr].buftype = "nofile"
+    vim.bo[self.mid_bufnr].bufhidden = "wipe"
+    vim.bo[self.mid_bufnr].swapfile = false
+    vim.bo[self.mid_bufnr].modifiable = false
   end
 
-  self.left_bufnr = buffers[1]
-  self.mid_bufnr = buffers[2]
-  self.right_bufnr = buffers[3]
+  -- Create right buffer (WORKTREE — editable in three_way mode)
+  self.right_bufnr = vim.api.nvim_create_buf(false, true)
+  if self._editable then
+    vim.bo[self.right_bufnr].buftype = "acwrite"
+    vim.bo[self.right_bufnr].swapfile = false
+    vim.bo[self.right_bufnr].modifiable = true
+  else
+    vim.bo[self.right_bufnr].buftype = "nofile"
+    vim.bo[self.right_bufnr].bufhidden = "wipe"
+    vim.bo[self.right_bufnr].swapfile = false
+    vim.bo[self.right_bufnr].modifiable = false
+  end
 
   -- Assign buffers to windows
   vim.api.nvim_win_set_buf(left_winnr, self.left_bufnr)
@@ -103,15 +127,15 @@ function M.new(left_winnr, mid_winnr, right_winnr)
 
   -- Configure window options for all three windows
   for _, winnr in ipairs({ left_winnr, mid_winnr, right_winnr }) do
-    local opts = { win = winnr, scope = "local" }
-    vim.api.nvim_set_option_value("scrollbind", true, opts)
-    vim.api.nvim_set_option_value("cursorbind", true, opts)
-    vim.api.nvim_set_option_value("wrap", false, opts)
-    vim.api.nvim_set_option_value("number", false, opts)
-    vim.api.nvim_set_option_value("signcolumn", "no", opts)
-    vim.api.nvim_set_option_value("foldcolumn", "0", opts)
-    vim.api.nvim_set_option_value("foldmethod", "manual", opts)
-    vim.api.nvim_set_option_value("foldenable", false, opts)
+    local win_opts = { win = winnr, scope = "local" }
+    vim.api.nvim_set_option_value("scrollbind", true, win_opts)
+    vim.api.nvim_set_option_value("cursorbind", true, win_opts)
+    vim.api.nvim_set_option_value("wrap", false, win_opts)
+    vim.api.nvim_set_option_value("number", false, win_opts)
+    vim.api.nvim_set_option_value("signcolumn", "no", win_opts)
+    vim.api.nvim_set_option_value("foldcolumn", "0", win_opts)
+    vim.api.nvim_set_option_value("foldmethod", "manual", win_opts)
+    vim.api.nvim_set_option_value("foldenable", false, win_opts)
   end
 
   return self
@@ -168,10 +192,34 @@ function DiffBufferTriple:set_content(aligned, file_path)
   -- Apply diff highlights
   self:apply_diff_highlights()
 
-  -- Re-lock all buffers
+  -- Re-lock left buffer (always read-only)
   vim.bo[self.left_bufnr].modifiable = false
-  vim.bo[self.mid_bufnr].modifiable = false
-  vim.bo[self.right_bufnr].modifiable = false
+
+  if self._editable then
+    -- Track filler lines with extmarks on mid and right buffers
+    vim.api.nvim_buf_clear_namespace(self.mid_bufnr, self._filler_ns, 0, -1)
+    vim.api.nvim_buf_clear_namespace(self.right_bufnr, self._filler_ns, 0, -1)
+    for i, info in ipairs(self.line_map) do
+      if info.mid_type == "filler" then
+        vim.api.nvim_buf_set_extmark(self.mid_bufnr, self._filler_ns, i - 1, 0, {})
+      end
+      if info.right_type == "filler" then
+        vim.api.nvim_buf_set_extmark(self.right_bufnr, self._filler_ns, i - 1, 0, {})
+      end
+    end
+
+    -- Set buffer names for acwrite
+    vim.api.nvim_buf_set_name(self.mid_bufnr, "gitlad://diff/index/" .. file_path)
+    vim.api.nvim_buf_set_name(self.right_bufnr, "gitlad://diff/worktree/" .. file_path)
+
+    -- Mark as unmodified after loading content
+    vim.bo[self.mid_bufnr].modified = false
+    vim.bo[self.right_bufnr].modified = false
+  else
+    -- Re-lock mid and right buffers
+    vim.bo[self.mid_bufnr].modifiable = false
+    vim.bo[self.right_bufnr].modifiable = false
+  end
 
   -- Sync scroll positions
   vim.cmd("syncbind")
@@ -272,6 +320,56 @@ function DiffBufferTriple:apply_diff_highlights()
       end
     end
   end
+end
+
+--- Get real (non-filler) lines from a buffer, stripping filler-extmarked lines.
+--- Only works for editable buffers that have filler extmarks set.
+---@param bufnr number Buffer number to extract lines from
+---@return string[] lines Real content lines with fillers removed
+function DiffBufferTriple:get_real_lines(bufnr)
+  local all_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  if not self._editable then
+    return all_lines
+  end
+
+  -- Get all filler extmark positions
+  local filler_marks = vim.api.nvim_buf_get_extmarks(bufnr, self._filler_ns, 0, -1, {})
+  local filler_set = {}
+  for _, mark in ipairs(filler_marks) do
+    filler_set[mark[2]] = true -- mark[2] is the 0-indexed line number
+  end
+
+  -- Filter out filler lines
+  local real = {}
+  for i, line in ipairs(all_lines) do
+    if not filler_set[i - 1] then
+      table.insert(real, line)
+    end
+  end
+  return real
+end
+
+--- Check if any editable buffer (mid or right) has unsaved changes.
+---@return boolean
+function DiffBufferTriple:has_unsaved_changes()
+  if not self._editable then
+    return false
+  end
+  if
+    self.mid_bufnr
+    and vim.api.nvim_buf_is_valid(self.mid_bufnr)
+    and vim.bo[self.mid_bufnr].modified
+  then
+    return true
+  end
+  if
+    self.right_bufnr
+    and vim.api.nvim_buf_is_valid(self.right_bufnr)
+    and vim.bo[self.right_bufnr].modified
+  then
+    return true
+  end
+  return false
 end
 
 --- Get all buffer numbers as a list.

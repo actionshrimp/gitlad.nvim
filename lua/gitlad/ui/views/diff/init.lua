@@ -14,7 +14,18 @@ local M = {}
 local buffer_mod = require("gitlad.ui.views.diff.buffer")
 local panel_mod = require("gitlad.ui.views.diff.panel")
 local content = require("gitlad.ui.views.diff.content")
+local save_mod = require("gitlad.ui.views.diff.save")
 local keymap = require("gitlad.utils.keymap")
+
+--- Check if a source type supports editable buffers.
+---@param source_type DiffSourceType
+---@return boolean
+local function is_editable_source(source_type)
+  return source_type == "staged"
+    or source_type == "unstaged"
+    or source_type == "worktree"
+    or source_type == "three_way"
+end
 
 -- The single active DiffView instance (only one at a time)
 local active_view = nil
@@ -90,8 +101,9 @@ function DiffView:_setup_layout()
     end,
   })
 
-  -- Create the buffer pair
-  self.buffer_pair = buffer_mod.new(left_winnr, right_winnr)
+  -- Create the buffer pair (editable for local diff sources)
+  local editable = is_editable_source(self.diff_spec.source.type)
+  self.buffer_pair = buffer_mod.new(left_winnr, right_winnr, { editable = editable })
 
   -- Set up keymaps on both diff buffers
   self:_setup_keymaps()
@@ -177,8 +189,10 @@ function DiffView:_setup_layout_three_way()
     end,
   })
 
-  -- Create the buffer triple
-  self.buffer_triple = buffer_triple_mod.new(left_winnr, mid_winnr, right_winnr)
+  -- Create the buffer triple (editable for three_way, not for merge)
+  local editable = is_editable_source(self.diff_spec.source.type)
+  self.buffer_triple =
+    buffer_triple_mod.new(left_winnr, mid_winnr, right_winnr, { editable = editable })
 
   -- Set up keymaps on all 3 diff buffers
   self:_setup_keymaps()
@@ -261,6 +275,13 @@ function DiffView:select_file(index)
   local file_pairs = self.diff_spec.file_pairs
   if index < 1 or index > #file_pairs then
     return
+  end
+
+  -- Guard: prompt if switching to a different file with unsaved changes
+  if index ~= self.selected_file and self:_has_unsaved_changes() then
+    if not self:_prompt_unsaved("Switch files") then
+      return
+    end
   end
 
   if self.three_way then
@@ -963,6 +984,26 @@ function DiffView:_setup_keymaps()
   else
     buffers = { self.buffer_pair.left_bufnr, self.buffer_pair.right_bufnr }
   end
+
+  -- Set up BufWriteCmd for editable buffers
+  local editable = is_editable_source(self.diff_spec.source.type)
+  if editable then
+    local editable_buffers = {}
+    if self.three_way and self.buffer_triple then
+      editable_buffers = { self.buffer_triple.mid_bufnr, self.buffer_triple.right_bufnr }
+    elseif self.buffer_pair then
+      editable_buffers = { self.buffer_pair.right_bufnr }
+    end
+    for _, ebuf in ipairs(editable_buffers) do
+      vim.api.nvim_create_autocmd("BufWriteCmd", {
+        buffer = ebuf,
+        callback = function()
+          self:_do_save(ebuf)
+        end,
+      })
+    end
+  end
+
   for _, bufnr in ipairs(buffers) do
     keymap.set(bufnr, "n", "q", function()
       self:close()
@@ -1026,6 +1067,137 @@ function DiffView:_setup_keymaps()
     keymap.set(bufnr, "n", "P", function()
       self:toggle_pending_mode()
     end, "Toggle pending review mode")
+  end
+end
+
+--- Handle save for an editable diff buffer.
+--- Strips filler lines, routes to the correct save target, then refreshes.
+---@param bufnr number The buffer being saved
+function DiffView:_do_save(bufnr)
+  local source_type = self.diff_spec.source.type
+  local repo_root = self.diff_spec.repo_root
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file < 1 or self.selected_file > #file_pairs then
+    return
+  end
+  local path = file_pairs[self.selected_file].new_path
+
+  -- Determine save target based on source type and which buffer
+  local save_fn
+  if self.three_way and self.buffer_triple then
+    local lines = self.buffer_triple:get_real_lines(bufnr)
+    if bufnr == self.buffer_triple.mid_bufnr then
+      -- Mid buffer = INDEX
+      save_fn = function(cb)
+        save_mod.save_index(repo_root, path, lines, cb)
+      end
+    elseif bufnr == self.buffer_triple.right_bufnr then
+      -- Right buffer = WORKTREE
+      save_fn = function(cb)
+        save_mod.save_worktree(repo_root, path, lines, cb)
+      end
+    end
+  elseif self.buffer_pair then
+    local lines = self.buffer_pair:get_real_lines(bufnr)
+    if source_type == "staged" then
+      -- Right buffer saves to INDEX
+      save_fn = function(cb)
+        save_mod.save_index(repo_root, path, lines, cb)
+      end
+    else
+      -- unstaged/worktree: right buffer saves to WORKTREE (disk)
+      save_fn = function(cb)
+        save_mod.save_worktree(repo_root, path, lines, cb)
+      end
+    end
+  end
+
+  if not save_fn then
+    return
+  end
+
+  save_fn(function(err)
+    vim.schedule(function()
+      if self._closed then
+        return
+      end
+      if err then
+        vim.notify("[gitlad] Save failed: " .. err, vim.log.levels.ERROR)
+        return
+      end
+      -- Mark buffer as saved
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.bo[bufnr].modified = false
+      end
+      vim.notify("[gitlad] Saved " .. path, vim.log.levels.INFO)
+      -- Refresh to re-diff and re-align
+      self:refresh()
+    end)
+  end)
+end
+
+--- Check if any buffer in the view has unsaved changes.
+---@return boolean
+function DiffView:_has_unsaved_changes()
+  if self.three_way and self.buffer_triple then
+    return self.buffer_triple:has_unsaved_changes()
+  elseif self.buffer_pair then
+    return self.buffer_pair:has_unsaved_changes()
+  end
+  return false
+end
+
+--- Prompt the user about unsaved changes.
+--- Returns true if the user wants to proceed (discard), false if they want to cancel.
+---@param action string Description of what will happen (e.g., "switch files", "close")
+---@return boolean proceed
+function DiffView:_prompt_unsaved(action)
+  local choice = vim.fn.confirm(
+    string.format("Buffer has unsaved changes. %s anyway?", action),
+    "&Save\n&Discard\n&Cancel",
+    3
+  )
+  if choice == 1 then
+    -- Save first, then proceed
+    -- Save all modified editable buffers
+    if self.three_way and self.buffer_triple then
+      if self.buffer_triple.mid_bufnr and vim.bo[self.buffer_triple.mid_bufnr].modified then
+        self:_do_save(self.buffer_triple.mid_bufnr)
+      end
+      if self.buffer_triple.right_bufnr and vim.bo[self.buffer_triple.right_bufnr].modified then
+        self:_do_save(self.buffer_triple.right_bufnr)
+      end
+    elseif self.buffer_pair and self.buffer_pair.right_bufnr then
+      if vim.bo[self.buffer_pair.right_bufnr].modified then
+        self:_do_save(self.buffer_pair.right_bufnr)
+      end
+    end
+    return true
+  elseif choice == 2 then
+    -- Discard and proceed
+    -- Reset modified flag on all editable buffers
+    if self.three_way and self.buffer_triple then
+      if
+        self.buffer_triple.mid_bufnr and vim.api.nvim_buf_is_valid(self.buffer_triple.mid_bufnr)
+      then
+        vim.bo[self.buffer_triple.mid_bufnr].modified = false
+      end
+      if
+        self.buffer_triple.right_bufnr and vim.api.nvim_buf_is_valid(self.buffer_triple.right_bufnr)
+      then
+        vim.bo[self.buffer_triple.right_bufnr].modified = false
+      end
+    elseif
+      self.buffer_pair
+      and self.buffer_pair.right_bufnr
+      and vim.api.nvim_buf_is_valid(self.buffer_pair.right_bufnr)
+    then
+      vim.bo[self.buffer_pair.right_bufnr].modified = false
+    end
+    return true
+  else
+    -- Cancel
+    return false
   end
 end
 
@@ -1097,10 +1269,20 @@ function DiffView:refresh()
 end
 
 --- Close the entire diff view, cleaning up all resources.
-function DiffView:close()
+---@param opts? { force?: boolean } Options (force skips unsaved changes prompt)
+function DiffView:close(opts)
   if self._closed then
     return
   end
+
+  -- Guard: prompt if closing with unsaved changes (unless forced)
+  opts = opts or {}
+  if not opts.force and self:_has_unsaved_changes() then
+    if not self:_prompt_unsaved("Close") then
+      return
+    end
+  end
+
   self._closed = true
 
   -- Remove autocmd

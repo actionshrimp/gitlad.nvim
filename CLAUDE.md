@@ -261,6 +261,7 @@ lua/gitlad/
             ├── hunk.lua      # Hunk parsing, side-by-side alignment
             ├── source.lua    # DiffSpec producers
             ├── content.lua   # File content retrieval + alignment
+            ├── save.lua          # Save operations (worktree/index)
             ├── buffer.lua        # Side-by-side buffer pair (2-pane)
             ├── buffer_triple.lua # Three-way buffer triple (3-pane)
             ├── three_way.lua     # 3-way alignment algorithm (pure Lua)
@@ -436,6 +437,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `]c` / `[c` | Next/previous hunk |
 | `<CR>` | Select file (in panel) |
 | `gr` | Refresh |
+| `:w` | Save edits (staged/unstaged/worktree/3-way only) |
 | `C-n` / `C-p` | Next/previous commit (PR mode) |
 | `]t` / `[t` | Next/previous review thread (PR mode) |
 | `<Tab>` | Toggle review thread expand/collapse |
@@ -443,6 +445,8 @@ This makes the plugin more comfortable for vim/evil users.
 | `r` | Reply to review thread at cursor |
 | `R` | Submit review (approve/request changes/comment) |
 | `P` | Toggle pending review mode |
+
+**Editable diff buffers:** In staged, unstaged, worktree, and 3-way diff views, the INDEX and/or WORKTREE buffers are editable. Use `:w` to save changes (staged writes to git index, unstaged/worktree writes to disk). After saving, the view auto-refreshes to re-diff and re-align. Navigating to another file or closing with unsaved changes prompts to save/discard/cancel.
 
 ### Forge Popup Actions
 | Key | Action |
