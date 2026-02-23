@@ -332,7 +332,7 @@ T["refs view"]["buffer is not modifiable"] = function()
   cleanup_test_repo(child, repo)
 end
 
-T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
+T["refs view"]["has popup keymaps (b, A, X, d, f)"] = function()
   local repo = helpers.create_test_repo(child)
   cd(child, repo)
 
@@ -356,6 +356,7 @@ T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
       if km.lhs == "A" then _G.popup_keymaps.cherrypick = true end
       if km.lhs == "X" then _G.popup_keymaps.reset = true end
       if km.lhs == "d" then _G.popup_keymaps.diff = true end
+      if km.lhs == "f" then _G.popup_keymaps.fetch = true end
     end
   ]])
 
@@ -363,11 +364,47 @@ T["refs view"]["has popup keymaps (b, A, X, d)"] = function()
   local has_cherrypick = child.lua_get("_G.popup_keymaps.cherrypick")
   local has_reset = child.lua_get("_G.popup_keymaps.reset")
   local has_diff = child.lua_get("_G.popup_keymaps.diff")
+  local has_fetch = child.lua_get("_G.popup_keymaps.fetch")
 
   eq(has_branch, true)
   eq(has_cherrypick, true)
   eq(has_reset, true)
   eq(has_diff, true)
+  eq(has_fetch, true)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["refs view"]["f opens fetch popup"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  helpers.create_file(child, repo, "file.txt", "content")
+  helpers.git(child, repo, "add file.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Open refs view
+  child.type_keys("yry")
+  helpers.wait_for_buffer(child, "gitlad://refs")
+  helpers.wait_for_buffer_content(child, "Branches")
+
+  -- Press f to open fetch popup
+  child.type_keys("f")
+  helpers.wait_for_popup(child)
+
+  -- Fetch popup should be visible
+  local lines = child.lua_get("vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local content = table.concat(lines, "\n")
+
+  -- Should show Fetch popup content
+  eq(content:match("Fetch") ~= nil, true)
+  eq(
+    content:match("Fetch from pushremote") ~= nil or content:match("Fetch from upstream") ~= nil,
+    true
+  )
 
   cleanup_test_repo(child, repo)
 end

@@ -214,6 +214,12 @@ function RefsBuffer:_setup_keymaps()
     rebase_popup.open(self.repo_state, context)
   end, "Rebase popup")
 
+  -- Fetch popup
+  keymap.set(bufnr, "n", "f", function()
+    local fetch_popup = require("gitlad.popups.fetch")
+    fetch_popup.open(self.repo_state)
+  end, "Fetch popup")
+
   -- Commit popup (passes commit at point for instant fixup/squash)
   keymap.set(bufnr, "n", "c", function()
     local commit_popup = require("gitlad.popups.commit")
@@ -427,6 +433,13 @@ function RefsBuffer:_show_help()
           desc = "Diff",
           action = function()
             require("gitlad.popups.diff").open(repo_state, {})
+          end,
+        },
+        {
+          key = "f",
+          desc = "Fetch",
+          action = function()
+            require("gitlad.popups.fetch").open(repo_state)
           end,
         },
         {
