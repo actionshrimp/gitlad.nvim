@@ -29,6 +29,9 @@ local active_view = nil
 ---@field buffer_pair DiffBufferPair Side-by-side buffers
 ---@field tab_page number Tab page number
 ---@field selected_file number Currently displayed file index (1-based)
+---@field provider ForgeProvider|nil Forge provider (for PR review)
+---@field pr_number number|nil PR number (for PR review)
+---@field review_state ReviewState|nil Review thread state (PR mode only)
 ---@field _closed boolean Whether the view has been closed
 ---@field _autocmd_id number|nil Autocmd ID for tab close detection
 local DiffView = {}
@@ -155,6 +158,11 @@ function DiffView:_render_initial(initial_file)
     -- No files: show a message in the diff buffers
     self:_show_empty_message()
   end
+
+  -- Fetch review threads for PR diffs (async, overlays applied when ready)
+  if self.provider and self.pr_number then
+    self:_fetch_review_threads()
+  end
 end
 
 --- Display the file at the given index in the side-by-side buffers.
@@ -169,6 +177,9 @@ function DiffView:select_file(index)
   local aligned = content.align_sides(file_pair)
   self.buffer_pair:set_content(aligned, file_pair.new_path)
   self.selected_file = index
+
+  -- Apply review overlays if we have review state
+  self:_apply_review_overlays(file_pair.new_path)
 
   -- Update panel selection (render with new selection)
   self.panel.selected_file = index
@@ -351,6 +362,452 @@ function DiffView:goto_prev_hunk()
   end
 end
 
+--- Fetch review threads from the provider and populate review_state.
+--- Called automatically when a PR diff opens with a provider set.
+function DiffView:_fetch_review_threads()
+  if not self.provider or not self.pr_number then
+    return
+  end
+
+  if not self.provider.get_review_threads then
+    return
+  end
+
+  self.provider:get_review_threads(self.pr_number, function(threads, pr_node_id, err)
+    vim.schedule(function()
+      if self._closed then
+        return
+      end
+      if err then
+        vim.notify("[gitlad] Failed to load review threads: " .. err, vim.log.levels.WARN)
+        return
+      end
+      if not threads then
+        return
+      end
+
+      local review_mod = require("gitlad.ui.views.diff.review")
+      self.review_state = review_mod.new_state()
+      self.review_state.threads = threads
+      self.review_state.thread_map = review_mod.group_threads_by_path(threads)
+      self.review_state.pr_node_id = pr_node_id
+
+      -- Enable signcolumn for review mode
+      for _, winnr in ipairs({ self.buffer_pair.left_winnr, self.buffer_pair.right_winnr }) do
+        if vim.api.nvim_win_is_valid(winnr) then
+          vim.api.nvim_set_option_value("signcolumn", "yes:1", { win = winnr, scope = "local" })
+        end
+      end
+
+      -- Apply overlays to current file
+      local file_pairs = self.diff_spec.file_pairs
+      if self.selected_file >= 1 and self.selected_file <= #file_pairs then
+        self:_apply_review_overlays(file_pairs[self.selected_file].new_path)
+      end
+    end)
+  end)
+end
+
+--- Apply review overlays for a given file path.
+---@param file_path string The file path to apply overlays for
+function DiffView:_apply_review_overlays(file_path)
+  if not self.review_state then
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local file_threads = self.review_state.thread_map[file_path] or {}
+
+  -- Get pending comments for this file
+  local file_pending = {}
+  if self.review_state.pending_mode then
+    for _, pc in ipairs(self.review_state.pending_comments) do
+      if pc.path == file_path then
+        table.insert(file_pending, pc)
+      end
+    end
+  end
+
+  self.review_state.file_thread_positions = review_mod.apply_overlays(
+    self.buffer_pair,
+    file_threads,
+    self.buffer_pair.line_map,
+    self.review_state.collapsed,
+    #file_pending > 0 and file_pending or nil
+  )
+end
+
+--- Navigate to the next review thread in the current file.
+function DiffView:goto_next_thread()
+  if not self.review_state or not self.review_state.file_thread_positions then
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+
+  local next_line =
+    review_mod.next_thread_line(self.review_state.file_thread_positions, current_line)
+  if next_line then
+    vim.api.nvim_win_set_cursor(current_win, { next_line, 0 })
+  end
+end
+
+--- Navigate to the previous review thread in the current file.
+function DiffView:goto_prev_thread()
+  if not self.review_state or not self.review_state.file_thread_positions then
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+
+  local prev_line =
+    review_mod.prev_thread_line(self.review_state.file_thread_positions, current_line)
+  if prev_line then
+    vim.api.nvim_win_set_cursor(current_win, { prev_line, 0 })
+  end
+end
+
+--- Toggle expand/collapse of the thread at cursor.
+function DiffView:toggle_thread_at_cursor()
+  if not self.review_state or not self.review_state.file_thread_positions then
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+
+  local thread = review_mod.thread_at_cursor(self.review_state.file_thread_positions, current_line)
+  if not thread then
+    return
+  end
+
+  -- Toggle collapsed state
+  local is_collapsed = self.review_state.collapsed[thread.id]
+  if is_collapsed == nil then
+    is_collapsed = true -- Default is collapsed
+  end
+  self.review_state.collapsed[thread.id] = not is_collapsed
+
+  -- Re-apply overlays
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file >= 1 and self.selected_file <= #file_pairs then
+    self:_apply_review_overlays(file_pairs[self.selected_file].new_path)
+  end
+end
+
+--- Get the current file path and line info at cursor for review operations.
+---@return { path: string, lineno: number, side: string }|nil info
+function DiffView:_get_review_line_info()
+  if not self.buffer_pair or not self.buffer_pair.line_map then
+    return nil
+  end
+
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file < 1 or self.selected_file > #file_pairs then
+    return nil
+  end
+
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+  local info = self.buffer_pair.line_map[current_line]
+  if not info then
+    return nil
+  end
+
+  -- Determine side and line number based on which buffer is active
+  local side, lineno
+  if current_win == self.buffer_pair.left_winnr then
+    side = "LEFT"
+    lineno = info.left_lineno
+  else
+    side = "RIGHT"
+    lineno = info.right_lineno
+  end
+
+  if not lineno then
+    return nil -- Filler line
+  end
+
+  return {
+    path = file_pairs[self.selected_file].new_path,
+    lineno = lineno,
+    side = side,
+  }
+end
+
+--- Add a new review comment at the cursor position.
+--- In pending mode, adds to the local pending list instead of submitting.
+function DiffView:add_review_comment()
+  if not self.provider or not self.pr_number then
+    vim.notify("[gitlad] Not in a PR diff view", vim.log.levels.WARN)
+    return
+  end
+
+  local line_info = self:_get_review_line_info()
+  if not line_info then
+    vim.notify("[gitlad] No valid line at cursor", vim.log.levels.WARN)
+    return
+  end
+
+  -- Pending mode: accumulate locally
+  if self.review_state and self.review_state.pending_mode then
+    local comment_editor = require("gitlad.ui.views.comment_editor")
+    local title = string.format("[Pending] Comment on %s:%d", line_info.path, line_info.lineno)
+
+    comment_editor.open({
+      title = title,
+      on_submit = function(body)
+        ---@type PendingComment
+        local pc = {
+          path = line_info.path,
+          line = line_info.lineno,
+          side = line_info.side,
+          body = body,
+        }
+        table.insert(self.review_state.pending_comments, pc)
+        local count = #self.review_state.pending_comments
+        vim.notify(
+          string.format("[gitlad] Comment added to pending review (%d total)", count),
+          vim.log.levels.INFO
+        )
+        -- Re-apply overlays to show the pending comment
+        local file_pairs = self.diff_spec.file_pairs
+        if self.selected_file >= 1 and self.selected_file <= #file_pairs then
+          self:_apply_review_overlays(file_pairs[self.selected_file].new_path)
+        end
+      end,
+    })
+    return
+  end
+
+  -- Immediate mode: submit directly via REST API
+  if not self.provider.create_review_comment then
+    vim.notify("[gitlad] Provider does not support review comments", vim.log.levels.WARN)
+    return
+  end
+
+  -- Get the head commit OID for the commit_id parameter
+  local source = self.diff_spec.source
+  local commit_id
+  if source.pr_info then
+    if source.selected_commit and source.pr_info.commits then
+      local commit = source.pr_info.commits[source.selected_commit]
+      if commit then
+        commit_id = commit.oid
+      end
+    end
+    if not commit_id then
+      commit_id = source.pr_info.head_oid
+    end
+  end
+
+  if not commit_id then
+    vim.notify("[gitlad] Cannot determine commit for review comment", vim.log.levels.WARN)
+    return
+  end
+
+  local comment_editor = require("gitlad.ui.views.comment_editor")
+  local provider = self.provider
+  local pr_number = self.pr_number
+  local title = string.format("Review comment on %s:%d", line_info.path, line_info.lineno)
+
+  comment_editor.open({
+    title = title,
+    on_submit = function(body)
+      vim.notify("[gitlad] Submitting review comment...", vim.log.levels.INFO)
+      provider:create_review_comment(pr_number, {
+        body = body,
+        path = line_info.path,
+        line = line_info.lineno,
+        side = line_info.side,
+        commit_id = commit_id,
+      }, function(_, err)
+        vim.schedule(function()
+          if err then
+            vim.notify("[gitlad] Failed to add comment: " .. err, vim.log.levels.ERROR)
+            return
+          end
+          vim.notify("[gitlad] Review comment added", vim.log.levels.INFO)
+          -- Re-fetch threads to show the new comment
+          self:_fetch_review_threads()
+        end)
+      end)
+    end,
+  })
+end
+
+--- Reply to the review thread at the cursor position.
+function DiffView:reply_to_thread()
+  if not self.provider or not self.pr_number then
+    vim.notify("[gitlad] Not in a PR diff view", vim.log.levels.WARN)
+    return
+  end
+
+  if not self.provider.reply_to_review_comment then
+    vim.notify("[gitlad] Provider does not support thread replies", vim.log.levels.WARN)
+    return
+  end
+
+  if not self.review_state or not self.review_state.file_thread_positions then
+    vim.notify("[gitlad] No review threads loaded", vim.log.levels.WARN)
+    return
+  end
+
+  local review_mod = require("gitlad.ui.views.diff.review")
+  local current_win = vim.api.nvim_get_current_win()
+  local current_line = vim.api.nvim_win_get_cursor(current_win)[1]
+
+  local thread = review_mod.thread_at_cursor(self.review_state.file_thread_positions, current_line)
+  if not thread then
+    vim.notify("[gitlad] No review thread at cursor", vim.log.levels.WARN)
+    return
+  end
+
+  -- Find the first comment's database_id to reply to
+  if #thread.comments == 0 then
+    vim.notify("[gitlad] Thread has no comments to reply to", vim.log.levels.WARN)
+    return
+  end
+
+  local first_comment = thread.comments[1]
+  if not first_comment.database_id then
+    vim.notify("[gitlad] Cannot reply: comment has no database ID", vim.log.levels.WARN)
+    return
+  end
+
+  local comment_editor = require("gitlad.ui.views.comment_editor")
+  local provider = self.provider
+  local pr_number = self.pr_number
+  local title = string.format("Reply to @%s on %s", first_comment.author.login, thread.path)
+
+  comment_editor.open({
+    title = title,
+    on_submit = function(body)
+      vim.notify("[gitlad] Submitting reply...", vim.log.levels.INFO)
+      provider:reply_to_review_comment(pr_number, first_comment.database_id, body, function(_, err)
+        vim.schedule(function()
+          if err then
+            vim.notify("[gitlad] Failed to reply: " .. err, vim.log.levels.ERROR)
+            return
+          end
+          vim.notify("[gitlad] Reply added", vim.log.levels.INFO)
+          -- Re-fetch threads to show the reply
+          self:_fetch_review_threads()
+        end)
+      end)
+    end,
+  })
+end
+
+--- Open the submit review popup (Approve / Request Changes / Comment).
+function DiffView:submit_review()
+  if not self.provider or not self.pr_number then
+    vim.notify("[gitlad] Not in a PR diff view", vim.log.levels.WARN)
+    return
+  end
+
+  if not self.provider.submit_review then
+    vim.notify("[gitlad] Provider does not support review submission", vim.log.levels.WARN)
+    return
+  end
+
+  if not self.review_state or not self.review_state.pr_node_id then
+    vim.notify("[gitlad] No PR node ID available. Try refreshing.", vim.log.levels.WARN)
+    return
+  end
+
+  local popup = require("gitlad.ui.popup")
+  local comment_editor = require("gitlad.ui.views.comment_editor")
+  local provider = self.provider
+  local pr_node_id = self.review_state.pr_node_id
+  local pending = self.review_state.pending_comments
+  local has_pending = #pending > 0
+
+  local function do_submit(event, event_label)
+    comment_editor.open({
+      title = string.format("Review: %s PR #%d", event_label, self.pr_number),
+      on_submit = function(body)
+        local function on_complete(_, err)
+          vim.schedule(function()
+            if err then
+              vim.notify("[gitlad] Failed to submit review: " .. err, vim.log.levels.ERROR)
+              return
+            end
+            local msg = "[gitlad] Review submitted: " .. event_label
+            if has_pending then
+              msg = msg .. string.format(" (with %d comments)", #pending)
+              self.review_state.pending_comments = {}
+              self.review_state.pending_mode = false
+            end
+            vim.notify(msg, vim.log.levels.INFO)
+            self:_fetch_review_threads()
+          end)
+        end
+
+        vim.notify("[gitlad] Submitting review...", vim.log.levels.INFO)
+
+        if has_pending and provider.submit_review_with_comments then
+          provider:submit_review_with_comments(pr_node_id, event, body, pending, on_complete)
+        else
+          provider:submit_review(pr_node_id, event, body, on_complete)
+        end
+      end,
+    })
+  end
+
+  local title = "Submit Review"
+  if has_pending then
+    title = string.format("Submit Review (%d pending)", #pending)
+  end
+
+  local review_popup = popup
+    .builder()
+    :name(title)
+    :action("a", "Approve", function()
+      do_submit("APPROVE", "Approve")
+    end)
+    :action("r", "Request changes", function()
+      do_submit("REQUEST_CHANGES", "Request changes")
+    end)
+    :action("c", "Comment", function()
+      do_submit("COMMENT", "Comment")
+    end)
+    :build()
+
+  review_popup:show()
+end
+
+--- Toggle pending review mode.
+--- In pending mode, `c` adds comments to a local list instead of posting immediately.
+--- Use `R` to submit the pending review as a batch.
+function DiffView:toggle_pending_mode()
+  if not self.review_state then
+    vim.notify("[gitlad] No review state available", vim.log.levels.WARN)
+    return
+  end
+
+  self.review_state.pending_mode = not self.review_state.pending_mode
+  local mode = self.review_state.pending_mode and "ON" or "OFF"
+  local count = #self.review_state.pending_comments
+
+  local msg = string.format("[gitlad] Pending review mode: %s", mode)
+  if count > 0 then
+    msg = msg .. string.format(" (%d comments)", count)
+  end
+  vim.notify(msg, vim.log.levels.INFO)
+
+  -- Re-apply overlays to show/hide pending indicators
+  local file_pairs = self.diff_spec.file_pairs
+  if self.selected_file >= 1 and self.selected_file <= #file_pairs then
+    self:_apply_review_overlays(file_pairs[self.selected_file].new_path)
+  end
+end
+
 --- Show a message in the diff buffers when there are no changes.
 function DiffView:_show_empty_message()
   local msg = { "", "  No changes" }
@@ -401,6 +858,36 @@ function DiffView:_setup_keymaps()
     keymap.set(bufnr, "n", "<C-p>", function()
       self:prev_commit()
     end, "Previous commit (PR mode)")
+
+    -- Review thread navigation (PR mode only)
+    keymap.set(bufnr, "n", "]t", function()
+      self:goto_next_thread()
+    end, "Next review thread")
+
+    keymap.set(bufnr, "n", "[t", function()
+      self:goto_prev_thread()
+    end, "Previous review thread")
+
+    keymap.set(bufnr, "n", "<Tab>", function()
+      self:toggle_thread_at_cursor()
+    end, "Toggle review thread")
+
+    -- Review comment actions (PR mode only)
+    keymap.set(bufnr, "n", "c", function()
+      self:add_review_comment()
+    end, "Add review comment")
+
+    keymap.set(bufnr, "n", "r", function()
+      self:reply_to_thread()
+    end, "Reply to review thread")
+
+    keymap.set(bufnr, "n", "R", function()
+      self:submit_review()
+    end, "Submit review")
+
+    keymap.set(bufnr, "n", "P", function()
+      self:toggle_pending_mode()
+    end, "Toggle pending review mode")
   end
 end
 
@@ -459,6 +946,11 @@ function DiffView:refresh()
     src.produce_stash(repo_root, source.ref, on_result)
   elseif source.type == "pr" then
     src.produce_pr(repo_root, source.pr_info, source.selected_commit, on_result)
+  end
+
+  -- Also re-fetch review threads on refresh
+  if self.provider and self.pr_number then
+    self:_fetch_review_threads()
   end
 end
 
@@ -537,7 +1029,7 @@ end
 --- Creates a new tab page with file panel + side-by-side diff buffers.
 --- Closes any existing diff view first.
 ---@param diff_spec DiffSpec The diff specification to display
----@param opts? { initial_file?: string } Options: initial_file selects that file in the panel
+---@param opts? { initial_file?: string, provider?: ForgeProvider, pr_number?: number } Options
 ---@return DiffView
 function M.open(diff_spec, opts)
   opts = opts or {}
@@ -548,6 +1040,8 @@ function M.open(diff_spec, opts)
   end
 
   local view = DiffView._new(diff_spec)
+  view.provider = opts.provider or nil
+  view.pr_number = opts.pr_number or nil
   view:_setup_layout()
   view:_render_initial(opts.initial_file)
 

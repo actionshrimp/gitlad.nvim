@@ -1,0 +1,119 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "id": "PR_kwDOTest123",
+        "reviewThreads": {
+          "nodes": [
+            {
+              "id": "PRRT_thread1",
+              "isResolved": false,
+              "isOutdated": false,
+              "line": 42,
+              "originalLine": 42,
+              "startLine": null,
+              "path": "src/main.lua",
+              "diffSide": "RIGHT",
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_comment1",
+                    "databaseId": 1001,
+                    "author": {
+                      "login": "reviewer1"
+                    },
+                    "body": "Should we add rate limiting here?",
+                    "createdAt": "2026-02-20T10:30:00Z",
+                    "updatedAt": "2026-02-20T10:30:00Z"
+                  },
+                  {
+                    "id": "PRRC_comment2",
+                    "databaseId": 1002,
+                    "author": {
+                      "login": "author1"
+                    },
+                    "body": "Good idea, I'll add in a follow-up",
+                    "createdAt": "2026-02-20T11:00:00Z",
+                    "updatedAt": "2026-02-20T11:00:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_thread2",
+              "isResolved": true,
+              "isOutdated": false,
+              "line": 15,
+              "originalLine": 15,
+              "startLine": null,
+              "path": "src/utils.lua",
+              "diffSide": "RIGHT",
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_comment3",
+                    "databaseId": 1003,
+                    "author": {
+                      "login": "reviewer2"
+                    },
+                    "body": "Typo: 'recieve' -> 'receive'",
+                    "createdAt": "2026-02-19T09:00:00Z",
+                    "updatedAt": "2026-02-19T09:00:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_thread3",
+              "isResolved": false,
+              "isOutdated": true,
+              "line": null,
+              "originalLine": 8,
+              "startLine": null,
+              "path": "src/main.lua",
+              "diffSide": "LEFT",
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_comment4",
+                    "databaseId": 1004,
+                    "author": {
+                      "login": "reviewer1"
+                    },
+                    "body": "This function was removed, looks good",
+                    "createdAt": "2026-02-18T14:00:00Z",
+                    "updatedAt": "2026-02-18T14:00:00Z"
+                  }
+                ]
+              }
+            },
+            {
+              "id": "PRRT_thread4",
+              "isResolved": false,
+              "isOutdated": false,
+              "line": 10,
+              "originalLine": 10,
+              "startLine": 8,
+              "path": "src/main.lua",
+              "diffSide": "RIGHT",
+              "comments": {
+                "nodes": [
+                  {
+                    "id": "PRRC_comment5",
+                    "databaseId": 1005,
+                    "author": {
+                      "login": "reviewer2"
+                    },
+                    "body": "This multi-line block could be simplified",
+                    "createdAt": "2026-02-21T08:00:00Z",
+                    "updatedAt": "2026-02-21T08:00:00Z"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

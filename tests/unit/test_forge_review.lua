@@ -219,4 +219,179 @@ T["edit_comment()"]["handles 403 forbidden"] = function()
   expect.equality(got_result.err:match("Forbidden") ~= nil, true)
 end
 
+-- =============================================================================
+-- create_review_comment
+-- =============================================================================
+
+T["create_review_comment()"] = MiniTest.new_set()
+
+T["create_review_comment()"]["sends correct REST request"] = function()
+  local http = require("gitlad.forge.http")
+  local captured_url = nil
+  local captured_request = nil
+
+  http._set_executor(function(cmd, opts)
+    captured_url = cmd[#cmd]
+    for i, v in ipairs(cmd) do
+      if v == "-d" then
+        captured_request = cmd[i + 1]
+      end
+    end
+    local response = vim.json.encode({ id = 5001, body = "Review comment" })
+    opts.on_stdout(nil, vim.split(response .. "\n201", "\n"))
+    opts.on_exit(nil, 0)
+    return 1
+  end)
+
+  local got_result = nil
+  review.create_review_comment("https://api.github.com", "test-token", "owner", "repo", 42, {
+    body = "Nice code!",
+    path = "src/main.lua",
+    line = 10,
+    side = "RIGHT",
+    commit_id = "abc123",
+  }, function(result, err)
+    got_result = { result = result, err = err }
+  end)
+
+  vim.wait(200, function()
+    return got_result ~= nil
+  end, 10)
+
+  -- Verify URL
+  expect.equality(captured_url, "https://api.github.com/repos/owner/repo/pulls/42/comments")
+
+  -- Verify body payload
+  expect.equality(captured_request ~= nil, true)
+  local body = vim.json.decode(captured_request)
+  eq(body.body, "Nice code!")
+  eq(body.path, "src/main.lua")
+  eq(body.line, 10)
+  eq(body.side, "RIGHT")
+  eq(body.commit_id, "abc123")
+
+  -- Verify result
+  eq(got_result.err, nil)
+  eq(got_result.result.id, 5001)
+end
+
+T["create_review_comment()"]["handles 422 validation error"] = function()
+  local http = require("gitlad.forge.http")
+
+  http._set_executor(function(cmd, opts)
+    local response = vim.json.encode({ message = "Validation Failed" })
+    opts.on_stdout(nil, vim.split(response .. "\n422", "\n"))
+    opts.on_exit(nil, 0)
+    return 1
+  end)
+
+  local got_result = nil
+  review.create_review_comment("https://api.github.com", "token", "owner", "repo", 42, {
+    body = "test",
+    path = "test.lua",
+    line = 1,
+    side = "RIGHT",
+    commit_id = "abc123",
+  }, function(result, err)
+    got_result = { result = result, err = err }
+  end)
+
+  vim.wait(200, function()
+    return got_result ~= nil
+  end, 10)
+
+  eq(got_result.result, nil)
+  expect.equality(got_result.err:match("Validation failed") ~= nil, true)
+end
+
+-- =============================================================================
+-- reply_to_review_comment
+-- =============================================================================
+
+T["reply_to_review_comment()"] = MiniTest.new_set()
+
+T["reply_to_review_comment()"]["sends correct REST request"] = function()
+  local http = require("gitlad.forge.http")
+  local captured_url = nil
+  local captured_request = nil
+
+  http._set_executor(function(cmd, opts)
+    captured_url = cmd[#cmd]
+    for i, v in ipairs(cmd) do
+      if v == "-d" then
+        captured_request = cmd[i + 1]
+      end
+    end
+    local response = vim.json.encode({ id = 6001, body = "Reply text" })
+    opts.on_stdout(nil, vim.split(response .. "\n201", "\n"))
+    opts.on_exit(nil, 0)
+    return 1
+  end)
+
+  local got_result = nil
+  review.reply_to_review_comment(
+    "https://api.github.com",
+    "test-token",
+    "owner",
+    "repo",
+    42,
+    1001,
+    "Great point!",
+    function(result, err)
+      got_result = { result = result, err = err }
+    end
+  )
+
+  vim.wait(200, function()
+    return got_result ~= nil
+  end, 10)
+
+  -- Verify URL includes PR and comment ID
+  expect.equality(
+    captured_url,
+    "https://api.github.com/repos/owner/repo/pulls/42/comments/1001/replies"
+  )
+
+  -- Verify body
+  expect.equality(captured_request ~= nil, true)
+  local body = vim.json.decode(captured_request)
+  eq(body.body, "Great point!")
+
+  -- Verify result
+  eq(got_result.err, nil)
+  eq(got_result.result.id, 6001)
+end
+
+T["reply_to_review_comment()"]["handles 404 not found"] = function()
+  local http = require("gitlad.forge.http")
+
+  http._set_executor(function(cmd, opts)
+    local response = vim.json.encode({ message = "Not Found" })
+    opts.on_stdout(nil, vim.split(response .. "\n404", "\n"))
+    opts.on_exit(nil, 0)
+    return 1
+  end)
+
+  local got_result = nil
+  review.reply_to_review_comment(
+    "https://api.github.com",
+    "token",
+    "owner",
+    "repo",
+    42,
+    9999,
+    "Reply",
+    function(result, err)
+      got_result = { result = result, err = err }
+    end
+  )
+
+  vim.wait(200, function()
+    return got_result ~= nil
+  end, 10)
+
+  eq(got_result.result, nil)
+  expect.equality(got_result.err:match("Comment not found") ~= nil, true)
+end
+
 return T

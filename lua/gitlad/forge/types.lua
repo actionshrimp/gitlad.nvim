@@ -22,6 +22,8 @@ local M = {}
 ---@field author ForgeUser PR author
 ---@field head_ref string Head branch name
 ---@field base_ref string Base branch name
+---@field head_oid? string Head commit OID (full SHA)
+---@field base_oid? string Base commit OID (full SHA)
 ---@field review_decision? string "APPROVED"|"CHANGES_REQUESTED"|"REVIEW_REQUIRED"|nil
 ---@field labels string[] Label names
 ---@field additions number Lines added
@@ -60,12 +62,32 @@ local M = {}
 
 ---@class ForgeReviewComment
 ---@field id string Comment ID
+---@field database_id? number Numeric database ID (for REST API)
 ---@field author ForgeUser Comment author
 ---@field body string Comment body
 ---@field path string File path
 ---@field line? number Line number in the diff
 ---@field side? string "LEFT"|"RIGHT"
 ---@field created_at string ISO 8601 timestamp
+
+---@class ForgeReviewThread
+---@field id string GraphQL node ID
+---@field is_resolved boolean
+---@field is_outdated boolean
+---@field path string File path
+---@field line number|nil Current line in the diff
+---@field original_line number|nil Original line number
+---@field start_line number|nil Multi-line comment start
+---@field diff_side string "LEFT"|"RIGHT"
+---@field comments ForgeThreadComment[]
+
+---@class ForgeThreadComment
+---@field id string GraphQL node ID
+---@field database_id number|nil Numeric database ID (for REST API)
+---@field author ForgeUser Comment author
+---@field body string Comment body (markdown)
+---@field created_at string ISO 8601 timestamp
+---@field updated_at string ISO 8601 timestamp
 
 ---@class ForgeCheck
 ---@field name string Check name (e.g. "CI / test")
@@ -103,6 +125,11 @@ local M = {}
 ---@field provider_type string "github"|"gitlab"|"gitea"
 ---@field list_prs fun(self: ForgeProvider, opts: ForgeListPRsOpts, callback: fun(prs: ForgePullRequest[]|nil, err: string|nil))
 ---@field get_pr fun(self: ForgeProvider, number: number, callback: fun(pr: ForgePullRequest|nil, err: string|nil))
+---@field get_review_threads? fun(self: ForgeProvider, pr_number: number, callback: fun(threads: ForgeReviewThread[]|nil, pr_node_id: string|nil, err: string|nil))
+---@field create_review_comment? fun(self: ForgeProvider, pr_number: number, opts: table, callback: fun(comment: table|nil, err: string|nil))
+---@field reply_to_review_comment? fun(self: ForgeProvider, pr_number: number, comment_id: number, body: string, callback: fun(comment: table|nil, err: string|nil))
+---@field submit_review? fun(self: ForgeProvider, pr_node_id: string, event: string, body: string|nil, callback: fun(result: table|nil, err: string|nil))
+---@field submit_review_with_comments? fun(self: ForgeProvider, pr_node_id: string, event: string, body: string|nil, threads: PendingComment[], callback: fun(result: table|nil, err: string|nil))
 
 ---@class ForgeRemoteInfo
 ---@field provider string "github"

@@ -27,6 +27,8 @@ query($owner: String!, $repo: String!, $states: [PullRequestState!], $first: Int
         }
         headRefName
         baseRefName
+        headRefOid
+        baseRefOid
         reviewDecision
         labels(first: 10) {
           nodes {
@@ -80,6 +82,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
       headRefName
       baseRefName
+      headRefOid
+      baseRefOid
       reviewDecision
       labels(first: 10) {
         nodes {
@@ -158,6 +162,64 @@ query($owner: String!, $repo: String!, $number: Int!) {
               path
               line
               createdAt
+            }
+          }
+        }
+      }
+    }
+  }
+}
+]]
+
+M.mutations = {}
+
+M.mutations.add_pull_request_review = [[
+mutation($pullRequestId: ID!, $event: PullRequestReviewEvent!, $body: String) {
+  addPullRequestReview(input: {pullRequestId: $pullRequestId, event: $event, body: $body}) {
+    pullRequestReview {
+      id
+      state
+    }
+  }
+}
+]]
+
+M.mutations.add_pull_request_review_with_threads = [[
+mutation($pullRequestId: ID!, $event: PullRequestReviewEvent!, $body: String, $threads: [DraftPullRequestReviewThread!]) {
+  addPullRequestReview(input: {pullRequestId: $pullRequestId, event: $event, body: $body, threads: $threads}) {
+    pullRequestReview {
+      id
+      state
+    }
+  }
+}
+]]
+
+M.queries.pr_review_threads = [[
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      id
+      reviewThreads(first: 100) {
+        nodes {
+          id
+          isResolved
+          isOutdated
+          line
+          originalLine
+          startLine
+          path
+          diffSide
+          comments(first: 50) {
+            nodes {
+              id
+              databaseId
+              author {
+                login
+              }
+              body
+              createdAt
+              updatedAt
             }
           }
         }
@@ -361,6 +423,8 @@ function M.parse_pr_list(data)
       },
       head_ref = node.headRefName or "",
       base_ref = node.baseRefName or "",
+      head_oid = node.headRefOid,
+      base_oid = node.baseRefOid,
       review_decision = node.reviewDecision, -- can be nil
       labels = labels,
       additions = node.additions or 0,
@@ -510,6 +574,8 @@ function M.parse_pr_detail(data)
     },
     head_ref = node.headRefName or "",
     base_ref = node.baseRefName or "",
+    head_oid = node.headRefOid,
+    base_oid = node.baseRefOid,
     review_decision = node.reviewDecision, -- can be nil
     labels = labels,
     additions = node.additions or 0,
@@ -574,6 +640,92 @@ function M.parse_pr_commits(data)
   end
 
   return commits, nil
+end
+
+--- Parse a PR review threads GraphQL response into ForgeReviewThread[]
+---@param data table Decoded JSON response from GraphQL API
+---@return ForgeReviewThread[]|nil threads List of review threads
+---@return string|nil pr_node_id PR GraphQL node ID (for mutations)
+---@return string|nil err Error message
+function M.parse_review_threads(data)
+  if not data then
+    return nil, nil, "No data in response"
+  end
+
+  -- Check for GraphQL errors
+  if data.errors and #data.errors > 0 then
+    local msgs = {}
+    for _, err in ipairs(data.errors) do
+      table.insert(msgs, err.message or "Unknown error")
+    end
+    return nil, nil, "GraphQL error: " .. table.concat(msgs, "; ")
+  end
+
+  -- Navigate to the PR node
+  local repo = data.data and data.data.repository
+  if not repo then
+    return nil, nil, "Repository not found"
+  end
+
+  local pr_node = repo.pullRequest
+  if not pr_node then
+    return nil, nil, "Pull request not found"
+  end
+
+  local pr_node_id = pr_node.id
+
+  local threads = {}
+  local thread_nodes = pr_node.reviewThreads and pr_node.reviewThreads.nodes or {}
+
+  for _, node in ipairs(thread_nodes) do
+    local comments = {}
+    local comment_nodes = node.comments and node.comments.nodes or {}
+
+    for _, c in ipairs(comment_nodes) do
+      ---@type ForgeThreadComment
+      local comment = {
+        id = c.id or "",
+        database_id = c.databaseId,
+        author = {
+          login = (c.author and c.author.login) or "ghost",
+        },
+        body = c.body or "",
+        created_at = c.createdAt or "",
+        updated_at = c.updatedAt or "",
+      }
+      table.insert(comments, comment)
+    end
+
+    -- Normalize vim.NIL to nil
+    local line = node.line
+    if line == vim.NIL then
+      line = nil
+    end
+    local original_line = node.originalLine
+    if original_line == vim.NIL then
+      original_line = nil
+    end
+    local start_line = node.startLine
+    if start_line == vim.NIL then
+      start_line = nil
+    end
+
+    ---@type ForgeReviewThread
+    local thread = {
+      id = node.id or "",
+      is_resolved = node.isResolved or false,
+      is_outdated = node.isOutdated or false,
+      path = node.path or "",
+      line = line,
+      original_line = original_line,
+      start_line = start_line,
+      diff_side = node.diffSide or "RIGHT",
+      comments = comments,
+    }
+    table.insert(threads, thread)
+  end
+
+  return threads, pr_node_id, nil
 end
 
 --- Execute a GraphQL query against GitHub API

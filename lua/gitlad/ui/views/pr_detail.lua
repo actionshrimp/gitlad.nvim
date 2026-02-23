@@ -387,7 +387,10 @@ function PRDetailBuffer:_view_diff()
 
     vim.schedule(function()
       if spec then
-        diff_view.open(spec)
+        diff_view.open(spec, {
+          provider = self.provider,
+          pr_number = self.pr_number,
+        })
       end
     end)
   end)
