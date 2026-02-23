@@ -483,6 +483,7 @@ This makes the plugin more comfortable for vim/evil users.
 | `y` | Yank PR number |
 | `o` | Open PR in browser |
 | `d` | View diff in native diff viewer |
+| `m` | Merge PR |
 | `gr` | Refresh |
 | `q` | Close |
 | `?` | Show help |

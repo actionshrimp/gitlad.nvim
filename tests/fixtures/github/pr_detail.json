@@ -13,6 +13,8 @@
         "headRefName": "fix/auth-bug",
         "baseRefName": "main",
         "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
         "labels": {
           "nodes": [
             {"name": "bug"},

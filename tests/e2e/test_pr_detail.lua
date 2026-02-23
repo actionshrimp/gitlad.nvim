@@ -456,6 +456,266 @@ T["pr detail view"]["gj/gk navigate to check lines"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+T["pr detail view"]["m keymap is registered on PR detail buffer"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_mock(child, repo)
+
+  -- Check that 'm' keymap exists on the buffer
+  child.lua([[
+    local maps = vim.api.nvim_buf_get_keymap(0, "n")
+    _G._has_m_keymap = false
+    for _, map in ipairs(maps) do
+      if map.lhs == "m" then
+        _G._has_m_keymap = true
+      end
+    end
+  ]])
+  local has_keymap = child.lua_get([[_G._has_m_keymap]])
+  eq(has_keymap, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["m opens merge strategy selector"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_mock(child, repo)
+
+  -- Override vim.ui.select to capture the call
+  child.lua([[
+    _G._select_called = false
+    _G._select_items = nil
+    _G._select_opts = nil
+    vim.ui.select = function(items, opts, on_choice)
+      _G._select_called = true
+      _G._select_items = items
+      _G._select_opts = opts
+      -- Don't call on_choice (user cancels)
+    end
+  ]])
+
+  child.type_keys("m")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  local select_called = child.lua_get([[_G._select_called]])
+  eq(select_called, true)
+
+  local items = child.lua_get([[_G._select_items]])
+  eq(items, { "merge", "squash", "rebase" })
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["m does nothing when PR is not open"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_mock(child, repo)
+
+  -- Set PR state to merged
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local buf = pr_detail_view.get_buffer()
+    buf.pr.state = "merged"
+  ]])
+
+  -- Override vim.ui.select to detect if it's called
+  child.lua([[
+    _G._select_called = false
+    vim.ui.select = function(items, opts, on_choice)
+      _G._select_called = true
+    end
+  ]])
+
+  child.type_keys("m")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  local select_called = child.lua_get([[_G._select_called]])
+  eq(select_called, false)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["help popup includes merge entry"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_mock(child, repo)
+
+  child.type_keys("?")
+
+  child.lua([[
+    _G._popup_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_get_current_buf(), 0, -1, false)
+  ]])
+  local lines = child.lua_get([[_G._popup_lines]])
+
+  local found_merge = false
+  for _, line in ipairs(lines) do
+    if line:match("m%s+Merge PR") then
+      found_merge = true
+    end
+  end
+  eq(found_merge, true)
+
+  child.type_keys("q")
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["m warns on merge conflicts"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_mock(child, repo)
+
+  -- Set PR as conflicting
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local buf = pr_detail_view.get_buffer()
+    buf.pr.mergeable = "CONFLICTING"
+  ]])
+
+  -- Override vim.ui.select to capture calls
+  child.lua([[
+    _G._select_calls = {}
+    vim.ui.select = function(items, opts, on_choice)
+      table.insert(_G._select_calls, { items = items, prompt = opts.prompt })
+      -- Don't call on_choice (user cancels)
+    end
+  ]])
+
+  child.type_keys("m")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should show confirmation prompt (Yes/No), not strategy selector
+  child.lua([[
+    _G._first_call = _G._select_calls[1]
+  ]])
+  local first_items = child.lua_get([[_G._first_call.items]])
+  eq(first_items, { "Yes", "No" })
+
+  local first_prompt = child.lua_get([[_G._first_call.prompt]])
+  expect.equality(first_prompt:match("merge conflicts") ~= nil, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["m warns on failing checks"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_mock(child, repo)
+
+  -- Set PR with failing checks
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local buf = pr_detail_view.get_buffer()
+    buf.pr.checks_summary = { state = "failure", total = 3, success = 1, failure = 2, pending = 0, checks = {} }
+  ]])
+
+  child.lua([[
+    _G._select_calls = {}
+    vim.ui.select = function(items, opts, on_choice)
+      table.insert(_G._select_calls, { items = items, prompt = opts.prompt })
+    end
+  ]])
+
+  child.type_keys("m")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  local first_items = child.lua_get([[_G._select_calls[1].items]])
+  eq(first_items, { "Yes", "No" })
+
+  local first_prompt = child.lua_get([[_G._select_calls[1].prompt]])
+  expect.equality(first_prompt:match("check%(s%) failing") ~= nil, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["m warns on changes requested"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_mock(child, repo)
+
+  -- Set PR with changes requested
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local buf = pr_detail_view.get_buffer()
+    buf.pr.review_decision = "CHANGES_REQUESTED"
+  ]])
+
+  child.lua([[
+    _G._select_calls = {}
+    vim.ui.select = function(items, opts, on_choice)
+      table.insert(_G._select_calls, { items = items, prompt = opts.prompt })
+    end
+  ]])
+
+  child.type_keys("m")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  local first_items = child.lua_get([[_G._select_calls[1].items]])
+  eq(first_items, { "Yes", "No" })
+
+  local first_prompt = child.lua_get([[_G._select_calls[1].prompt]])
+  expect.equality(first_prompt:match("Changes requested") ~= nil, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["m proceeds directly when PR is clean"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_mock(child, repo)
+
+  -- Fixture already has MERGEABLE + CLEAN + APPROVED, so no warnings
+
+  child.lua([[
+    _G._select_calls = {}
+    vim.ui.select = function(items, opts, on_choice)
+      table.insert(_G._select_calls, { items = items, prompt = opts.prompt })
+    end
+  ]])
+
+  child.type_keys("m")
+  child.lua([[vim.wait(200, function() return false end)]])
+
+  -- Should go straight to strategy selector (no Yes/No confirmation)
+  local first_items = child.lua_get([[_G._select_calls[1].items]])
+  eq(first_items, { "merge", "squash", "rebase" })
+
+  helpers.cleanup_repo(child, repo)
+end
+
 T["pr detail view"]["TAB toggles checks section"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)

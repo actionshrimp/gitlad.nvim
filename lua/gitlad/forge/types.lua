@@ -36,6 +36,8 @@ local M = {}
 ---@field reviews? ForgeReview[] Reviews
 ---@field timeline? ForgeTimelineItem[] Chronologically sorted timeline
 ---@field checks_summary? ForgeChecksSummary CI check rollup summary
+---@field mergeable? string "MERGEABLE"|"CONFLICTING"|"UNKNOWN"|nil
+---@field merge_state_status? string "BLOCKED"|"BEHIND"|"CLEAN"|"DIRTY"|"DRAFT"|"HAS_HOOKS"|"UNKNOWN"|"UNSTABLE"|nil
 
 ---@class ForgeTimelineItem
 ---@field type "comment"|"review" Discriminator
@@ -226,6 +228,40 @@ end
 ---@return string stat_text e.g. "+10 -3"
 function M.format_diff_stat(additions, deletions)
   return "+" .. additions .. " -" .. deletions
+end
+
+--- Format merge status for display
+---@param mergeable? string "MERGEABLE"|"CONFLICTING"|"UNKNOWN"|nil
+---@param merge_state_status? string "BLOCKED"|"BEHIND"|"CLEAN"|"DIRTY"|"DRAFT"|"HAS_HOOKS"|"UNKNOWN"|"UNSTABLE"|nil
+---@return string text Display text
+---@return string hl_group Highlight group
+function M.format_merge_status(mergeable, merge_state_status)
+  if mergeable == "CONFLICTING" then
+    return "Conflicts", "GitladForgePRChangesRequested"
+  end
+
+  local status = merge_state_status
+  if status == "CLEAN" then
+    return "Ready to merge", "GitladForgePRApproved"
+  elseif status == "BLOCKED" then
+    return "Blocked", "GitladForgePRChangesRequested"
+  elseif status == "BEHIND" then
+    return "Behind base branch", "GitladForgePRReviewRequired"
+  elseif status == "UNSTABLE" then
+    return "Unstable", "GitladForgePRReviewRequired"
+  elseif status == "DIRTY" then
+    return "Dirty", "GitladForgePRReviewRequired"
+  elseif status == "DRAFT" then
+    return "Draft", "GitladForgePRDraft"
+  elseif status == "HAS_HOOKS" then
+    return "Has hooks", "GitladForgePRReviewRequired"
+  end
+
+  if mergeable == "UNKNOWN" or not mergeable then
+    return "Unknown", "Comment"
+  end
+
+  return "Mergeable", "GitladForgePRApproved"
 end
 
 --- Format a check icon based on status/conclusion

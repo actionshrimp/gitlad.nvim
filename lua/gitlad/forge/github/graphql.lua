@@ -145,6 +145,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
       headRefOid
       baseRefOid
       reviewDecision
+      mergeable
+      mergeStateStatus
       labels(first: 10) {
         nodes {
           name
@@ -705,6 +707,8 @@ function M.parse_pr_detail(data)
     head_oid = node.headRefOid,
     base_oid = node.baseRefOid,
     review_decision = node.reviewDecision, -- can be nil
+    mergeable = node.mergeable, -- "MERGEABLE"|"CONFLICTING"|"UNKNOWN"|nil
+    merge_state_status = node.mergeStateStatus, -- "BLOCKED"|"CLEAN"|etc.|nil
     labels = labels,
     additions = node.additions or 0,
     deletions = node.deletions or 0,

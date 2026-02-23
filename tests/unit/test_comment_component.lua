@@ -123,6 +123,58 @@ T["render()"]["includes labels"] = function()
   eq(found_labels, true)
 end
 
+T["render()"]["shows merge status when mergeable fields present"] = function()
+  local pr = make_test_pr({ mergeable = "MERGEABLE", merge_state_status = "CLEAN" })
+  local result = comment_component.render(pr)
+
+  local found_merge = false
+  for _, line in ipairs(result.lines) do
+    if line:match("Merge:") and line:match("Ready to merge") then
+      found_merge = true
+    end
+  end
+  eq(found_merge, true)
+end
+
+T["render()"]["shows conflicts in merge status"] = function()
+  local pr = make_test_pr({ mergeable = "CONFLICTING", merge_state_status = "DIRTY" })
+  local result = comment_component.render(pr)
+
+  local found_conflict = false
+  for _, line in ipairs(result.lines) do
+    if line:match("Merge:") and line:match("Conflicts") then
+      found_conflict = true
+    end
+  end
+  eq(found_conflict, true)
+end
+
+T["render()"]["shows blocked merge status"] = function()
+  local pr = make_test_pr({ mergeable = "MERGEABLE", merge_state_status = "BLOCKED" })
+  local result = comment_component.render(pr)
+
+  local found_blocked = false
+  for _, line in ipairs(result.lines) do
+    if line:match("Merge:") and line:match("Blocked") then
+      found_blocked = true
+    end
+  end
+  eq(found_blocked, true)
+end
+
+T["render()"]["omits merge status when fields are nil"] = function()
+  local pr = make_test_pr()
+  local result = comment_component.render(pr)
+
+  local found_merge = false
+  for _, line in ipairs(result.lines) do
+    if line:match("^Merge:") then
+      found_merge = true
+    end
+  end
+  eq(found_merge, false)
+end
+
 T["render()"]["includes PR body"] = function()
   local pr = make_test_pr()
   local result = comment_component.render(pr)

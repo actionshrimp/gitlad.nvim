@@ -344,4 +344,52 @@ T["format_check_duration()"]["returns empty for vim.NIL timestamps"] = function(
   eq(types.format_check_duration(vim.NIL, vim.NIL), "")
 end
 
+-- =============================================================================
+-- format_merge_status()
+-- =============================================================================
+
+T["format_merge_status()"] = MiniTest.new_set()
+
+T["format_merge_status()"]["returns ready for MERGEABLE + CLEAN"] = function()
+  local text, hl = types.format_merge_status("MERGEABLE", "CLEAN")
+  eq(text, "Ready to merge")
+  eq(hl, "GitladForgePRApproved")
+end
+
+T["format_merge_status()"]["returns conflicts for CONFLICTING"] = function()
+  local text, hl = types.format_merge_status("CONFLICTING", "DIRTY")
+  eq(text, "Conflicts")
+  eq(hl, "GitladForgePRChangesRequested")
+end
+
+T["format_merge_status()"]["returns blocked for BLOCKED state"] = function()
+  local text, hl = types.format_merge_status("MERGEABLE", "BLOCKED")
+  eq(text, "Blocked")
+  eq(hl, "GitladForgePRChangesRequested")
+end
+
+T["format_merge_status()"]["returns behind for BEHIND state"] = function()
+  local text, hl = types.format_merge_status("MERGEABLE", "BEHIND")
+  eq(text, "Behind base branch")
+  eq(hl, "GitladForgePRReviewRequired")
+end
+
+T["format_merge_status()"]["returns unstable for UNSTABLE state"] = function()
+  local text, hl = types.format_merge_status("MERGEABLE", "UNSTABLE")
+  eq(text, "Unstable")
+  eq(hl, "GitladForgePRReviewRequired")
+end
+
+T["format_merge_status()"]["returns unknown for nil mergeable"] = function()
+  local text, hl = types.format_merge_status(nil, nil)
+  eq(text, "Unknown")
+  eq(hl, "Comment")
+end
+
+T["format_merge_status()"]["returns draft for DRAFT state"] = function()
+  local text, hl = types.format_merge_status("UNKNOWN", "DRAFT")
+  eq(text, "Draft")
+  eq(hl, "GitladForgePRDraft")
+end
+
 return T
