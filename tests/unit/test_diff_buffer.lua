@@ -1,6 +1,6 @@
 -- Tests for gitlad.ui.views.diff.buffer module
 local MiniTest = require("mini.test")
-local expect, eq = MiniTest.expect, MiniTest.expect.equality
+local eq = MiniTest.expect.equality
 
 local T = MiniTest.new_set({
   hooks = {
@@ -21,7 +21,6 @@ T["diff_buffer"]["module loads and exports expected functions"] = function()
 
   eq(type(buffer.new), "function")
   eq(type(buffer._hl_for_type), "table")
-  eq(type(buffer._format_lineno), "function")
   eq(type(buffer._apply_filler_content), "function")
 end
 
@@ -51,55 +50,6 @@ T["diff_buffer"]["_hl_for_type"]["maps right-side types correctly"] = function()
   eq(hl.right.add, "GitladDiffAdd")
   eq(hl.right.delete, nil)
   eq(hl.right.filler, "GitladDiffFiller")
-end
-
--- =============================================================================
--- Line number formatting tests
--- =============================================================================
-
-T["diff_buffer"]["_format_lineno"] = MiniTest.new_set()
-
-T["diff_buffer"]["_format_lineno"]["formats single digit right-justified to 4 chars"] = function()
-  local buffer = require("gitlad.ui.views.diff.buffer")
-
-  eq(buffer._format_lineno(1), "   1")
-  eq(buffer._format_lineno(5), "   5")
-  eq(buffer._format_lineno(9), "   9")
-end
-
-T["diff_buffer"]["_format_lineno"]["formats double digit right-justified to 4 chars"] = function()
-  local buffer = require("gitlad.ui.views.diff.buffer")
-
-  eq(buffer._format_lineno(10), "  10")
-  eq(buffer._format_lineno(42), "  42")
-  eq(buffer._format_lineno(99), "  99")
-end
-
-T["diff_buffer"]["_format_lineno"]["formats triple digit right-justified to 4 chars"] = function()
-  local buffer = require("gitlad.ui.views.diff.buffer")
-
-  eq(buffer._format_lineno(100), " 100")
-  eq(buffer._format_lineno(999), " 999")
-end
-
-T["diff_buffer"]["_format_lineno"]["formats four digit number with no padding"] = function()
-  local buffer = require("gitlad.ui.views.diff.buffer")
-
-  eq(buffer._format_lineno(1000), "1000")
-  eq(buffer._format_lineno(9999), "9999")
-end
-
-T["diff_buffer"]["_format_lineno"]["handles five+ digit numbers (no truncation)"] = function()
-  local buffer = require("gitlad.ui.views.diff.buffer")
-
-  eq(buffer._format_lineno(10000), "10000")
-  eq(buffer._format_lineno(99999), "99999")
-end
-
-T["diff_buffer"]["_format_lineno"]["returns empty string for nil"] = function()
-  local buffer = require("gitlad.ui.views.diff.buffer")
-
-  eq(buffer._format_lineno(nil), "    ")
 end
 
 -- =============================================================================
@@ -135,7 +85,12 @@ T["diff_buffer"]["new creates a DiffBufferPair with valid buffers"] = function()
     eq(vim.api.nvim_get_option_value("scrollbind", opts), true)
     eq(vim.api.nvim_get_option_value("cursorbind", opts), true)
     eq(vim.api.nvim_get_option_value("wrap", opts), false)
-    eq(vim.api.nvim_get_option_value("number", opts), false)
+    eq(vim.api.nvim_get_option_value("number", opts), true)
+    eq(vim.api.nvim_get_option_value("numberwidth", opts), 5)
+    eq(
+      vim.api.nvim_get_option_value("statuscolumn", opts),
+      '%#GitladDiffLineNr#%{v:lua.require("gitlad.ui.views.diff.gutter").render()}'
+    )
     eq(vim.api.nvim_get_option_value("signcolumn", opts), "no")
     eq(vim.api.nvim_get_option_value("foldmethod", opts), "manual")
     eq(vim.api.nvim_get_option_value("foldenable", opts), false)
@@ -319,8 +274,9 @@ T["diff_buffer"]["set_content applies diff highlights"] = function()
   end
 end
 
-T["diff_buffer"]["set_content adds line number virtual text"] = function()
+T["diff_buffer"]["set_content populates gutter line numbers"] = function()
   local buffer = require("gitlad.ui.views.diff.buffer")
+  local gutter = require("gitlad.ui.views.diff.gutter")
   local hl = require("gitlad.ui.hl")
   hl.setup()
 
@@ -356,33 +312,15 @@ T["diff_buffer"]["set_content adds line number virtual text"] = function()
 
   pair:set_content(aligned, "test.lua")
 
-  -- Check left buffer has line number virtual text
-  local left_marks =
-    vim.api.nvim_buf_get_extmarks(pair.left_bufnr, pair._ns, 0, -1, { details = true })
-  local left_virt_texts = {}
-  for _, mark in ipairs(left_marks) do
-    if mark[4].virt_text then
-      left_virt_texts[mark[2]] = mark[4].virt_text[1][1]
-    end
-  end
+  -- Check left buffer gutter data
+  local left_linenos = gutter._linenos[pair.left_bufnr]
+  eq(left_linenos[1], 1)
+  eq(left_linenos[2], nil) -- filler line has no lineno
 
-  -- Line 0 should have lineno "   1"
-  eq(left_virt_texts[0], "   1")
-  -- Line 1 is filler, should have "    " (blank)
-  eq(left_virt_texts[1], "    ")
-
-  -- Check right buffer has line number virtual text
-  local right_marks =
-    vim.api.nvim_buf_get_extmarks(pair.right_bufnr, pair._ns, 0, -1, { details = true })
-  local right_virt_texts = {}
-  for _, mark in ipairs(right_marks) do
-    if mark[4].virt_text then
-      right_virt_texts[mark[2]] = mark[4].virt_text[1][1]
-    end
-  end
-
-  eq(right_virt_texts[0], "   1")
-  eq(right_virt_texts[1], "   2")
+  -- Check right buffer gutter data
+  local right_linenos = gutter._linenos[pair.right_bufnr]
+  eq(right_linenos[1], 1)
+  eq(right_linenos[2], 2)
 
   pair:destroy()
   if vim.api.nvim_win_is_valid(left_winnr) and left_winnr ~= right_winnr then

@@ -570,12 +570,92 @@ function M.align_three_way(file_diff)
     end
   end
 
+  -- Recompute is_hunk_boundary: mark the first non-context line of each change region.
+  -- With full-context diffs (-U999999) there's only one giant hunk, so the original
+  -- per-pair is_hunk_boundary (pair_idx == 1) fires only on line 1. This post-processing
+  -- pass marks context→change transitions so ]c/[c hunk navigation works correctly.
+  -- Also marks boundaries when hunk_index changes (for adjacent hunks without context).
+  local prev_context = true
+  local prev_hunk_index = nil
+  for _, info in ipairs(line_map) do
+    local is_context = (info.left_type == "context")
+      and (info.mid_type == "context")
+      and (info.right_type == "context")
+    local new_hunk = (info.hunk_index ~= prev_hunk_index)
+    info.is_hunk_boundary = (not is_context) and (prev_context or new_hunk)
+    prev_context = is_context
+    prev_hunk_index = info.hunk_index
+  end
+
   return {
     left_lines = left_lines,
     mid_lines = mid_lines,
     right_lines = right_lines,
     line_map = line_map,
   }
+end
+
+--- Compute fold ranges for context regions between changes.
+--- Scans the line_map for non-context lines, marks visible regions around them
+--- (each change + context_lines above/below), and returns fold ranges for everything else.
+---@param line_map ThreeWayLineInfo[] Line metadata from align_three_way()
+---@param context_lines? number Lines of context to show around changes (default 3)
+---@return number[][] fold_ranges List of {start, end} pairs (1-based line numbers)
+function M.compute_fold_ranges(line_map, context_lines)
+  context_lines = context_lines or 3
+  local total = #line_map
+  if total == 0 then
+    return {}
+  end
+
+  -- Mark all lines as invisible initially
+  local visible = {}
+  for i = 1, total do
+    visible[i] = false
+  end
+
+  -- Find non-context lines and mark them + surrounding context as visible
+  for i, info in ipairs(line_map) do
+    local is_context = (info.left_type == "context")
+      and (info.mid_type == "context")
+      and (info.right_type == "context")
+    if not is_context then
+      local start = math.max(1, i - context_lines)
+      local stop = math.min(total, i + context_lines)
+      for j = start, stop do
+        visible[j] = true
+      end
+    end
+  end
+
+  -- Collect contiguous invisible regions as fold ranges
+  local ranges = {}
+  local fold_start = nil
+  for i = 1, total do
+    if not visible[i] then
+      if not fold_start then
+        fold_start = i
+      end
+    else
+      if fold_start then
+        local fold_end = i - 1
+        -- Only fold ranges of 2+ lines (single-line folds aren't useful)
+        if fold_end - fold_start + 1 >= 2 then
+          table.insert(ranges, { fold_start, fold_end })
+        end
+        fold_start = nil
+      end
+    end
+  end
+  -- Handle trailing fold
+  if fold_start then
+    local fold_end = total
+    if fold_end - fold_start + 1 >= 2 then
+      table.insert(ranges, { fold_start, fold_end })
+    end
+  end
+
+  return ranges
 end
 
 return M

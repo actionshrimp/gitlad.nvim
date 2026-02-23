@@ -5,6 +5,8 @@
 --- Both windows are scrollbound and cursorbind for synchronized navigation.
 ---@brief ]]
 
+local gutter = require("gitlad.ui.views.diff.gutter")
+
 local M = {}
 
 --- Highlight group mapping: given a DiffLineType, return the highlight group name.
@@ -26,17 +28,6 @@ M._hl_for_type = {
     filler = "GitladDiffFiller",
   },
 }
-
---- Format a line number for virtual text display (right-justified to 4 chars).
---- Returns a 4-char blank string for nil.
----@param lineno number|nil Line number or nil for filler lines
----@return string formatted Right-justified line number string
-function M._format_lineno(lineno)
-  if lineno == nil then
-    return "    "
-  end
-  return string.format("%4d", lineno)
-end
 
 ---@class DiffBufferOpts
 ---@field editable? boolean Make the right buffer editable (default false)
@@ -107,7 +98,13 @@ function M.new(left_winnr, right_winnr, buf_opts)
     vim.api.nvim_set_option_value("scrollbind", true, win_opts)
     vim.api.nvim_set_option_value("cursorbind", true, win_opts)
     vim.api.nvim_set_option_value("wrap", false, win_opts)
-    vim.api.nvim_set_option_value("number", false, win_opts)
+    vim.api.nvim_set_option_value("number", true, win_opts)
+    vim.api.nvim_set_option_value("numberwidth", 5, win_opts)
+    vim.api.nvim_set_option_value(
+      "statuscolumn",
+      '%#GitladDiffLineNr#%{v:lua.require("gitlad.ui.views.diff.gutter").render()}',
+      win_opts
+    )
     vim.api.nvim_set_option_value("signcolumn", "no", win_opts)
     vim.api.nvim_set_option_value("foldcolumn", "0", win_opts)
     vim.api.nvim_set_option_value("foldmethod", "manual", win_opts)
@@ -163,6 +160,16 @@ function DiffBufferPair:set_content(aligned, file_path)
   -- Apply diff highlights
   self:apply_diff_highlights()
 
+  -- Populate gutter line numbers for statuscolumn
+  local left_linenos = {}
+  local right_linenos = {}
+  for i, info in ipairs(self.line_map) do
+    left_linenos[i] = info.left_lineno
+    right_linenos[i] = info.right_lineno
+  end
+  gutter.set(self.left_bufnr, left_linenos)
+  gutter.set(self.right_bufnr, right_linenos)
+
   -- Re-lock left buffer (always read-only)
   vim.bo[self.left_bufnr].modifiable = false
 
@@ -190,8 +197,8 @@ function DiffBufferPair:set_content(aligned, file_path)
 end
 
 --- Apply line-level highlights based on the line_map.
---- Uses extmarks for line background highlights, line number virtual text,
---- and word-level inline diff highlights for change-type line pairs.
+--- Uses extmarks for line background highlights and word-level inline diff
+--- highlights for change-type line pairs. Line numbers are handled by gutter.lua.
 function DiffBufferPair:apply_diff_highlights()
   local inline = require("gitlad.ui.views.diff.inline")
 
@@ -204,27 +211,19 @@ function DiffBufferPair:apply_diff_highlights()
 
     -- Left side highlights
     local left_hl = M._hl_for_type.left[info.left_type]
-    local left_lineno_text = M._format_lineno(info.left_lineno)
-    local left_extmark_opts = {
-      virt_text = { { left_lineno_text, "GitladDiffLineNr" } },
-      virt_text_pos = "inline",
-    }
     if left_hl then
-      left_extmark_opts.line_hl_group = left_hl
+      vim.api.nvim_buf_set_extmark(self.left_bufnr, self._ns, line_idx, 0, {
+        line_hl_group = left_hl,
+      })
     end
-    vim.api.nvim_buf_set_extmark(self.left_bufnr, self._ns, line_idx, 0, left_extmark_opts)
 
     -- Right side highlights
     local right_hl = M._hl_for_type.right[info.right_type]
-    local right_lineno_text = M._format_lineno(info.right_lineno)
-    local right_extmark_opts = {
-      virt_text = { { right_lineno_text, "GitladDiffLineNr" } },
-      virt_text_pos = "inline",
-    }
     if right_hl then
-      right_extmark_opts.line_hl_group = right_hl
+      vim.api.nvim_buf_set_extmark(self.right_bufnr, self._ns, line_idx, 0, {
+        line_hl_group = right_hl,
+      })
     end
-    vim.api.nvim_buf_set_extmark(self.right_bufnr, self._ns, line_idx, 0, right_extmark_opts)
 
     -- Word-level inline diff for change-type line pairs
     if info.left_type == "change" and info.right_type == "change" then
@@ -289,13 +288,19 @@ function DiffBufferPair:has_unsaved_changes()
   return false
 end
 
---- Clean up buffers. Deletes both buffers if they are still valid.
+--- Clean up buffers. Clears gutter data and deletes both buffers if still valid.
 function DiffBufferPair:destroy()
-  if self.left_bufnr and vim.api.nvim_buf_is_valid(self.left_bufnr) then
-    vim.api.nvim_buf_delete(self.left_bufnr, { force = true })
+  if self.left_bufnr then
+    gutter.clear(self.left_bufnr)
+    if vim.api.nvim_buf_is_valid(self.left_bufnr) then
+      vim.api.nvim_buf_delete(self.left_bufnr, { force = true })
+    end
   end
-  if self.right_bufnr and vim.api.nvim_buf_is_valid(self.right_bufnr) then
-    vim.api.nvim_buf_delete(self.right_bufnr, { force = true })
+  if self.right_bufnr then
+    gutter.clear(self.right_bufnr)
+    if vim.api.nvim_buf_is_valid(self.right_bufnr) then
+      vim.api.nvim_buf_delete(self.right_bufnr, { force = true })
+    end
   end
   self.left_bufnr = nil
   self.right_bufnr = nil

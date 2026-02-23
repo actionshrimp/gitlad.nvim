@@ -295,7 +295,7 @@ function M.produce_three_way(repo_root, cb)
   end
 
   -- Run both diffs in parallel
-  cli.run_async({ "diff", "--cached" }, { cwd = repo_root }, function(result)
+  cli.run_async({ "diff", "--cached", "-U999999" }, { cwd = repo_root }, function(result)
     if result.code ~= 0 then
       staged_result = { file_pairs = {}, err = table.concat(result.stderr, "\n") }
     else
@@ -304,7 +304,7 @@ function M.produce_three_way(repo_root, cb)
     on_both_done()
   end)
 
-  cli.run_async({ "diff" }, { cwd = repo_root }, function(result)
+  cli.run_async({ "diff", "-U999999" }, { cwd = repo_root }, function(result)
     if result.code ~= 0 then
       unstaged_result = { file_pairs = {}, err = table.concat(result.stderr, "\n") }
     else

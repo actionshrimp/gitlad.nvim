@@ -21,7 +21,6 @@ T["buffer_triple"]["module loads and exports expected functions"] = function()
 
   eq(type(buffer_triple.new), "function")
   eq(type(buffer_triple._hl_for_type), "table")
-  eq(type(buffer_triple._format_lineno), "function")
   eq(type(buffer_triple._apply_filler_content), "function")
 end
 
@@ -62,30 +61,6 @@ T["buffer_triple"]["_hl_for_type"]["maps right-side types correctly"] = function
   eq(hl.right.add, "GitladDiffAdd")
   eq(hl.right.delete, nil)
   eq(hl.right.filler, "GitladDiffFiller")
-end
-
--- =============================================================================
--- Line number formatting tests
--- =============================================================================
-
-T["buffer_triple"]["_format_lineno"] = MiniTest.new_set()
-
-T["buffer_triple"]["_format_lineno"]["formats single digit right-justified to 4 chars"] = function()
-  local bt = require("gitlad.ui.views.diff.buffer_triple")
-  eq(bt._format_lineno(1), "   1")
-  eq(bt._format_lineno(9), "   9")
-end
-
-T["buffer_triple"]["_format_lineno"]["returns blank for nil"] = function()
-  local bt = require("gitlad.ui.views.diff.buffer_triple")
-  eq(bt._format_lineno(nil), "    ")
-end
-
-T["buffer_triple"]["_format_lineno"]["formats multi-digit numbers"] = function()
-  local bt = require("gitlad.ui.views.diff.buffer_triple")
-  eq(bt._format_lineno(42), "  42")
-  eq(bt._format_lineno(100), " 100")
-  eq(bt._format_lineno(1234), "1234")
 end
 
 -- =============================================================================

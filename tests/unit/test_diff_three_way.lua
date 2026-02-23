@@ -532,7 +532,9 @@ T["align_three_way"]["staged hunk with context lines"] = function()
   eq(result.line_map[1].left_type, "context")
   eq(result.line_map[1].mid_type, "context")
   eq(result.line_map[1].right_type, "context")
-  eq(result.line_map[1].is_hunk_boundary, true)
+  -- Context lines are not hunk boundaries; boundary is on the actual change line
+  eq(result.line_map[1].is_hunk_boundary, false)
+  eq(result.line_map[2].is_hunk_boundary, true)
 
   -- Changed line
   eq(result.left_lines[2], "old line")
@@ -663,6 +665,221 @@ T["align_three_way"]["overlapping: staged deletion + unstaged change at adjacent
   eq(result.line_map[1].left_type, "delete")
   eq(result.line_map[1].mid_type, "filler")
   eq(result.line_map[1].right_type, "filler")
+end
+
+-- =============================================================================
+-- is_hunk_boundary recomputation
+-- =============================================================================
+
+T["align_three_way"]["is_hunk_boundary marks context-to-change transitions"] = function()
+  -- A hunk with context + change + context: boundary should be on the first non-context line
+  local staged_hunks = {
+    make_hunk(1, 5, 1, 5, {
+      ctx(1, "line1"),
+      ctx(2, "line2"),
+      chg(3, "old3", 3, "new3"),
+      ctx(4, "line4"),
+      ctx(5, "line5"),
+    }),
+  }
+
+  local file_diff = {
+    path = "test.lua",
+    staged_hunks = staged_hunks,
+    unstaged_hunks = {},
+    status_staged = "M",
+    status_unstaged = nil,
+    additions = 1,
+    deletions = 1,
+  }
+
+  local result = three_way.align_three_way(file_diff)
+  eq(#result.line_map, 5)
+
+  -- Context lines before the change are not hunk boundaries
+  eq(result.line_map[1].is_hunk_boundary, false)
+  eq(result.line_map[2].is_hunk_boundary, false)
+  -- The changed line is the first non-context line → hunk boundary
+  eq(result.line_map[3].is_hunk_boundary, true)
+  -- Context lines after the change are not hunk boundaries
+  eq(result.line_map[4].is_hunk_boundary, false)
+  eq(result.line_map[5].is_hunk_boundary, false)
+end
+
+T["align_three_way"]["is_hunk_boundary marks multiple change regions separately"] = function()
+  -- Two change regions separated by context
+  local staged_hunks = {
+    make_hunk(1, 7, 1, 7, {
+      chg(1, "old1", 1, "new1"),
+      ctx(2, "line2"),
+      ctx(3, "line3"),
+      ctx(4, "line4"),
+      chg(5, "old5", 5, "new5"),
+      chg(6, "old6", 6, "new6"),
+      ctx(7, "line7"),
+    }),
+  }
+
+  local file_diff = {
+    path = "test.lua",
+    staged_hunks = staged_hunks,
+    unstaged_hunks = {},
+    status_staged = "M",
+    status_unstaged = nil,
+    additions = 3,
+    deletions = 3,
+  }
+
+  local result = three_way.align_three_way(file_diff)
+  eq(#result.line_map, 7)
+
+  -- First change region
+  eq(result.line_map[1].is_hunk_boundary, true) -- first non-context
+  -- Context between regions
+  eq(result.line_map[2].is_hunk_boundary, false)
+  eq(result.line_map[3].is_hunk_boundary, false)
+  eq(result.line_map[4].is_hunk_boundary, false)
+  -- Second change region
+  eq(result.line_map[5].is_hunk_boundary, true) -- first non-context after context
+  eq(result.line_map[6].is_hunk_boundary, false) -- continuation of change, not boundary
+  -- Trailing context
+  eq(result.line_map[7].is_hunk_boundary, false)
+end
+
+-- =============================================================================
+-- compute_fold_ranges
+-- =============================================================================
+
+T["compute_fold_ranges"] = MiniTest.new_set()
+
+T["compute_fold_ranges"]["returns empty for empty line_map"] = function()
+  local ranges = three_way.compute_fold_ranges({})
+  eq(#ranges, 0)
+end
+
+T["compute_fold_ranges"]["returns empty when all lines are changes"] = function()
+  local line_map = {
+    { left_type = "change", mid_type = "change", right_type = "change" },
+    { left_type = "change", mid_type = "change", right_type = "change" },
+  }
+  local ranges = three_way.compute_fold_ranges(line_map, 0)
+  eq(#ranges, 0)
+end
+
+T["compute_fold_ranges"]["folds pure context with no changes"] = function()
+  -- 10 context lines, no changes → everything folds
+  local line_map = {}
+  for _ = 1, 10 do
+    table.insert(line_map, { left_type = "context", mid_type = "context", right_type = "context" })
+  end
+  local ranges = three_way.compute_fold_ranges(line_map, 3)
+  eq(#ranges, 1)
+  eq(ranges[1][1], 1)
+  eq(ranges[1][2], 10)
+end
+
+T["compute_fold_ranges"]["single change shows context around it"] = function()
+  -- 20 context lines with a change at line 10
+  local line_map = {}
+  for i = 1, 20 do
+    if i == 10 then
+      table.insert(line_map, { left_type = "change", mid_type = "change", right_type = "change" })
+    else
+      table.insert(
+        line_map,
+        { left_type = "context", mid_type = "context", right_type = "context" }
+      )
+    end
+  end
+  local ranges = three_way.compute_fold_ranges(line_map, 3)
+  -- Lines 7-13 are visible (change at 10 ± 3 context)
+  -- Fold 1: lines 1-6
+  -- Fold 2: lines 14-20
+  eq(#ranges, 2)
+  eq(ranges[1][1], 1)
+  eq(ranges[1][2], 6)
+  eq(ranges[2][1], 14)
+  eq(ranges[2][2], 20)
+end
+
+T["compute_fold_ranges"]["adjacent changes within context merge visible regions"] = function()
+  -- Changes at lines 5 and 9, with 3-line context → both regions overlap (visible: 2-12)
+  local line_map = {}
+  for i = 1, 20 do
+    if i == 5 or i == 9 then
+      table.insert(line_map, { left_type = "change", mid_type = "change", right_type = "change" })
+    else
+      table.insert(
+        line_map,
+        { left_type = "context", mid_type = "context", right_type = "context" }
+      )
+    end
+  end
+  local ranges = three_way.compute_fold_ranges(line_map, 3)
+  -- Visible: 2-8 (change at 5±3) merged with 6-12 (change at 9±3) → 2-12
+  -- Fold before: only line 1 → too short (< 2), skip
+  -- Fold after: 13-20
+  eq(#ranges, 1)
+  eq(ranges[1][1], 13)
+  eq(ranges[1][2], 20)
+end
+
+T["compute_fold_ranges"]["skips fold ranges shorter than 2 lines"] = function()
+  -- Change at line 2 with 0 context, 4 total lines → fold at [1,1] = 1 line, skip; fold at [3,4] = 2 lines, keep
+  local line_map = {
+    { left_type = "context", mid_type = "context", right_type = "context" },
+    { left_type = "change", mid_type = "change", right_type = "change" },
+    { left_type = "context", mid_type = "context", right_type = "context" },
+    { left_type = "context", mid_type = "context", right_type = "context" },
+  }
+  local ranges = three_way.compute_fold_ranges(line_map, 0)
+  eq(#ranges, 1)
+  eq(ranges[1][1], 3)
+  eq(ranges[1][2], 4)
+end
+
+T["compute_fold_ranges"]["recognizes non-context when any pane is non-context"] = function()
+  -- A line where mid is "add" but others are filler — not pure context
+  local line_map = {
+    { left_type = "context", mid_type = "context", right_type = "context" },
+    { left_type = "context", mid_type = "context", right_type = "context" },
+    { left_type = "context", mid_type = "context", right_type = "context" },
+    { left_type = "filler", mid_type = "add", right_type = "add" },
+    { left_type = "context", mid_type = "context", right_type = "context" },
+    { left_type = "context", mid_type = "context", right_type = "context" },
+    { left_type = "context", mid_type = "context", right_type = "context" },
+  }
+  local ranges = three_way.compute_fold_ranges(line_map, 0)
+  -- Only line 4 is visible; fold 1-3 and 5-7
+  eq(#ranges, 2)
+  eq(ranges[1][1], 1)
+  eq(ranges[1][2], 3)
+  eq(ranges[2][1], 5)
+  eq(ranges[2][2], 7)
+end
+
+T["compute_fold_ranges"]["custom context_lines parameter"] = function()
+  -- 30 context lines with a change at line 15, context=5
+  local line_map = {}
+  for i = 1, 30 do
+    if i == 15 then
+      table.insert(line_map, { left_type = "change", mid_type = "change", right_type = "change" })
+    else
+      table.insert(
+        line_map,
+        { left_type = "context", mid_type = "context", right_type = "context" }
+      )
+    end
+  end
+  local ranges = three_way.compute_fold_ranges(line_map, 5)
+  -- Visible: lines 10-20 (15 ± 5)
+  -- Fold 1: 1-9
+  -- Fold 2: 21-30
+  eq(#ranges, 2)
+  eq(ranges[1][1], 1)
+  eq(ranges[1][2], 9)
+  eq(ranges[2][1], 21)
+  eq(ranges[2][2], 30)
 end
 
 return T
