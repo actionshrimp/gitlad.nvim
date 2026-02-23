@@ -350,10 +350,10 @@ Track pending comments in-memory, show with distinct highlight. Submit all as si
 
 ### 6.1 3-Way Diff View (DONE)
 Native 3-pane diff viewer with two use cases:
-- **3-way staging** (`d 3`): HEAD | INDEX | WORKTREE — see changes through the staging pipeline
-- **3-way merge** (`d m` during merge): OURS | BASE | THEIRS — view merge conflicts
+- **3-way staging** (`d 3`): HEAD | INDEX | WORKTREE — editable INDEX and WORKTREE panes, see changes through the staging pipeline
+- **3-way merge** (`d m` during merge): OURS (read-only) | WORKTREE with conflict markers (editable) | THEIRS (read-only) — resolve merge conflicts by editing the middle buffer, `:w` to save, `s` to stage resolved files
 
-Implementation: `three_way.lua` (pure alignment algorithm), `buffer_triple.lua` (3-pane buffer management), `source.produce_three_way()` / `source.produce_merge()`. All panes are read-only, scrollbound, with word-level inline diff.
+Implementation: `three_way.lua` (pure alignment algorithm, anchor-agnostic), `buffer_triple.lua` (3-pane buffer management with `"none"|"mid_only"|"mid_and_right"` editability modes), `source.produce_merge()` (WORKTREE-anchored diffs via `git diff --no-index`). Merge uses `_diff_content_vs_path` / `_diff_path_vs_content` helpers to diff OURS/THEIRS content against the worktree file.
 
 ### 6.2 PR Creation Workflow
 `n` in forge popup: prompt title (default: last commit), open body editor, select base branch, `gh pr create`.

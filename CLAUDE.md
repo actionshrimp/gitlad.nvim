@@ -37,7 +37,7 @@ gitlad.nvim has a **native diff viewer** that replaces the diffview.nvim depende
 | **Full-buffer diff views** (side-by-side, commit diffs, file history) | gitlad.nvim native diff viewer |
 | **PR review diffs** (inline comments, review threads) | gitlad.nvim native diff viewer + forge module (Milestone 5) |
 | **3-way staging view** (HEAD/INDEX/WORKTREE) | gitlad.nvim native diff viewer |
-| **3-way merge conflict resolution** (OURS/BASE/THEIRS) | gitlad.nvim native diff viewer |
+| **3-way merge conflict resolution** (OURS/WORKTREE/THEIRS, editable) | gitlad.nvim native diff viewer |
 
 The native diff viewer opens in a new tab page with a file panel sidebar and synchronized side-by-side buffers (2-pane or 3-pane). It supports staged, unstaged, worktree, commit, range, stash, PR, 3-way staging, and 3-way merge diffs with word-level inline highlighting.
 
@@ -56,7 +56,7 @@ The native diff viewer opens in a new tab page with a file panel sidebar and syn
 - Instant fixup/squash (`c F` / `c S`)
 - Sequencer state detection (cherry-pick/revert in progress)
 - Refs popup/view, Reflog view, Blame view
-- Native diff viewer (side-by-side, 3-way staging, 3-way merge, word-level inline highlights)
+- Native diff viewer (side-by-side, 3-way staging, editable 3-way merge resolution, word-level inline highlights)
 - Streaming output viewer for git hook output
 - File watcher with stale indicator
 - 970+ tests across 75+ test files, CI configured
@@ -478,8 +478,11 @@ This makes the plugin more comfortable for vim/evil users.
 | `r` | Reply to review thread at cursor |
 | `R` | Submit review (approve/request changes/comment) |
 | `P` | Toggle pending review mode |
+| `s` | Stage resolved file (merge mode) |
 
 **Editable diff buffers:** In staged, unstaged, worktree, and 3-way diff views, the INDEX and/or WORKTREE buffers are editable. Use `:w` to save changes (staged writes to git index, unstaged/worktree writes to disk). After saving, the view auto-refreshes to re-diff and re-align. Navigating to another file or closing with unsaved changes prompts to save/discard/cancel.
+
+**Merge conflict resolution:** The merge 3-way view shows **OURS (read-only) | WORKTREE with conflict markers (editable) | THEIRS (read-only)**. Edit the middle buffer to resolve conflicts, then `:w` to save to disk. Press `s` to stage the resolved file (`git add`). Once all files are staged, the merge can be completed.
 
 ### Forge Popup Actions
 | Key | Action |
