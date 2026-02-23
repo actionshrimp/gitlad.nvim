@@ -75,7 +75,7 @@ function M._build_title(source, file_pairs)
   elseif source.type == "three_way" then
     return "3-way HEAD|INDEX|WORKTREE" .. suffix
   elseif source.type == "merge" then
-    return "3-way OURS|BASE|THEIRS" .. suffix
+    return "3-way OURS|WORKTREE|THEIRS" .. suffix
   elseif source.type == "pr" then
     local pr_info = source.pr_info
     if not pr_info then
@@ -314,14 +314,75 @@ function M.produce_three_way(repo_root, cb)
   end)
 end
 
---- Produce a DiffSpec for a 3-way merge conflict view (OURS|BASE|THEIRS).
---- Lists conflicted files from `git status --porcelain=v2`, retrieves stage contents,
---- and computes diffs from BASE.
+--- Run `git diff --no-index -U999999` between a temp file (with content) and a real file.
+--- Used for merge conflict resolution: OURS→WORKTREE and WORKTREE→THEIRS.
+--- Exit code 0 = identical (empty hunks), 1 = differences found (parse), ≥2 = error.
+---@param repo_root string Repository root path
+---@param left_content string[] Lines for the left side (written to temp file)
+---@param right_path string Absolute path to the right-side file
+---@param cb fun(file_pairs: DiffFilePair[], err: string|nil)
+function M._diff_content_vs_path(repo_root, left_content, right_path, cb)
+  -- Write left content to a temp file
+  local tmpfile = vim.fn.tempname()
+  vim.fn.writefile(left_content, tmpfile)
+
+  cli.run_async(
+    { "diff", "--no-index", "-U999999", tmpfile, right_path },
+    { cwd = repo_root, internal = true },
+    function(result)
+      -- Always clean up temp file
+      vim.fn.delete(tmpfile)
+
+      if result.code == 0 then
+        -- Files are identical, no differences
+        cb({}, nil)
+      elseif result.code == 1 then
+        -- Differences found (normal for --no-index)
+        cb(hunk.parse_unified_diff(result.stdout), nil)
+      else
+        local err = table.concat(result.stderr, "\n")
+        cb({}, "diff --no-index failed: " .. err)
+      end
+    end
+  )
+end
+
+--- Run `git diff --no-index -U999999` between a real file and a temp file (with content).
+--- Mirror of _diff_content_vs_path but with arguments reversed.
+---@param repo_root string Repository root path
+---@param left_path string Absolute path to the left-side file
+---@param right_content string[] Lines for the right side (written to temp file)
+---@param cb fun(file_pairs: DiffFilePair[], err: string|nil)
+function M._diff_path_vs_content(repo_root, left_path, right_content, cb)
+  -- Write right content to a temp file
+  local tmpfile = vim.fn.tempname()
+  vim.fn.writefile(right_content, tmpfile)
+
+  cli.run_async(
+    { "diff", "--no-index", "-U999999", left_path, tmpfile },
+    { cwd = repo_root, internal = true },
+    function(result)
+      -- Always clean up temp file
+      vim.fn.delete(tmpfile)
+
+      if result.code == 0 then
+        cb({}, nil)
+      elseif result.code == 1 then
+        cb(hunk.parse_unified_diff(result.stdout), nil)
+      else
+        local err = table.concat(result.stderr, "\n")
+        cb({}, "diff --no-index failed: " .. err)
+      end
+    end
+  )
+end
+
+--- Produce a DiffSpec for a 3-way merge conflict view (OURS|WORKTREE|THEIRS).
+--- Lists conflicted files from `git status --porcelain=v2`, retrieves OURS/THEIRS
+--- content, and computes diffs anchored on the WORKTREE file (with conflict markers).
 ---@param repo_root string Repository root path
 ---@param cb fun(diff_spec: DiffSpec|nil, err: string|nil) Callback
 function M.produce_merge(repo_root, cb)
-  local three_way = require("gitlad.ui.views.diff.three_way")
-
   -- Get list of conflicted (unmerged) files from porcelain v2
   cli.run_async(
     { "status", "--porcelain=v2" },
@@ -357,53 +418,102 @@ function M.produce_merge(repo_root, cb)
         return
       end
 
-      -- For each conflicted file, run diffs: BASE→OURS and BASE→THEIRS
-      -- BASE = :1:path, OURS = :2:path, THEIRS = :3:path
-      local remaining = #conflicted_paths * 2 -- Two diffs per file
+      -- For each conflicted file:
+      -- 1. Get OURS (:2:path) and THEIRS (:3:path) content
+      -- 2. Diff OURS→WORKTREE and WORKTREE→THEIRS via --no-index
+      -- WORKTREE (with conflict markers) is the anchor for the 3-way alignment
       local file_diffs = {} -- Indexed by path
+      local remaining = #conflicted_paths
       local had_error = false
 
       for _, path in ipairs(conflicted_paths) do
         file_diffs[path] = { ours_pairs = nil, theirs_pairs = nil }
 
-        -- BASE→OURS diff
-        cli.run_async(
-          { "diff", ":1:" .. path, ":2:" .. path },
-          { cwd = repo_root, internal = true },
-          function(result)
-            if had_error then
+        -- Step 1: Get OURS and THEIRS content in parallel
+        local ours_content, theirs_content
+        local content_done = 0
+
+        local function on_content_done()
+          content_done = content_done + 1
+          if content_done < 2 then
+            return
+          end
+          if had_error then
+            return
+          end
+
+          -- Step 2: Run both diffs in parallel
+          local worktree_path = repo_root .. "/" .. path
+          local diff_done = 0
+
+          local function on_diff_done()
+            diff_done = diff_done + 1
+            if diff_done < 2 then
               return
-            end
-            if result.code ~= 0 then
-              -- May fail if stage doesn't exist (e.g., added in both)
-              file_diffs[path].ours_pairs = {}
-            else
-              file_diffs[path].ours_pairs = hunk.parse_unified_diff(result.stdout)
             end
             remaining = remaining - 1
             if remaining == 0 then
-              M._finalize_merge(repo_root, conflicted_paths, file_diffs, three_way, cb)
+              M._finalize_merge(repo_root, conflicted_paths, file_diffs, cb)
             end
+          end
+
+          -- OURS→WORKTREE diff (staged_hunks: anchored on WORKTREE via new_start)
+          if ours_content then
+            M._diff_content_vs_path(repo_root, ours_content, worktree_path, function(pairs, err)
+              if err then
+                had_error = true
+                cb(nil, err)
+                return
+              end
+              file_diffs[path].ours_pairs = pairs
+              on_diff_done()
+            end)
+          else
+            -- OURS doesn't exist (added in THEIRS only)
+            file_diffs[path].ours_pairs = {}
+            on_diff_done()
+          end
+
+          -- WORKTREE→THEIRS diff (unstaged_hunks: anchored on WORKTREE via old_start)
+          if theirs_content then
+            M._diff_path_vs_content(repo_root, worktree_path, theirs_content, function(pairs, err)
+              if err then
+                had_error = true
+                cb(nil, err)
+                return
+              end
+              file_diffs[path].theirs_pairs = pairs
+              on_diff_done()
+            end)
+          else
+            -- THEIRS doesn't exist (added in OURS only)
+            file_diffs[path].theirs_pairs = {}
+            on_diff_done()
+          end
+        end
+
+        -- Fetch OURS content (:2:path)
+        cli.run_async(
+          { "show", ":2:" .. path },
+          { cwd = repo_root, internal = true },
+          function(result)
+            if result.code == 0 then
+              ours_content = result.stdout
+            end
+            -- code ~= 0 means stage doesn't exist (ok, ours_content stays nil)
+            on_content_done()
           end
         )
 
-        -- BASE→THEIRS diff
+        -- Fetch THEIRS content (:3:path)
         cli.run_async(
-          { "diff", ":1:" .. path, ":3:" .. path },
+          { "show", ":3:" .. path },
           { cwd = repo_root, internal = true },
           function(result)
-            if had_error then
-              return
+            if result.code == 0 then
+              theirs_content = result.stdout
             end
-            if result.code ~= 0 then
-              file_diffs[path].theirs_pairs = {}
-            else
-              file_diffs[path].theirs_pairs = hunk.parse_unified_diff(result.stdout)
-            end
-            remaining = remaining - 1
-            if remaining == 0 then
-              M._finalize_merge(repo_root, conflicted_paths, file_diffs, three_way, cb)
-            end
+            on_content_done()
           end
         )
       end
@@ -412,15 +522,12 @@ function M.produce_merge(repo_root, cb)
 end
 
 --- Finalize merge diff spec from collected per-file diffs.
+--- Merge uses WORKTREE as the anchor: staged_hunks = OURS→WORKTREE, unstaged_hunks = WORKTREE→THEIRS.
 ---@param repo_root string
 ---@param paths string[]
 ---@param file_diffs table<string, { ours_pairs: DiffFilePair[], theirs_pairs: DiffFilePair[] }>
----@param three_way table The three_way module
 ---@param cb fun(diff_spec: DiffSpec|nil, err: string|nil)
-function M._finalize_merge(repo_root, paths, file_diffs, three_way, cb)
-  -- Build ThreeWayFileDiff for each conflicted file
-  -- For merge: staged_hunks = BASE→OURS, unstaged_hunks = BASE→THEIRS
-  -- (reusing the same alignment algorithm with BASE as anchor)
+function M._finalize_merge(repo_root, paths, file_diffs, cb)
   local three_way_files = {}
   local file_pairs = {}
 
