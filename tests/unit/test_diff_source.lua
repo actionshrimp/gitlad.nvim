@@ -14,47 +14,47 @@ T["_build_args"] = MiniTest.new_set()
 
 T["_build_args"]["builds staged diff args"] = function()
   local args = source._build_args("staged")
-  eq(args, { "diff", "--cached" })
+  eq(args, { "diff", "--cached", "-U999999" })
 end
 
 T["_build_args"]["builds unstaged diff args"] = function()
   local args = source._build_args("unstaged")
-  eq(args, { "diff" })
+  eq(args, { "diff", "-U999999" })
 end
 
 T["_build_args"]["builds worktree diff args"] = function()
   local args = source._build_args("worktree")
-  eq(args, { "diff", "HEAD" })
+  eq(args, { "diff", "HEAD", "-U999999" })
 end
 
 T["_build_args"]["builds commit diff args with ref"] = function()
   local args = source._build_args("commit", "abc1234")
-  eq(args, { "show", "--format=", "abc1234" })
+  eq(args, { "show", "--format=", "-U999999", "abc1234" })
 end
 
 T["_build_args"]["builds commit diff args with full hash"] = function()
   local args = source._build_args("commit", "abc1234def5678abc1234def5678abc1234def567")
-  eq(args, { "show", "--format=", "abc1234def5678abc1234def5678abc1234def567" })
+  eq(args, { "show", "--format=", "-U999999", "abc1234def5678abc1234def5678abc1234def567" })
 end
 
 T["_build_args"]["builds range diff args"] = function()
   local args = source._build_args("range", "main..HEAD")
-  eq(args, { "diff", "main..HEAD" })
+  eq(args, { "diff", "-U999999", "main..HEAD" })
 end
 
 T["_build_args"]["builds range diff args with three-dot range"] = function()
   local args = source._build_args("range", "main...feature")
-  eq(args, { "diff", "main...feature" })
+  eq(args, { "diff", "-U999999", "main...feature" })
 end
 
 T["_build_args"]["builds stash diff args"] = function()
   local args = source._build_args("stash", "stash@{0}")
-  eq(args, { "stash", "show", "-p", "stash@{0}" })
+  eq(args, { "stash", "show", "-p", "-U999999", "stash@{0}" })
 end
 
 T["_build_args"]["builds stash diff args with numbered ref"] = function()
   local args = source._build_args("stash", "stash@{3}")
-  eq(args, { "stash", "show", "-p", "stash@{3}" })
+  eq(args, { "stash", "show", "-p", "-U999999", "stash@{3}" })
 end
 
 T["_build_args"]["errors on commit without ref"] = function()
@@ -278,6 +278,7 @@ T["integration"]["staged source produces correct args and spec"] = function()
   local args = source._build_args("staged")
   eq(args[1], "diff")
   eq(args[2], "--cached")
+  eq(args[3], "-U999999")
 
   local s = { type = "staged" }
   local spec = source._build_diff_spec(s, { {}, {} }, "/repo")
@@ -289,7 +290,8 @@ T["integration"]["commit source produces correct args and spec"] = function()
   local args = source._build_args("commit", ref)
   eq(args[1], "show")
   eq(args[2], "--format=")
-  eq(args[3], ref)
+  eq(args[3], "-U999999")
+  eq(args[4], ref)
 
   local s = { type = "commit", ref = ref }
   local spec = source._build_diff_spec(s, { {} }, "/repo")
@@ -303,7 +305,8 @@ T["integration"]["stash source produces correct args and spec"] = function()
   eq(args[1], "stash")
   eq(args[2], "show")
   eq(args[3], "-p")
-  eq(args[4], stash_ref)
+  eq(args[4], "-U999999")
+  eq(args[5], stash_ref)
 
   local s = { type = "stash", ref = stash_ref }
   local spec = source._build_diff_spec(s, {}, "/repo")
@@ -361,28 +364,28 @@ T["_build_pr_args"]["builds three-dot diff for full PR diff (selected_index nil)
   local pr_info = make_pr_info()
   local args, err = source._build_pr_args(pr_info, nil)
   eq(err, nil)
-  eq(args, { "diff", pr_info.base_oid .. "..." .. pr_info.head_oid })
+  eq(args, { "diff", "-U999999", pr_info.base_oid .. "..." .. pr_info.head_oid })
 end
 
 T["_build_pr_args"]["uses base_oid as parent for first commit"] = function()
   local pr_info = make_pr_info()
   local args, err = source._build_pr_args(pr_info, 1)
   eq(err, nil)
-  eq(args, { "diff", pr_info.base_oid .. ".." .. pr_info.commits[1].oid })
+  eq(args, { "diff", "-U999999", pr_info.base_oid .. ".." .. pr_info.commits[1].oid })
 end
 
 T["_build_pr_args"]["uses previous commit as parent for subsequent commits"] = function()
   local pr_info = make_pr_info()
   local args, err = source._build_pr_args(pr_info, 2)
   eq(err, nil)
-  eq(args, { "diff", pr_info.commits[1].oid .. ".." .. pr_info.commits[2].oid })
+  eq(args, { "diff", "-U999999", pr_info.commits[1].oid .. ".." .. pr_info.commits[2].oid })
 end
 
 T["_build_pr_args"]["uses previous commit as parent for third commit"] = function()
   local pr_info = make_pr_info()
   local args, err = source._build_pr_args(pr_info, 3)
   eq(err, nil)
-  eq(args, { "diff", pr_info.commits[2].oid .. ".." .. pr_info.commits[3].oid })
+  eq(args, { "diff", "-U999999", pr_info.commits[2].oid .. ".." .. pr_info.commits[3].oid })
 end
 
 T["_build_pr_args"]["returns error for invalid commit index"] = function()
@@ -466,7 +469,8 @@ T["integration"]["PR full diff builds correct args and title"] = function()
   local args, err = source._build_pr_args(pr_info, nil)
   eq(err, nil)
   eq(args[1], "diff")
-  expect.equality(args[2]:match("%.%.%.") ~= nil, true) -- three-dot diff
+  eq(args[2], "-U999999")
+  expect.equality(args[3]:match("%.%.%.") ~= nil, true) -- three-dot diff
 
   local s = { type = "pr", pr_info = pr_info }
   local spec = source._build_diff_spec(s, { {}, {} }, "/repo")
@@ -478,7 +482,8 @@ T["integration"]["PR single commit builds correct args and title"] = function()
   local args, err = source._build_pr_args(pr_info, 2)
   eq(err, nil)
   eq(args[1], "diff")
-  expect.equality(args[2]:match("%.%.") ~= nil, true) -- two-dot diff
+  eq(args[2], "-U999999")
+  expect.equality(args[3]:match("%.%.") ~= nil, true) -- two-dot diff
 
   local s = { type = "pr", pr_info = pr_info, selected_commit = 2 }
   local spec = source._build_diff_spec(s, { {} }, "/repo")

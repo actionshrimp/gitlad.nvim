@@ -16,20 +16,20 @@ local hunk = require("gitlad.ui.views.diff.hunk")
 ---@return string[] args Git command arguments (without 'git' prefix)
 function M._build_args(source_type, ref_or_range)
   if source_type == "staged" then
-    return { "diff", "--cached" }
+    return { "diff", "--cached", "-U999999" }
   elseif source_type == "unstaged" then
-    return { "diff" }
+    return { "diff", "-U999999" }
   elseif source_type == "worktree" then
-    return { "diff", "HEAD" }
+    return { "diff", "HEAD", "-U999999" }
   elseif source_type == "commit" then
     assert(ref_or_range, "commit source requires a ref")
-    return { "show", "--format=", ref_or_range }
+    return { "show", "--format=", "-U999999", ref_or_range }
   elseif source_type == "range" then
     assert(ref_or_range, "range source requires a range expression")
-    return { "diff", ref_or_range }
+    return { "diff", "-U999999", ref_or_range }
   elseif source_type == "stash" then
     assert(ref_or_range, "stash source requires a stash ref")
-    return { "stash", "show", "-p", ref_or_range }
+    return { "stash", "show", "-p", "-U999999", ref_or_range }
   else
     error("Unknown diff source type: " .. tostring(source_type))
   end
@@ -200,7 +200,7 @@ end
 function M._build_pr_args(pr_info, selected_index)
   if selected_index == nil then
     -- Full PR diff (three-dot: changes introduced by head relative to merge base)
-    return { "diff", pr_info.base_oid .. "..." .. pr_info.head_oid }, nil
+    return { "diff", "-U999999", pr_info.base_oid .. "..." .. pr_info.head_oid }, nil
   end
 
   local commit = pr_info.commits and pr_info.commits[selected_index]
@@ -215,7 +215,7 @@ function M._build_pr_args(pr_info, selected_index)
   else
     parent = pr_info.commits[selected_index - 1].oid
   end
-  return { "diff", parent .. ".." .. commit.oid }, nil
+  return { "diff", "-U999999", parent .. ".." .. commit.oid }, nil
 end
 
 --- Produce a DiffSpec for a PR (full diff or single commit within the PR)

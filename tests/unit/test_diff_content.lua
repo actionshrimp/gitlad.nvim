@@ -391,7 +391,7 @@ T["align_sides"]["hunk_index is set correctly"] = function()
   eq(result.line_map[3].hunk_index, 3)
 end
 
-T["align_sides"]["is_hunk_boundary marks first line of each hunk"] = function()
+T["align_sides"]["is_hunk_boundary marks context-to-change transitions"] = function()
   local fp = make_file_pair({
     make_hunk(1, 2, 1, 2, {
       {
@@ -435,14 +435,76 @@ T["align_sides"]["is_hunk_boundary marks first line of each hunk"] = function()
 
   eq(#result.line_map, 4)
 
-  -- First line of first hunk
+  -- Context line — not a boundary
+  eq(result.line_map[1].is_hunk_boundary, false)
+  -- First change after context — boundary
+  eq(result.line_map[2].is_hunk_boundary, true)
+  -- Context line in second hunk — not a boundary
+  eq(result.line_map[3].is_hunk_boundary, false)
+  -- First change after context — boundary
+  eq(result.line_map[4].is_hunk_boundary, true)
+end
+
+T["align_sides"]["is_hunk_boundary marks multiple change regions in single hunk"] = function()
+  -- Simulates -U999999 merging two change regions into one hunk
+  local fp = make_file_pair({
+    make_hunk(1, 5, 1, 5, {
+      {
+        left_line = "a",
+        right_line = "A",
+        left_type = "change",
+        right_type = "change",
+        left_lineno = 1,
+        right_lineno = 1,
+      },
+      {
+        left_line = "b",
+        right_line = "b",
+        left_type = "context",
+        right_type = "context",
+        left_lineno = 2,
+        right_lineno = 2,
+      },
+      {
+        left_line = "c",
+        right_line = "c",
+        left_type = "context",
+        right_type = "context",
+        left_lineno = 3,
+        right_lineno = 3,
+      },
+      {
+        left_line = "d",
+        right_line = "D",
+        left_type = "change",
+        right_type = "change",
+        left_lineno = 4,
+        right_lineno = 4,
+      },
+      {
+        left_line = "e",
+        right_line = "E",
+        left_type = "change",
+        right_type = "change",
+        left_lineno = 5,
+        right_lineno = 5,
+      },
+    }),
+  })
+
+  local result = content.align_sides(fp)
+
+  eq(#result.line_map, 5)
+
+  -- First non-context line (start of first change region)
   eq(result.line_map[1].is_hunk_boundary, true)
-  -- Second line of first hunk
+  -- Context lines
   eq(result.line_map[2].is_hunk_boundary, false)
-  -- First line of second hunk
-  eq(result.line_map[3].is_hunk_boundary, true)
-  -- Second line of second hunk
-  eq(result.line_map[4].is_hunk_boundary, false)
+  eq(result.line_map[3].is_hunk_boundary, false)
+  -- First change after context (start of second change region)
+  eq(result.line_map[4].is_hunk_boundary, true)
+  -- Continuation of change region
+  eq(result.line_map[5].is_hunk_boundary, false)
 end
 
 T["align_sides"]["empty file pair produces empty result"] = function()
