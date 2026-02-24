@@ -1,0 +1,48 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "contexts": {
+                    "totalCount": 5,
+                    "pageInfo": {
+                      "hasNextPage": false,
+                      "endCursor": "Y3Vyc29yOnYyOpHOABcXXX=="
+                    },
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / build",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2004",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:03:00Z",
+                        "checkSuite": {
+                          "app": {
+                            "name": "GitHub Actions"
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "coverage/codecov",
+                        "cState": "SUCCESS",
+                        "targetUrl": "https://codecov.io/gh/owner/repo/pull/99",
+                        "createdAt": "2026-02-20T10:04:00Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

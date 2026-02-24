@@ -34,6 +34,11 @@
                 "statusCheckRollup": {
                   "state": "SUCCESS",
                   "contexts": {
+                    "totalCount": 4,
+                    "pageInfo": {
+                      "hasNextPage": false,
+                      "endCursor": "Y3Vyc29yOnYyOpHOABcWMg=="
+                    },
                     "nodes": [
                       {
                         "__typename": "CheckRun",
