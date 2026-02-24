@@ -405,6 +405,155 @@ T["parse_pr_list() with checks"]["does not include check details in list mode"] 
   eq(#prs[1].checks_summary.checks, 0)
 end
 
+T["parse_pr_list() with checks"]["uses totalCount for accurate totals when nodes are truncated"] = function()
+  -- Simulate a response where totalCount > number of nodes (pagination truncation)
+  local data = {
+    data = {
+      repository = {
+        pullRequests = {
+          nodes = {
+            {
+              number = 99,
+              title = "Many checks PR",
+              state = "OPEN",
+              isDraft = false,
+              author = { login = "user" },
+              headRefName = "test",
+              baseRefName = "main",
+              labels = { nodes = {} },
+              additions = 0,
+              deletions = 0,
+              createdAt = "",
+              updatedAt = "",
+              url = "",
+              body = "",
+              commits = {
+                nodes = {
+                  {
+                    commit = {
+                      statusCheckRollup = {
+                        state = "FAILURE",
+                        contexts = {
+                          totalCount = 150,
+                          nodes = {
+                            {
+                              __typename = "CheckRun",
+                              conclusion = "SUCCESS",
+                              status = "COMPLETED",
+                            },
+                            {
+                              __typename = "CheckRun",
+                              conclusion = "FAILURE",
+                              status = "COMPLETED",
+                            },
+                            {
+                              __typename = "CheckRun",
+                              conclusion = "SUCCESS",
+                              status = "COMPLETED",
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }
+  local prs, err = graphql.parse_pr_list(data)
+  eq(err, nil)
+  local cs = prs[1].checks_summary
+  expect.equality(cs ~= nil, true)
+  -- Total should be totalCount (150), not counted nodes (3)
+  eq(cs.total, 150)
+  -- Counted from the 3 available nodes
+  eq(cs.success, 2)
+  eq(cs.failure, 1)
+  eq(cs.pending, 0)
+  -- State from rollup
+  eq(cs.state, "failure")
+end
+
+T["parse_pr_list() with checks"]["uses totalCount with SUCCESS rollup to infer all success"] = function()
+  -- When rollup is SUCCESS and totalCount > nodes, all checks passed
+  local data = {
+    data = {
+      repository = {
+        pullRequests = {
+          nodes = {
+            {
+              number = 100,
+              title = "All green monorepo",
+              state = "OPEN",
+              isDraft = false,
+              author = { login = "user" },
+              headRefName = "test",
+              baseRefName = "main",
+              labels = { nodes = {} },
+              additions = 0,
+              deletions = 0,
+              createdAt = "",
+              updatedAt = "",
+              url = "",
+              body = "",
+              commits = {
+                nodes = {
+                  {
+                    commit = {
+                      statusCheckRollup = {
+                        state = "SUCCESS",
+                        contexts = {
+                          totalCount = 200,
+                          nodes = {
+                            {
+                              __typename = "CheckRun",
+                              conclusion = "SUCCESS",
+                              status = "COMPLETED",
+                            },
+                            {
+                              __typename = "CheckRun",
+                              conclusion = "SUCCESS",
+                              status = "COMPLETED",
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }
+  local prs, err = graphql.parse_pr_list(data)
+  eq(err, nil)
+  local cs = prs[1].checks_summary
+  expect.equality(cs ~= nil, true)
+  eq(cs.total, 200)
+  eq(cs.success, 200)
+  eq(cs.failure, 0)
+  eq(cs.pending, 0)
+  eq(cs.state, "success")
+end
+
+T["parse_pr_list() with checks"]["totalCount matching nodes uses counted values"] = function()
+  -- When totalCount == number of nodes, no truncation happened
+  local data = load_fixture("pr_list_with_checks.json")
+  local prs, err = graphql.parse_pr_list(data)
+  eq(err, nil)
+
+  -- First PR: totalCount=3, 3 nodes — should be identical to before
+  eq(prs[1].checks_summary.total, 3)
+  eq(prs[1].checks_summary.success, 3)
+end
+
 T["parse_pr_list() with checks"]["handles PR without statusCheckRollup"] = function()
   local data = load_fixture("pr_list.json")
   local prs, err = graphql.parse_pr_list(data)

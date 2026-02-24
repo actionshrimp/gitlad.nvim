@@ -47,6 +47,7 @@ query($owner: String!, $repo: String!, $states: [PullRequestState!], $first: Int
               statusCheckRollup {
                 state
                 contexts(first: 100) {
+                  totalCount
                   nodes {
                     __typename
                     ... on CheckRun {
@@ -107,6 +108,7 @@ query($searchQuery: String!, $first: Int!) {
               statusCheckRollup {
                 state
                 contexts(first: 100) {
+                  totalCount
                   nodes {
                     __typename
                     ... on CheckRun {
@@ -323,6 +325,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 ---@param commits_node table The `commits` field from the PR node
 ---@param include_details boolean Whether to include full check details (name, urls, timestamps)
 ---@return ForgeChecksSummary|nil
+---@return table|nil page_info {has_next_page, end_cursor} when pagination info is present
 local function parse_checks_summary(commits_node, include_details)
   if not commits_node or not commits_node.nodes or #commits_node.nodes == 0 then
     return nil
@@ -352,7 +355,19 @@ local function parse_checks_summary(commits_node, include_details)
   local failure_count = 0
   local pending_count = 0
 
-  local contexts = rollup.contexts and rollup.contexts.nodes or {}
+  local contexts_obj = rollup.contexts or {}
+  local total_count = contexts_obj.totalCount
+  local contexts = contexts_obj.nodes or {}
+
+  -- Extract pagination info if present
+  local page_info = nil
+  if contexts_obj.pageInfo then
+    page_info = {
+      has_next_page = contexts_obj.pageInfo.hasNextPage or false,
+      end_cursor = contexts_obj.pageInfo.endCursor,
+    }
+  end
+
   for _, ctx in ipairs(contexts) do
     if ctx.__typename == "CheckRun" then
       local status = (ctx.status or ""):upper()
@@ -422,7 +437,24 @@ local function parse_checks_summary(commits_node, include_details)
     end
   end
 
-  local total = success_count + failure_count + pending_count
+  local counted = success_count + failure_count + pending_count
+
+  -- Use totalCount from the API when available for accurate totals.
+  -- When we have fewer nodes than totalCount (pagination truncated), the
+  -- rollup state is still accurate for badge color. For counts:
+  -- - SUCCESS rollup: all checks passed, so success = totalCount
+  -- - Otherwise: use counted values from available nodes, but total = totalCount
+  local total
+  if total_count and total_count > counted then
+    total = total_count
+    if rollup_state == "success" then
+      success_count = total_count
+      failure_count = 0
+      pending_count = 0
+    end
+  else
+    total = counted
+  end
 
   ---@type ForgeChecksSummary
   return {
@@ -432,7 +464,8 @@ local function parse_checks_summary(commits_node, include_details)
     failure = failure_count,
     pending = pending_count,
     checks = checks,
-  }
+  },
+    page_info
 end
 
 --- Parse a single PR node into a ForgePullRequest
