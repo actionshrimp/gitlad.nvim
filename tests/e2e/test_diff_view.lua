@@ -870,6 +870,159 @@ T["diff view"]["stash diff opens and shows stashed changes"] = function()
 end
 
 -- =============================================================================
+-- Full file content tests (-U999999)
+-- =============================================================================
+
+T["diff view"]["commit diff shows full file content not just hunk context"] = function()
+  -- Regression: without -U999999, only 3 lines of context were shown per hunk,
+  -- so changes far apart in a long file would only show fragments.
+  local repo = helpers.create_test_repo(child)
+  -- Create a 20-line file
+  local lines = {}
+  for i = 1, 20 do
+    lines[i] = "line" .. i
+  end
+  helpers.create_file(child, repo, "big.lua", table.concat(lines, "\n") .. "\n")
+  helpers.git(child, repo, "add big.lua")
+  helpers.git(child, repo, "commit -m 'initial'")
+  -- Change line 2 and line 19 (far apart, would be separate hunks with default context)
+  lines[2] = "CHANGED2"
+  lines[19] = "CHANGED19"
+  helpers.create_file(child, repo, "big.lua", table.concat(lines, "\n") .. "\n")
+  helpers.git(child, repo, "add big.lua")
+  helpers.git(child, repo, "commit -m 'change lines 2 and 19'")
+
+  helpers.cd(child, repo)
+  open_commit_diff(repo, "HEAD")
+  helpers.wait_short(child, 200)
+
+  -- Both buffers should contain the full file (all 20 lines, not just context around hunks)
+  local result = child.lua_get([=[(function()
+    local view = require("gitlad.ui.views.diff").get_active()
+    if not view or not view.buffer_pair then return { left = 0, right = 0, has_line10 = false } end
+    local left = view.buffer_pair.left_bufnr
+    local right = view.buffer_pair.right_bufnr
+    if not vim.api.nvim_buf_is_valid(left) or not vim.api.nvim_buf_is_valid(right) then
+      return { left = 0, right = 0, has_line10 = false }
+    end
+    local left_lines = vim.api.nvim_buf_get_lines(left, 0, -1, false)
+    local right_lines = vim.api.nvim_buf_get_lines(right, 0, -1, false)
+    -- Check that a middle line (line10) exists — it would be missing without -U999999
+    local has_line10 = false
+    for _, line in ipairs(right_lines) do
+      if line:find("line10", 1, true) then has_line10 = true; break end
+    end
+    return { left = #left_lines, right = #right_lines, has_line10 = has_line10 }
+  end)()]=])
+  -- Should have all 20 lines (same count since only modifications, no adds/deletes)
+  eq(result.left >= 20, true)
+  eq(result.right >= 20, true)
+  eq(result.has_line10, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+-- =============================================================================
+-- Deleted comment line tests (--- prefix parsing)
+-- =============================================================================
+
+T["diff view"]["deleted Lua comment lines appear in commit diff"] = function()
+  -- Regression: deleted lines starting with "-- " (Lua comments) produced diff lines
+  -- like "--- comment" that matched the file header pattern and got silently dropped.
+  local repo = helpers.create_test_repo(child)
+  local content = table.concat({
+    "local M = {}",
+    "-- This is a comment",
+    "-- Another comment",
+    "function M.hello() end",
+    "return M",
+  }, "\n") .. "\n"
+  helpers.create_file(child, repo, "init.lua", content)
+  helpers.git(child, repo, "add init.lua")
+  helpers.git(child, repo, "commit -m 'initial with comments'")
+  -- Remove the comment lines
+  local new_content = table.concat({
+    "local M = {}",
+    "function M.hello() end",
+    "return M",
+  }, "\n") .. "\n"
+  helpers.create_file(child, repo, "init.lua", new_content)
+  helpers.git(child, repo, "add init.lua")
+  helpers.git(child, repo, "commit -m 'remove comments'")
+
+  helpers.cd(child, repo)
+  open_commit_diff(repo, "HEAD")
+  helpers.wait_short(child, 200)
+
+  -- Left buffer (old) should contain the deleted comment lines
+  local result = child.lua_get([=[(function()
+    local view = require("gitlad.ui.views.diff").get_active()
+    if not view or not view.buffer_pair then return { has_comment1 = false, has_comment2 = false } end
+    local left = view.buffer_pair.left_bufnr
+    if not vim.api.nvim_buf_is_valid(left) then return { has_comment1 = false, has_comment2 = false } end
+    local lines = vim.api.nvim_buf_get_lines(left, 0, -1, false)
+    local has_comment1 = false
+    local has_comment2 = false
+    for _, line in ipairs(lines) do
+      if line:find("This is a comment", 1, true) then has_comment1 = true end
+      if line:find("Another comment", 1, true) then has_comment2 = true end
+    end
+    return { has_comment1 = has_comment1, has_comment2 = has_comment2 }
+  end)()]=])
+  eq(result.has_comment1, true)
+  eq(result.has_comment2, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["diff view"]["deleted Lua comment lines appear in staged diff"] = function()
+  -- Same regression but for staged diffs
+  local repo = helpers.create_test_repo(child)
+  local content = table.concat({
+    "local M = {}",
+    "-- Helper function",
+    "-- Does something useful",
+    "function M.run() end",
+    "return M",
+  }, "\n") .. "\n"
+  helpers.create_file(child, repo, "mod.lua", content)
+  helpers.git(child, repo, "add mod.lua")
+  helpers.git(child, repo, "commit -m 'initial'")
+  -- Remove the comment lines and stage
+  local new_content = table.concat({
+    "local M = {}",
+    "function M.run() end",
+    "return M",
+  }, "\n") .. "\n"
+  helpers.create_file(child, repo, "mod.lua", new_content)
+  helpers.git(child, repo, "add mod.lua")
+
+  helpers.cd(child, repo)
+  open_staged_diff(repo)
+  helpers.wait_short(child, 200)
+
+  -- Left buffer (old/index before staging) should contain the deleted comment lines
+  local result = child.lua_get([=[(function()
+    local view = require("gitlad.ui.views.diff").get_active()
+    if not view or not view.buffer_pair then return { has_helper = false, has_useful = false } end
+    local left = view.buffer_pair.left_bufnr
+    if not vim.api.nvim_buf_is_valid(left) then return { has_helper = false, has_useful = false } end
+    local lines = vim.api.nvim_buf_get_lines(left, 0, -1, false)
+    local has_helper = false
+    local has_useful = false
+    for _, line in ipairs(lines) do
+      if line:find("Helper function", 1, true) then has_helper = true end
+      if line:find("something useful", 1, true) then has_useful = true end
+    end
+    return { has_helper = has_helper, has_useful = has_useful }
+  end)()]=])
+  eq(result.has_helper, true)
+  eq(result.has_useful, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+-- =============================================================================
 -- Hunk navigation tests (cursor movement)
 -- =============================================================================
 
