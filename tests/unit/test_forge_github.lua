@@ -198,4 +198,59 @@ T["get_pr()"]["handles HTTP error"] = function()
   expect.equality(got_err ~= nil, true)
 end
 
+-- =============================================================================
+-- search_prs (with mocked HTTP)
+-- =============================================================================
+
+T["search_prs()"] = MiniTest.new_set({
+  hooks = {
+    post_case = function()
+      require("gitlad.forge.http")._set_executor(nil)
+    end,
+  },
+})
+
+T["search_prs()"]["sends correct search query to GraphQL"] = function()
+  local http = require("gitlad.forge.http")
+  local captured_request = nil
+
+  http._set_executor(function(cmd, opts)
+    for i, v in ipairs(cmd) do
+      if v == "-d" then
+        captured_request = cmd[i + 1]
+      end
+    end
+    local fixture = io.open("tests/fixtures/github/pr_search.json", "r")
+    local json_body = fixture:read("*a")
+    fixture:close()
+    opts.on_stdout(nil, vim.split(json_body .. "\n200", "\n"))
+    opts.on_exit(nil, 0)
+    return 1
+  end)
+
+  local provider = github.new("owner", "repo", "https://api.github.com", "test-token")
+  local got_prs = nil
+
+  local query = "repo:owner/repo is:pr is:open head:fix/auth-bug"
+  provider:search_prs(query, 1, function(prs, err)
+    got_prs = prs
+  end)
+
+  vim.wait(200, function()
+    return got_prs ~= nil
+  end, 10)
+
+  -- Verify request contains the search query
+  expect.equality(captured_request ~= nil, true)
+  local body = vim.json.decode(captured_request)
+  expect.equality(body.query:match("search") ~= nil, true)
+  eq(body.variables.searchQuery, "repo:owner/repo is:pr is:open head:fix/auth-bug")
+  eq(body.variables.first, 1)
+
+  -- Verify parsed PRs
+  eq(#got_prs, 3)
+  eq(got_prs[1].number, 42)
+  eq(got_prs[1].head_ref, "fix/auth-bug")
+end
+
 return T
