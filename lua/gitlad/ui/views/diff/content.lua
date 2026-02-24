@@ -93,6 +93,20 @@ function M.align_sides(file_pair)
     end
   end
 
+  -- Recompute is_hunk_boundary: mark the first non-context line of each change region.
+  -- With full-context diffs (-U999999) there's only one giant hunk, so the original
+  -- per-pair is_hunk_boundary (pair_idx == 1) fires only on line 1. This post-processing
+  -- pass marks context→change transitions so ]c/[c hunk navigation works correctly.
+  local prev_context = true
+  local prev_hunk_index = nil
+  for _, info in ipairs(line_map) do
+    local is_context = (info.left_type == "context") and (info.right_type == "context")
+    local new_hunk = (info.hunk_index ~= prev_hunk_index)
+    info.is_hunk_boundary = (not is_context) and (prev_context or new_hunk)
+    prev_context = is_context
+    prev_hunk_index = info.hunk_index
+  end
+
   return {
     left_lines = left_lines,
     right_lines = right_lines,
