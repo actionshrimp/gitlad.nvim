@@ -501,6 +501,71 @@ T["status PR summary"]["fetch_pr_info respects TTL throttle"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+T["status PR summary"]["fetch_pr_info uses search_prs with head:<branch> query"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  child.lua(string.format(
+    [[
+    vim.cmd("cd %s")
+    require("gitlad.ui.views.status").open()
+  ]],
+    repo
+  ))
+  helpers.wait_for_status(child)
+
+  -- Enable forge config and mock forge.detect to return a mock provider
+  child.lua([[
+    require("gitlad.config").setup({ forge = { show_pr_in_status = true } })
+
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+    _G._test_branch = buf.repo_state.status.branch
+
+    _G._test_search_query = nil
+    _G._test_search_limit = nil
+
+    -- Mock forge.detect to return a mock provider with search_prs
+    local forge = require("gitlad.forge")
+    forge.detect = function(repo_root, cb)
+      local mock_provider = {
+        provider_type = "github",
+        owner = "testowner",
+        repo = "testrepo",
+        host = "github.com",
+        search_prs = function(self, query, limit, search_cb)
+          _G._test_search_query = query
+          _G._test_search_limit = limit
+          vim.schedule(function()
+            search_cb({}, nil)
+          end)
+        end,
+      }
+      cb(mock_provider, nil)
+    end
+
+    -- Reset fetch state so it will actually fetch
+    buf.repo_state._pr_info_fetched_at = 0
+    buf.repo_state._pr_info_fetching = false
+    buf.repo_state:fetch_pr_info(true)
+  ]])
+
+  helpers.wait_short(child, 300)
+
+  local query = child.lua_get([[_G._test_search_query]])
+  local limit = child.lua_get([[_G._test_search_limit]])
+  local branch = child.lua_get([[_G._test_branch]])
+
+  eq(type(query), "string")
+  eq(query, "repo:testowner/testrepo is:pr is:open head:" .. branch)
+  eq(limit, 1)
+
+  helpers.cleanup_repo(child, repo)
+end
+
 T["status PR summary"]["fetch_pr_info force bypasses TTL"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)

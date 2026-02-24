@@ -224,37 +224,36 @@ function RepoState:fetch_pr_info(force)
       return
     end
 
-    provider:list_prs({ state = "open", limit = 50 }, function(prs, list_err)
+    local repo_slug = provider.owner .. "/" .. provider.repo
+    local query = "repo:" .. repo_slug .. " is:pr is:open head:" .. branch
+    provider:search_prs(query, 1, function(prs, search_err)
       vim.schedule(function()
         self._pr_info_fetching = false
         self._pr_info_fetched_at = vim.uv.now()
 
-        if list_err or not prs then
+        if search_err or not prs then
           return
         end
 
-        -- Find PR matching current branch
-        for _, pr in ipairs(prs) do
-          if pr.head_ref == branch then
-            local changed = self.pr_info == nil
-              or self.pr_info.number ~= pr.number
-              or self.pr_info.state ~= pr.state
-              or self.pr_info.review_decision ~= pr.review_decision
-            self.pr_info = pr
-            self._pr_info_branch = branch
-            if changed then
-              self:_notify("status")
-            end
-            return
+        if #prs > 0 then
+          local pr = prs[1]
+          local changed = self.pr_info == nil
+            or self.pr_info.number ~= pr.number
+            or self.pr_info.state ~= pr.state
+            or self.pr_info.review_decision ~= pr.review_decision
+          self.pr_info = pr
+          self._pr_info_branch = branch
+          if changed then
+            self:_notify("status")
           end
+        else
+          -- No matching open PR found — clear stale data (PR was merged/closed)
+          if self.pr_info then
+            self.pr_info = nil
+            self:_notify("status")
+          end
+          self._pr_info_branch = branch
         end
-
-        -- No matching open PR found — clear stale data (PR was merged/closed)
-        if self.pr_info then
-          self.pr_info = nil
-          self:_notify("status")
-        end
-        self._pr_info_branch = branch
       end)
     end)
   end)
