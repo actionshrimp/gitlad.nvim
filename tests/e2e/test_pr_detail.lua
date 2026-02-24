@@ -761,4 +761,186 @@ T["pr detail view"]["TAB toggles checks section"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+--- Helper: open PR detail with many-checks fixture (>5 successful → sub-section)
+---@param child table
+---@param repo string
+local function open_pr_detail_with_many_checks(child, repo)
+  child.lua(string.format(
+    [[
+    vim.cmd("cd %s")
+    require("gitlad.ui.views.status").open()
+  ]],
+    repo
+  ))
+  helpers.wait_for_status(child)
+
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+
+    local fixture_path = nil
+    for _, path in ipairs(vim.api.nvim_list_runtime_paths()) do
+      local candidate = path .. "/tests/fixtures/github/pr_detail_many_checks.json"
+      if vim.fn.filereadable(candidate) == 1 then
+        fixture_path = candidate
+        break
+      end
+    end
+
+    local f = io.open(fixture_path, "r")
+    local json = f:read("*a")
+    f:close()
+    local data = vim.json.decode(json)
+
+    local graphql = require("gitlad.forge.github.graphql")
+    local pr = graphql.parse_pr_detail(data)
+
+    local mock_provider = {
+      provider_type = "github",
+      owner = "testowner",
+      repo = "testrepo",
+      host = "github.com",
+      list_prs = function(self, opts, cb)
+        vim.schedule(function() cb({}, nil) end)
+      end,
+      get_pr = function(self, num, cb)
+        vim.schedule(function() cb(pr, nil) end)
+      end,
+    }
+
+    pr_detail_view.open(buf.repo_state, mock_provider, 42)
+  ]])
+
+  helpers.wait_for_buffer(child, "gitlad://pr%-detail")
+  child.lua([[vim.wait(500, function() return false end)]])
+end
+
+T["pr detail view"]["shows sub-section header when category has > 5 checks"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_many_checks(child, repo)
+
+  child.lua([[
+    _G._test_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  ]])
+  local lines = child.lua_get([[_G._test_lines]])
+
+  -- Should have a sub-section header for Successful (7 checks > 5 threshold)
+  local found_sub_header = false
+  for _, line in ipairs(lines) do
+    if line:match("Successful") and line:match("%(7%)") then
+      found_sub_header = true
+    end
+  end
+  eq(found_sub_header, true)
+
+  -- Failed checks (2) should be flat, no sub-header for Failed
+  local found_failed_sub_header = false
+  for _, line in ipairs(lines) do
+    if line:match("Failed") and line:match("%(2%)") then
+      found_failed_sub_header = true
+    end
+  end
+  eq(found_failed_sub_header, false)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["Tab on sub-section header toggles that sub-section"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_many_checks(child, repo)
+
+  local initial_count = child.lua_get([[vim.api.nvim_buf_line_count(0)]])
+
+  -- Navigate to the sub-section header for Successful
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local buf = pr_detail_view.get_buffer()
+    for line_nr, info in pairs(buf.line_map) do
+      if info.type == "checks_sub_header" and info.sub_category == "successful" then
+        vim.api.nvim_win_set_cursor(0, {line_nr, 0})
+        break
+      end
+    end
+  ]])
+
+  -- Press Tab to collapse the sub-section
+  child.type_keys("<Tab>")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  local collapsed_count = child.lua_get([[vim.api.nvim_buf_line_count(0)]])
+
+  -- Should have fewer lines (7 check lines hidden)
+  expect.equality(collapsed_count < initial_count, true)
+  eq(initial_count - collapsed_count, 7)
+
+  -- Press Tab again to expand
+  -- Re-navigate to the sub-section header (line numbers may have shifted)
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local buf = pr_detail_view.get_buffer()
+    for line_nr, info in pairs(buf.line_map) do
+      if info.type == "checks_sub_header" and info.sub_category == "successful" then
+        vim.api.nvim_win_set_cursor(0, {line_nr, 0})
+        break
+      end
+    end
+  ]])
+  child.type_keys("<Tab>")
+  child.lua([[vim.wait(100, function() return false end)]])
+
+  local expanded_count = child.lua_get([[vim.api.nvim_buf_line_count(0)]])
+  eq(expanded_count, initial_count)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["pr detail view"]["gj/gk navigate to sub-section headers"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add .")
+  helpers.git(child, repo, "commit -m 'init'")
+
+  open_pr_detail_with_many_checks(child, repo)
+
+  -- Navigate forward and check if we visit checks_sub_header
+  child.lua([[
+    local pr_detail_view = require("gitlad.ui.views.pr_detail")
+    local buf = pr_detail_view.get_buffer()
+    _G._visited_sub_headers = {}
+    vim.api.nvim_win_set_cursor(0, {1, 0})
+    for i = 1, 20 do
+      vim.cmd("normal gj")
+      local line = vim.api.nvim_win_get_cursor(0)[1]
+      local info = buf.line_map[line]
+      if info and info.type == "checks_sub_header" then
+        table.insert(_G._visited_sub_headers, info.sub_category)
+      end
+    end
+  ]])
+  local visited = child.lua_get([[_G._visited_sub_headers]])
+
+  -- Should have visited the successful sub-header
+  local found_successful = false
+  for _, cat in ipairs(visited) do
+    if cat == "successful" then
+      found_successful = true
+    end
+  end
+  eq(found_successful, true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
 return T

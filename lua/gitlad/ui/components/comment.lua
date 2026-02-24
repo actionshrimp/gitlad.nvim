@@ -12,6 +12,7 @@ local types = require("gitlad.forge.types")
 ---@class CommentRenderOptions
 ---@field wrap_width? number Wrap text at this width (default: 80)
 ---@field checks_collapsed? boolean Whether checks section is collapsed (default: false)
+---@field checks_sub_collapsed? table<string, boolean> Per-category collapsed state
 
 ---@class CommentLineInfo
 ---@field type string Line type discriminator
@@ -144,6 +145,7 @@ function M.render(pr, opts)
     local checks_component = require("gitlad.ui.components.checks")
     local checks_result = checks_component.render(pr.checks_summary, {
       collapsed = opts.checks_collapsed or false,
+      sub_collapsed = opts.checks_sub_collapsed,
     })
 
     -- Merge checks lines into result with offset
@@ -342,7 +344,11 @@ function M.apply_highlights(bufnr, ns, start_line, result)
         local _, merge_hl = types.format_merge_status(info.pr.mergeable, info.pr.merge_state_status)
         hl.set(bufnr, ns, line_idx, #prefix, #line, merge_hl)
       end
-    elseif info.type == "checks_header" or info.type == "check" then
+    elseif
+      info.type == "checks_header"
+      or info.type == "checks_sub_header"
+      or info.type == "check"
+    then
       -- Delegate to checks component highlighting
       local checks_component = require("gitlad.ui.components.checks")
       -- Build a minimal single-line result for the checks highlighter

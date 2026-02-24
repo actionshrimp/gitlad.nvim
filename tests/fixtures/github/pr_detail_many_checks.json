@@ -1,0 +1,162 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "number": 42,
+        "title": "Fix authentication bug in login flow",
+        "state": "OPEN",
+        "isDraft": false,
+        "author": {
+          "login": "octocat",
+          "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4"
+        },
+        "headRefName": "fix/auth-bug",
+        "baseRefName": "main",
+        "reviewDecision": "APPROVED",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "labels": {
+          "nodes": [
+            {"name": "bug"}
+          ]
+        },
+        "additions": 10,
+        "deletions": 3,
+        "createdAt": "2026-02-19T10:30:00Z",
+        "updatedAt": "2026-02-20T14:00:00Z",
+        "url": "https://github.com/owner/repo/pull/42",
+        "body": "Fixes the authentication bug.",
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "state": "FAILURE",
+                  "contexts": {
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / test-unit",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2001",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:02:30Z",
+                        "checkSuite": { "app": { "name": "GitHub Actions" } }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / test-integration",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2002",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:05:00Z",
+                        "checkSuite": { "app": { "name": "GitHub Actions" } }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / test-e2e",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2003",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:08:00Z",
+                        "checkSuite": { "app": { "name": "GitHub Actions" } }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / lint",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2004",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:01:00Z",
+                        "checkSuite": { "app": { "name": "GitHub Actions" } }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / typecheck",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2005",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:01:30Z",
+                        "checkSuite": { "app": { "name": "GitHub Actions" } }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / build",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2006",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:03:00Z",
+                        "checkSuite": { "app": { "name": "GitHub Actions" } }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "deploy-preview",
+                        "conclusion": "FAILURE",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2007",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:05:00Z",
+                        "checkSuite": { "app": { "name": "Vercel" } }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "security-scan",
+                        "conclusion": "FAILURE",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2008",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:04:00Z",
+                        "checkSuite": { "app": { "name": "Snyk" } }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / coverage",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2009",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:02:00Z",
+                        "checkSuite": { "app": { "name": "GitHub Actions" } }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "comments": {
+          "nodes": [
+            {
+              "id": "IC_1001",
+              "databaseId": 1001,
+              "author": { "login": "reviewer" },
+              "body": "Looks good.",
+              "createdAt": "2026-02-19T14:00:00Z",
+              "updatedAt": "2026-02-19T14:00:00Z"
+            }
+          ]
+        },
+        "reviews": {
+          "nodes": [
+            {
+              "id": "PRR_3001",
+              "databaseId": 3001,
+              "author": { "login": "reviewer" },
+              "state": "APPROVED",
+              "body": "LGTM",
+              "submittedAt": "2026-02-20T10:00:00Z",
+              "comments": { "nodes": [] }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

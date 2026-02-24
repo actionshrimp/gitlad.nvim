@@ -21,6 +21,7 @@ local hl = require("gitlad.ui.hl")
 ---@field line_map table<number, CommentLineInfo> Map of line numbers to line info
 ---@field ranges table<string, {start: number, end_line: number}> Named ranges
 ---@field checks_collapsed boolean Whether checks section is collapsed
+---@field checks_sub_collapsed table<string, boolean> Per-category collapsed state
 local PRDetailBuffer = {}
 PRDetailBuffer.__index = PRDetailBuffer
 
@@ -48,6 +49,7 @@ local function get_or_create_buffer(repo_state, provider)
   self.line_map = {}
   self.ranges = {}
   self.checks_collapsed = false
+  self.checks_sub_collapsed = {}
 
   -- Create buffer
   self.bufnr = vim.api.nvim_create_buf(false, true)
@@ -219,8 +221,11 @@ function PRDetailBuffer:_is_nav_target(line)
     return true
   end
 
-  -- Checks header is a navigation target
+  -- Checks header and sub-headers are navigation targets
   if info.type == "checks_header" then
+    return true
+  end
+  if info.type == "checks_sub_header" then
     return true
   end
 
@@ -287,9 +292,17 @@ function PRDetailBuffer:_action_at_cursor()
   end
 end
 
---- Toggle checks section collapsed/expanded
+--- Toggle checks section or sub-section collapsed/expanded
 function PRDetailBuffer:_toggle_checks()
-  self.checks_collapsed = not self.checks_collapsed
+  local info = self:_get_current_info()
+  if info and info.type == "checks_sub_header" and info.sub_category then
+    -- Toggle sub-category
+    local cat = info.sub_category
+    self.checks_sub_collapsed[cat] = not self.checks_sub_collapsed[cat]
+  else
+    -- Toggle whole section
+    self.checks_collapsed = not self.checks_collapsed
+  end
   self:render()
 end
 
@@ -527,6 +540,7 @@ function PRDetailBuffer:render()
 
   local result = comment_component.render(self.pr, {
     checks_collapsed = self.checks_collapsed,
+    checks_sub_collapsed = self.checks_sub_collapsed,
   })
   local lines = result.lines
   self.line_map = result.line_info
