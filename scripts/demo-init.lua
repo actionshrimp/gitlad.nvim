@@ -66,5 +66,6 @@ require("gitlad").setup()
 -- Demo driver (skip during warmup)
 -- ---------------------------------------------------------------------------
 if not vim.env.GITLAD_DEMO_WARMUP then
-  dofile(plugin_root .. "/scripts/demo-driver.lua")
+  local driver = vim.env.GITLAD_DEMO_DRIVER or "demo-basics-driver.lua"
+  dofile(plugin_root .. "/scripts/" .. driver)
 end

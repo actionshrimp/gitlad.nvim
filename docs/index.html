@@ -340,7 +340,17 @@
 
 <section id="demo" style="padding: 40px 0 0;">
   <div class="container" style="max-width: 960px;">
-    <div id="demo-player" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border);"></div>
+    <h2 style="margin-bottom: 6px;">Core workflow</h2>
+    <p class="muted" style="margin-bottom: 16px;">Status view, staging, commit, branch, log, and git command history.</p>
+    <div id="demo-basics" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin-bottom: 48px;"></div>
+
+    <h2 style="margin-bottom: 6px;">Advanced diff</h2>
+    <p class="muted" style="margin-bottom: 16px;">Native side-by-side diff viewer, 3-way staging, and merge conflict resolution.</p>
+    <div id="demo-advanced" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin-bottom: 48px;"></div>
+
+    <h2 style="margin-bottom: 6px;">GitHub integration</h2>
+    <p class="muted" style="margin-bottom: 16px;">PR list, detail view, inline review comments, and thread navigation.</p>
+    <div id="demo-forge" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border);"></div>
   </div>
 </section>
 
@@ -479,16 +489,24 @@
 <link rel="stylesheet" type="text/css" href="https://unpkg.com/asciinema-player@3.9.0/dist/bundle/asciinema-player.css" />
 <script src="https://unpkg.com/asciinema-player@3.9.0/dist/bundle/asciinema-player.min.js"></script>
 <script>
-  AsciinemaPlayer.create('demo-v2.cast', document.getElementById('demo-player'), {
+  var playerOpts = {
     cols: 130,
     rows: 42,
     fit: 'width',
-    autoPlay: true,
     loop: true,
     speed: 1,
     idleTimeLimit: 3,
     theme: 'dracula',
-  });
+  };
+
+  AsciinemaPlayer.create('demo-basics-v2.cast', document.getElementById('demo-basics'),
+    Object.assign({}, playerOpts, { autoPlay: true }));
+
+  AsciinemaPlayer.create('demo-advanced-v2.cast', document.getElementById('demo-advanced'),
+    Object.assign({}, playerOpts, { autoPlay: false }));
+
+  AsciinemaPlayer.create('demo-forge-v2.cast', document.getElementById('demo-forge'),
+    Object.assign({}, playerOpts, { autoPlay: false }));
 </script>
 
 </body>

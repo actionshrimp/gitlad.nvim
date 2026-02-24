@@ -4,10 +4,10 @@ A performance-focused, magit-inspired git interface for Neovim.
 
 <p align="center">
   <a href="https://actionshrimp.com/gitlad.nvim/#demo">
-    <img src="https://github.com/actionshrimp/gitlad.nvim/raw/main/docs/demo-preview.gif" alt="gitlad.nvim demo">
+    <img src="https://github.com/actionshrimp/gitlad.nvim/raw/main/docs/demo-basics-preview.gif" alt="gitlad.nvim demo">
   </a>
   <br>
-  <em><a href="https://actionshrimp.com/gitlad.nvim/#demo">Interactive demo</a></em>
+  <em><a href="https://actionshrimp.com/gitlad.nvim/#demo">Interactive demos</a> — basics, advanced diff, and GitHub integration</em>
 </p>
 
 ## Installation

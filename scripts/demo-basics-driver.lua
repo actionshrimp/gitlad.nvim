@@ -1,5 +1,6 @@
--- Demo driver for asciinema recording
--- Sends keystrokes with delays to showcase gitlad features
+-- Demo driver: Basics (~45-50s)
+-- Covers: status view, help popup, staging workflow (file + hunk),
+-- commit popup, branch popup, log view, git command history.
 --
 -- Usage: nvim -u scripts/demo-init.lua
 
@@ -36,7 +37,7 @@ local function run_next()
 end
 
 -- ============================================================================
--- Demo sequence (~60s)
+-- Demo sequence (~45-50s)
 -- ============================================================================
 
 -- Phase 1: Status overview — shows Head + Merge with remote tracking
@@ -106,49 +107,13 @@ step(2000, function() end)
 keys(600, "q")
 step(300, function() end)
 
--- Phase 5: Diffview integration — show staged diff side-by-side
-keys(800, "d")
-step(1500, function() end)
-keys(600, "s")
-step(3000, function() end)
-keys(300, ":DiffviewClose<CR>")
-step(800, function() end)
-
--- Phase 6: Branch popup
+-- Phase 5: Branch popup
 keys(800, "b")
 step(1500, function() end)
 keys(600, "q")
 step(300, function() end)
 
--- Phase 7: Refs popup → refs view
-keys(800, "yr")
-step(1000, function() end)
-keys(500, "r")
-step(2000, function() end)
-keys(600, "q")
-step(300, function() end)
-
--- Phase 8: Worktrees — navigate to section via M-n (section jump)
--- Sections: Untracked → Unstaged → Staged → Worktrees (4th with M-n)
-keys(300, "gg")
-keys(300, "<M-n>")
-keys(200, "<M-n>")
-keys(200, "<M-n>")
-keys(200, "<M-n>")
-step(800, function() end)
-
--- Browse worktree entries
-keys(250, "gj")
-keys(200, "gj")
-step(800, function() end)
-
--- Worktree popup
-keys(600, "Z")
-step(2000, function() end)
-keys(600, "q")
-step(300, function() end)
-
--- Phase 9: Log + Rebase popup
+-- Phase 6: Log + Rebase popup
 keys(800, "l")
 step(1000, function() end)
 keys(500, "l")
@@ -183,12 +148,12 @@ step(300, function() end)
 keys(600, "q")
 step(300, function() end)
 
--- Phase 10: Git command history
+-- Phase 7: Git command history
 keys(800, "$")
 step(2000, function() end)
 keys(600, "q")
 
--- Phase 11: Final pause on status
+-- Phase 8: Final pause on status
 step(1500, function() end)
 
 -- ============================================================================

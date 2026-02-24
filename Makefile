@@ -1,4 +1,4 @@
-.PHONY: test test-stress test-unit test-e2e test-e2e-sequential test-file deps lint dev test-repo dev-repo setup-gh demo
+.PHONY: test test-stress test-unit test-e2e test-e2e-sequential test-file deps lint dev test-repo dev-repo setup-gh demo demo-basics demo-advanced demo-forge
 
 # Run plugin in development mode
 dev:
@@ -79,9 +79,19 @@ format:
 		echo "stylua not installed"; \
 	fi
 
-# Record demo and generate all output formats (cast, v2 cast, gif)
+# Record all demos (basics, advanced, forge)
 demo:
 	./scripts/record-demo.sh
+
+# Record individual demos
+demo-basics:
+	./scripts/record-demo.sh basics
+
+demo-advanced:
+	./scripts/record-demo.sh advanced
+
+demo-forge:
+	./scripts/record-demo.sh forge
 
 # Clean test artifacts
 clean:
