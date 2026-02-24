@@ -214,8 +214,38 @@ function M.parse_unified_diff(lines)
   end
 
   for _, line in ipairs(lines) do
-    -- Detect file boundary: "diff --git a/... b/..."
-    if line:match("^diff %-%-git ") then
+    if current_hunk_lines then
+      -- Inside a hunk: check for boundaries that end the hunk, otherwise accumulate.
+      -- This MUST be checked first — hunk lines like "--- comment" (a deleted Lua
+      -- comment) or "+++ value" (an added line) would otherwise match the file header
+      -- patterns below and get silently dropped.
+      if line:match("^diff %-%-git ") then
+        finish_file()
+
+        local old_path, new_path = line:match("^diff %-%-git a/(.+) b/(.+)$")
+        if old_path and new_path then
+          current_file = {
+            old_path = old_path,
+            new_path = new_path,
+            status = M.detect_file_status(old_path, new_path),
+            hunks = {},
+            additions = 0,
+            deletions = 0,
+            is_binary = false,
+          }
+        end
+      elseif line:match("^@@") then
+        finish_hunk()
+        local header = M.parse_hunk_header(line)
+        if header then
+          current_header = header
+          current_hunk_lines = {}
+        end
+      else
+        table.insert(current_hunk_lines, line)
+      end
+    elseif line:match("^diff %-%-git ") then
+      -- Detect file boundary: "diff --git a/... b/..."
       finish_file()
 
       local old_path, new_path = line:match("^diff %-%-git a/(.+) b/(.+)$")
@@ -252,9 +282,6 @@ function M.parse_unified_diff(lines)
         current_header = header
         current_hunk_lines = {}
       end
-    elseif current_hunk_lines then
-      -- Line within a hunk
-      table.insert(current_hunk_lines, line)
     elseif line:match("^rename from ") then
       -- Rename detection
       if current_file then

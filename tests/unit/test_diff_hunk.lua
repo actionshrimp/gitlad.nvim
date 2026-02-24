@@ -481,4 +481,63 @@ T["parse_unified_diff"]["handles file with only context (mode change)"] = functi
   eq(#fps[1].hunks, 0)
 end
 
+T["parse_unified_diff"]["deleted Lua comment lines (--- prefix) are not swallowed"] = function()
+  -- Regression: deleted lines starting with "-- " produce diff lines like "--- comment"
+  -- which matched the file header pattern "^--- " and got silently dropped.
+  local lines = {
+    "diff --git a/init.lua b/init.lua",
+    "--- a/init.lua",
+    "+++ b/init.lua",
+    "@@ -1,5 +1,3 @@",
+    " local M = {}",
+    "--- This is a comment",
+    "--- Another comment",
+    " return M",
+  }
+  local fps = hunk.parse_unified_diff(lines)
+  eq(#fps, 1)
+  eq(fps[1].status, "M")
+  eq(#fps[1].hunks, 1)
+
+  local pairs = fps[1].hunks[1].pairs
+  -- Should have 4 lines: context, 2 deletions, context
+  eq(#pairs, 4)
+  eq(pairs[1].left_type, "context")
+  eq(pairs[1].left_line, "local M = {}")
+  eq(pairs[2].left_type, "delete")
+  eq(pairs[2].left_line, "-- This is a comment")
+  eq(pairs[2].right_type, "filler")
+  eq(pairs[3].left_type, "delete")
+  eq(pairs[3].left_line, "-- Another comment")
+  eq(pairs[3].right_type, "filler")
+  eq(pairs[4].left_type, "context")
+  eq(pairs[4].left_line, "return M")
+end
+
+T["parse_unified_diff"]["added lines with +++ prefix are not swallowed"] = function()
+  -- Same issue: added lines starting with "++" produce "+++ ..." matching the header pattern.
+  local lines = {
+    "diff --git a/file.lua b/file.lua",
+    "--- a/file.lua",
+    "+++ b/file.lua",
+    "@@ -1,2 +1,4 @@",
+    " local M = {}",
+    "+++ This is a weird line",
+    "+++ Another one",
+    " return M",
+  }
+  local fps = hunk.parse_unified_diff(lines)
+  eq(#fps, 1)
+  eq(#fps[1].hunks, 1)
+
+  local pairs = fps[1].hunks[1].pairs
+  eq(#pairs, 4)
+  eq(pairs[1].right_type, "context")
+  eq(pairs[2].right_type, "add")
+  eq(pairs[2].right_line, "++ This is a weird line")
+  eq(pairs[3].right_type, "add")
+  eq(pairs[3].right_line, "++ Another one")
+  eq(pairs[4].right_type, "context")
+end
+
 return T
