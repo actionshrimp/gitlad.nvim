@@ -209,4 +209,109 @@ T["forge popup"]["_show_popup includes PR action keys"] = function()
   helpers.cleanup_repo(child, repo)
 end
 
+T["forge popup"]["_view_current_pr uses search_prs with head:<branch> query"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
+  -- Get the current branch name
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+    _G._test_branch = buf.repo_state.status and buf.repo_state.status.branch or "unknown"
+  ]])
+  local branch = child.lua_get([[_G._test_branch]])
+
+  -- Call _view_current_pr with a mock provider that captures the search query
+  child.lua([[
+    local forge_popup = require("gitlad.popups.forge")
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+
+    _G._test_search_query = nil
+    _G._test_search_limit = nil
+
+    local mock_provider = {
+      provider_type = "github",
+      owner = "testowner",
+      repo = "testrepo",
+      host = "github.com",
+      search_prs = function(self, query, limit, cb)
+        _G._test_search_query = query
+        _G._test_search_limit = limit
+        vim.schedule(function()
+          cb({}, nil)
+        end)
+      end,
+    }
+
+    forge_popup._view_current_pr(buf.repo_state, mock_provider)
+  ]])
+
+  -- Wait for the async callback to fire
+  helpers.wait_short(child, 200)
+
+  local query = child.lua_get([[_G._test_search_query]])
+  local limit = child.lua_get([[_G._test_search_limit]])
+
+  -- Verify search_prs was called with correct query
+  eq(type(query), "string")
+  eq(query, "repo:testowner/testrepo is:pr is:open head:" .. branch)
+  eq(limit, 1)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["forge popup"]["_view_current_pr opens pr_detail when PR found"] = function()
+  local child = _G.child
+  local repo = helpers.create_test_repo(child)
+
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
+  -- Call _view_current_pr with a mock provider that returns a PR
+  child.lua([[
+    local forge_popup = require("gitlad.popups.forge")
+    local status_view = require("gitlad.ui.views.status")
+    local buf = status_view.get_buffer()
+
+    _G._test_pr_detail_opened = nil
+
+    -- Mock pr_detail.open to capture the call
+    package.loaded["gitlad.ui.views.pr_detail"] = {
+      open = function(repo_state, provider, pr_number)
+        _G._test_pr_detail_opened = pr_number
+      end,
+    }
+
+    local mock_provider = {
+      provider_type = "github",
+      owner = "testowner",
+      repo = "testrepo",
+      host = "github.com",
+      search_prs = function(self, query, limit, cb)
+        vim.schedule(function()
+          cb({ { number = 99, head_ref = "test-branch" } }, nil)
+        end)
+      end,
+    }
+
+    forge_popup._view_current_pr(buf.repo_state, mock_provider)
+  ]])
+
+  helpers.wait_short(child, 200)
+
+  local opened_pr = child.lua_get([[_G._test_pr_detail_opened]])
+  eq(opened_pr, 99)
+
+  -- Restore original module
+  child.lua([[package.loaded["gitlad.ui.views.pr_detail"] = nil]])
+
+  helpers.cleanup_repo(child, repo)
+end
+
 return T

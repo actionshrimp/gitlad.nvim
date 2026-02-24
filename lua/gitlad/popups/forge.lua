@@ -105,28 +105,22 @@ function M._view_current_pr(repo_state, provider)
 
   vim.notify("[gitlad] Finding PR for branch: " .. branch .. "...", vim.log.levels.INFO)
 
-  provider:list_prs({ state = "open", limit = 50 }, function(prs, err)
+  local repo_slug = provider.owner .. "/" .. provider.repo
+  local query = "repo:" .. repo_slug .. " is:pr is:open head:" .. branch
+  provider:search_prs(query, 1, function(prs, err)
     vim.schedule(function()
       if err then
-        vim.notify("[gitlad] Failed to list PRs: " .. err, vim.log.levels.ERROR)
+        vim.notify("[gitlad] Failed to find PR: " .. err, vim.log.levels.ERROR)
         return
       end
 
-      if not prs then
-        vim.notify("[gitlad] No PRs found", vim.log.levels.INFO)
+      if not prs or #prs == 0 then
+        vim.notify("[gitlad] No open PR found for branch: " .. branch, vim.log.levels.INFO)
         return
       end
 
-      -- Find PR matching current branch
-      for _, pr in ipairs(prs) do
-        if pr.head_ref == branch then
-          local pr_detail_view = require("gitlad.ui.views.pr_detail")
-          pr_detail_view.open(repo_state, provider, pr.number)
-          return
-        end
-      end
-
-      vim.notify("[gitlad] No open PR found for branch: " .. branch, vim.log.levels.INFO)
+      local pr_detail_view = require("gitlad.ui.views.pr_detail")
+      pr_detail_view.open(repo_state, provider, prs[1].number)
     end)
   end)
 end
