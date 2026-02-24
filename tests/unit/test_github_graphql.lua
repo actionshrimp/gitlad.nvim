@@ -1031,4 +1031,210 @@ T["parse_pr_search()"]["skips non-PR nodes"] = function()
   eq(prs[1].number, 42)
 end
 
+-- =============================================================================
+-- parse_pr_detail() with pagination info
+-- =============================================================================
+
+T["parse_pr_detail() with pagination"] = MiniTest.new_set()
+
+T["parse_pr_detail() with pagination"]["returns page_info when hasNextPage is true"] = function()
+  local data = load_fixture("pr_detail_paginated_checks.json")
+  local pr, err, page_info = graphql.parse_pr_detail(data)
+  eq(err, nil)
+  expect.equality(pr ~= nil, true)
+  expect.equality(page_info ~= nil, true)
+  eq(page_info.has_next_page, true)
+  expect.equality(page_info.end_cursor ~= nil, true)
+end
+
+T["parse_pr_detail() with pagination"]["returns page_info with has_next_page false when complete"] = function()
+  local data = load_fixture("pr_detail_with_checks.json")
+  local pr, err, page_info = graphql.parse_pr_detail(data)
+  eq(err, nil)
+  expect.equality(pr ~= nil, true)
+  expect.equality(page_info ~= nil, true)
+  eq(page_info.has_next_page, false)
+end
+
+T["parse_pr_detail() with pagination"]["initial page has correct partial counts"] = function()
+  local data = load_fixture("pr_detail_paginated_checks.json")
+  local pr, err = graphql.parse_pr_detail(data)
+  eq(err, nil)
+
+  local cs = pr.checks_summary
+  expect.equality(cs ~= nil, true)
+  -- Only 3 nodes in the first page, but totalCount is 5
+  -- Since rollup state is FAILURE, totalCount > counted: total=5 but counts from nodes
+  eq(cs.total, 5)
+  eq(cs.success, 2) -- 2 success CheckRuns
+  eq(cs.failure, 1) -- 1 failure CheckRun
+  eq(#cs.checks, 3) -- 3 detail check objects
+  eq(cs.state, "failure")
+end
+
+T["parse_pr_detail() with pagination"]["returns nil page_info when no checks"] = function()
+  local data = load_fixture("pr_detail.json")
+  local pr, err, page_info = graphql.parse_pr_detail(data)
+  eq(err, nil)
+  expect.equality(pr ~= nil, true)
+  eq(page_info, nil)
+end
+
+-- =============================================================================
+-- parse_checks_page
+-- =============================================================================
+
+T["parse_checks_page()"] = MiniTest.new_set()
+
+T["parse_checks_page()"]["parses checks from fixture"] = function()
+  local data = load_fixture("pr_checks_page.json")
+  local checks, page_info, err = graphql.parse_checks_page(data)
+  eq(err, nil)
+  expect.equality(checks ~= nil, true)
+  eq(#checks, 2)
+
+  -- First check: CheckRun
+  eq(checks[1].name, "CI / build")
+  eq(checks[1].status, "completed")
+  eq(checks[1].conclusion, "success")
+  eq(checks[1].app_name, "GitHub Actions")
+
+  -- Second check: StatusContext
+  eq(checks[2].name, "coverage/codecov")
+  eq(checks[2].status, "completed")
+  eq(checks[2].conclusion, "success")
+
+  -- Page info
+  expect.equality(page_info ~= nil, true)
+  eq(page_info.has_next_page, false)
+end
+
+T["parse_checks_page()"]["returns error for nil data"] = function()
+  local checks, page_info, err = graphql.parse_checks_page(nil)
+  eq(checks, nil)
+  eq(page_info, nil)
+  expect.equality(err ~= nil, true)
+end
+
+T["parse_checks_page()"]["returns error for GraphQL errors"] = function()
+  local data = {
+    errors = {
+      { message = "Something went wrong" },
+    },
+  }
+  local checks, page_info, err = graphql.parse_checks_page(data)
+  eq(checks, nil)
+  eq(page_info, nil)
+  expect.equality(err:match("GraphQL error") ~= nil, true)
+end
+
+T["parse_checks_page()"]["returns error for missing repository"] = function()
+  local data = { data = {} }
+  local checks, _, err = graphql.parse_checks_page(data)
+  eq(checks, nil)
+  expect.equality(err:match("Repository not found") ~= nil, true)
+end
+
+T["parse_checks_page()"]["returns error for missing pull request"] = function()
+  local data = { data = { repository = {} } }
+  local checks, _, err = graphql.parse_checks_page(data)
+  eq(checks, nil)
+  expect.equality(err:match("Pull request not found") ~= nil, true)
+end
+
+-- =============================================================================
+-- merge_checks_into_summary
+-- =============================================================================
+
+T["merge_checks_into_summary()"] = MiniTest.new_set()
+
+T["merge_checks_into_summary()"]["merges additional checks into summary"] = function()
+  ---@type ForgeChecksSummary
+  local summary = {
+    state = "failure",
+    total = 3,
+    success = 2,
+    failure = 1,
+    pending = 0,
+    checks = {
+      { name = "CI / test-unit", status = "completed", conclusion = "success" },
+      { name = "CI / test-e2e", status = "completed", conclusion = "failure" },
+      { name = "CI / lint", status = "completed", conclusion = "success" },
+    },
+  }
+
+  local additional_checks = {
+    { name = "CI / build", status = "completed", conclusion = "success" },
+    { name = "coverage/codecov", status = "completed", conclusion = "success" },
+  }
+
+  graphql.merge_checks_into_summary(summary, additional_checks)
+
+  eq(summary.total, 5)
+  eq(summary.success, 4)
+  eq(summary.failure, 1)
+  eq(summary.pending, 0)
+  eq(#summary.checks, 5)
+  eq(summary.checks[4].name, "CI / build")
+  eq(summary.checks[5].name, "coverage/codecov")
+end
+
+T["merge_checks_into_summary()"]["handles pending checks"] = function()
+  ---@type ForgeChecksSummary
+  local summary = {
+    state = "pending",
+    total = 1,
+    success = 1,
+    failure = 0,
+    pending = 0,
+    checks = {
+      { name = "CI / test", status = "completed", conclusion = "success" },
+    },
+  }
+
+  local additional_checks = {
+    { name = "CI / deploy", status = "in_progress", conclusion = nil },
+  }
+
+  graphql.merge_checks_into_summary(summary, additional_checks)
+
+  eq(summary.total, 2)
+  eq(summary.success, 1)
+  eq(summary.pending, 1)
+  eq(#summary.checks, 2)
+end
+
+T["merge_checks_into_summary()"]["handles empty additional checks"] = function()
+  ---@type ForgeChecksSummary
+  local summary = {
+    state = "success",
+    total = 2,
+    success = 2,
+    failure = 0,
+    pending = 0,
+    checks = {
+      { name = "CI / test", status = "completed", conclusion = "success" },
+      { name = "CI / lint", status = "completed", conclusion = "success" },
+    },
+  }
+
+  graphql.merge_checks_into_summary(summary, {})
+
+  eq(summary.total, 2)
+  eq(summary.success, 2)
+  eq(#summary.checks, 2)
+end
+
+-- =============================================================================
+-- queries.pr_checks_page
+-- =============================================================================
+
+T["queries"]["pr_checks_page query string is defined"] = function()
+  expect.equality(type(graphql.queries.pr_checks_page), "string")
+  expect.equality(graphql.queries.pr_checks_page:match("after") ~= nil, true)
+  expect.equality(graphql.queries.pr_checks_page:match("pageInfo") ~= nil, true)
+  expect.equality(graphql.queries.pr_checks_page:match("hasNextPage") ~= nil, true)
+  expect.equality(graphql.queries.pr_checks_page:match("endCursor") ~= nil, true)
+end
+
 return T

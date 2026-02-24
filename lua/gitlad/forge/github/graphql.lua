@@ -166,6 +166,11 @@ query($owner: String!, $repo: String!, $number: Int!) {
             statusCheckRollup {
               state
               contexts(first: 100) {
+                totalCount
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
                 nodes {
                   __typename
                   ... on CheckRun {
@@ -308,6 +313,52 @@ query($owner: String!, $repo: String!, $number: Int!) {
             authoredDate
             additions
             deletions
+          }
+        }
+      }
+    }
+  }
+}
+]]
+
+M.queries.pr_checks_page = [[
+query($owner: String!, $repo: String!, $number: Int!, $after: String!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      commits(last: 1) {
+        nodes {
+          commit {
+            statusCheckRollup {
+              contexts(first: 100, after: $after) {
+                totalCount
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+                nodes {
+                  __typename
+                  ... on CheckRun {
+                    name
+                    conclusion
+                    status
+                    detailsUrl
+                    startedAt
+                    completedAt
+                    checkSuite {
+                      app {
+                        name
+                      }
+                    }
+                  }
+                  ... on StatusContext {
+                    context
+                    cState: state
+                    targetUrl
+                    createdAt
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -468,6 +519,132 @@ local function parse_checks_summary(commits_node, include_details)
     page_info
 end
 
+--- Parse a checks pagination response to extract context nodes and pageInfo.
+--- Used for follow-up pagination queries after the initial pr_detail fetch.
+---@param data table Decoded JSON response from pr_checks_page query
+---@return ForgeCheck[]|nil checks Parsed check objects
+---@return table|nil page_info {has_next_page, end_cursor}
+---@return string|nil err Error message
+function M.parse_checks_page(data)
+  if not data then
+    return nil, nil, "No data in response"
+  end
+
+  if data.errors and #data.errors > 0 then
+    local msgs = {}
+    for _, err in ipairs(data.errors) do
+      table.insert(msgs, err.message or "Unknown error")
+    end
+    return nil, nil, "GraphQL error: " .. table.concat(msgs, "; ")
+  end
+
+  local repo = data.data and data.data.repository
+  if not repo then
+    return nil, nil, "Repository not found"
+  end
+
+  local pr_node = repo.pullRequest
+  if not pr_node then
+    return nil, nil, "Pull request not found"
+  end
+
+  local commits = pr_node.commits
+  if not commits or not commits.nodes or #commits.nodes == 0 then
+    return nil, nil, "No commit data"
+  end
+
+  local commit = commits.nodes[1].commit
+  if not commit or not commit.statusCheckRollup then
+    return nil, nil, "No statusCheckRollup"
+  end
+
+  local contexts_obj = commit.statusCheckRollup.contexts or {}
+  local context_nodes = contexts_obj.nodes or {}
+
+  local page_info = nil
+  if contexts_obj.pageInfo then
+    page_info = {
+      has_next_page = contexts_obj.pageInfo.hasNextPage or false,
+      end_cursor = contexts_obj.pageInfo.endCursor,
+    }
+  end
+
+  -- Parse context nodes into ForgeCheck objects (always include details for pagination)
+  local checks = {}
+  for _, ctx in ipairs(context_nodes) do
+    if ctx.__typename == "CheckRun" then
+      local raw_conclusion = ctx.conclusion
+      if raw_conclusion == vim.NIL then
+        raw_conclusion = nil
+      end
+      local conclusion = raw_conclusion and raw_conclusion:lower() or nil
+      local status = (ctx.status or ""):upper()
+
+      ---@type ForgeCheck
+      local check = {
+        name = ctx.name or "unknown",
+        status = status == "COMPLETED" and "completed" or "in_progress",
+        conclusion = conclusion,
+        details_url = ctx.detailsUrl ~= vim.NIL and ctx.detailsUrl or nil,
+        app_name = ctx.checkSuite and ctx.checkSuite.app and ctx.checkSuite.app.name or nil,
+        started_at = ctx.startedAt ~= vim.NIL and ctx.startedAt or nil,
+        completed_at = ctx.completedAt ~= vim.NIL and ctx.completedAt or nil,
+      }
+      table.insert(checks, check)
+    elseif ctx.__typename == "StatusContext" then
+      local state = (ctx.cState or ""):upper()
+
+      ---@type ForgeCheck
+      local check = {
+        name = ctx.context or "unknown",
+        status = (state == "SUCCESS" or state == "FAILURE" or state == "ERROR") and "completed"
+          or "in_progress",
+        conclusion = state == "SUCCESS" and "success"
+          or (state == "FAILURE" or state == "ERROR") and "failure"
+          or nil,
+        details_url = ctx.targetUrl ~= vim.NIL and ctx.targetUrl or nil,
+        app_name = nil,
+        started_at = ctx.createdAt ~= vim.NIL and ctx.createdAt or nil,
+        completed_at = nil,
+      }
+      table.insert(checks, check)
+    end
+  end
+
+  return checks, page_info, nil
+end
+
+--- Merge additional check nodes into an existing ForgeChecksSummary.
+--- Used to accumulate paginated check results into the initial summary.
+---@param summary ForgeChecksSummary The summary to merge into (mutated in place)
+---@param checks ForgeCheck[] Additional parsed checks to add
+function M.merge_checks_into_summary(summary, checks)
+  for _, check in ipairs(checks) do
+    table.insert(summary.checks, check)
+
+    if check.status ~= "completed" then
+      summary.pending = summary.pending + 1
+    elseif
+      check.conclusion == "success"
+      or check.conclusion == "neutral"
+      or check.conclusion == "skipped"
+    then
+      summary.success = summary.success + 1
+    elseif
+      check.conclusion == "failure"
+      or check.conclusion == "timed_out"
+      or check.conclusion == "startup_failure"
+    then
+      summary.failure = summary.failure + 1
+    else
+      summary.pending = summary.pending + 1
+    end
+  end
+
+  -- Recompute total from actual counts
+  summary.total = summary.success + summary.failure + summary.pending
+end
+
 --- Parse a single PR node into a ForgePullRequest
 ---@param node table A PR node from GraphQL response
 ---@param include_check_details boolean Whether to include full check details
@@ -608,6 +785,7 @@ end
 ---@param data table Decoded JSON response from GraphQL API
 ---@return ForgePullRequest|nil pr PR with comments, reviews, and timeline
 ---@return string|nil err Error message
+---@return table|nil page_info Checks pagination info {has_next_page, end_cursor}
 function M.parse_pr_detail(data)
   if not data then
     return nil, "No data in response"
@@ -752,10 +930,12 @@ function M.parse_pr_detail(data)
     comments = comments,
     reviews = reviews,
     timeline = timeline,
-    checks_summary = parse_checks_summary(node.commits, true),
   }
 
-  return pr, nil
+  local checks_summary, checks_page_info = parse_checks_summary(node.commits, true)
+  pr.checks_summary = checks_summary
+
+  return pr, nil, checks_page_info
 end
 
 --- Parse a PR commits GraphQL response into DiffPRCommit[]

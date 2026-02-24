@@ -1,0 +1,100 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "number": 99,
+        "title": "Monorepo CI checks PR",
+        "state": "OPEN",
+        "isDraft": false,
+        "author": {
+          "login": "octocat",
+          "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4"
+        },
+        "headRefName": "feature/many-checks",
+        "baseRefName": "main",
+        "headRefOid": "abc123",
+        "baseRefOid": "def456",
+        "reviewDecision": null,
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "labels": {
+          "nodes": []
+        },
+        "additions": 50,
+        "deletions": 10,
+        "createdAt": "2026-02-20T10:00:00Z",
+        "updatedAt": "2026-02-20T12:00:00Z",
+        "url": "https://github.com/owner/repo/pull/99",
+        "body": "PR with many CI checks that require pagination.",
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "state": "FAILURE",
+                  "contexts": {
+                    "totalCount": 5,
+                    "pageInfo": {
+                      "hasNextPage": true,
+                      "endCursor": "Y3Vyc29yOnYyOpHOABcWMg=="
+                    },
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / test-unit",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2001",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:02:00Z",
+                        "checkSuite": {
+                          "app": {
+                            "name": "GitHub Actions"
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / test-e2e",
+                        "conclusion": "FAILURE",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2002",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:05:00Z",
+                        "checkSuite": {
+                          "app": {
+                            "name": "GitHub Actions"
+                          }
+                        }
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "CI / lint",
+                        "conclusion": "SUCCESS",
+                        "status": "COMPLETED",
+                        "detailsUrl": "https://github.com/owner/repo/actions/runs/2003",
+                        "startedAt": "2026-02-20T10:00:00Z",
+                        "completedAt": "2026-02-20T10:01:00Z",
+                        "checkSuite": {
+                          "app": {
+                            "name": "GitHub Actions"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "comments": {
+          "nodes": []
+        },
+        "reviews": {
+          "nodes": []
+        }
+      }
+    }
+  }
+}

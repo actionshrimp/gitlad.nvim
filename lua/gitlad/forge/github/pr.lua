@@ -52,6 +52,57 @@ function M.list(api_url, token, owner, repo, opts, callback)
   end)
 end
 
+--- Fetch remaining pages of checks and merge them into the PR's checks_summary.
+--- Calls itself recursively until all pages are fetched, then invokes the final callback.
+---@param api_url string GitHub API URL
+---@param token string Auth token
+---@param owner string Repository owner
+---@param repo string Repository name
+---@param number number PR number
+---@param pr ForgePullRequest The PR being built up
+---@param end_cursor string The cursor for the next page
+---@param callback fun(pr: ForgePullRequest|nil, err: string|nil)
+local function fetch_remaining_checks(api_url, token, owner, repo, number, pr, end_cursor, callback)
+  local variables = {
+    owner = owner,
+    repo = repo,
+    number = number,
+    after = end_cursor,
+  }
+
+  graphql.execute(api_url, token, graphql.queries.pr_checks_page, variables, function(data, err)
+    if err then
+      -- Non-fatal: return what we have so far
+      callback(pr, nil)
+      return
+    end
+
+    local checks, page_info, parse_err = graphql.parse_checks_page(data)
+    if parse_err or not checks then
+      -- Non-fatal: return what we have so far
+      callback(pr, nil)
+      return
+    end
+
+    graphql.merge_checks_into_summary(pr.checks_summary, checks)
+
+    if page_info and page_info.has_next_page and page_info.end_cursor then
+      fetch_remaining_checks(
+        api_url,
+        token,
+        owner,
+        repo,
+        number,
+        pr,
+        page_info.end_cursor,
+        callback
+      )
+    else
+      callback(pr, nil)
+    end
+  end)
+end
+
 --- Get a single pull request by number (with comments and reviews)
 ---@param api_url string GitHub API URL
 ---@param token string Auth token
@@ -72,8 +123,32 @@ function M.get(api_url, token, owner, repo, number, callback)
       return
     end
 
-    local pr, parse_err = graphql.parse_pr_detail(data)
-    callback(pr, parse_err)
+    local pr, parse_err, checks_page_info = graphql.parse_pr_detail(data)
+    if parse_err or not pr then
+      callback(pr, parse_err)
+      return
+    end
+
+    -- If there are more pages of checks, fetch them
+    if
+      checks_page_info
+      and checks_page_info.has_next_page
+      and checks_page_info.end_cursor
+      and pr.checks_summary
+    then
+      fetch_remaining_checks(
+        api_url,
+        token,
+        owner,
+        repo,
+        number,
+        pr,
+        checks_page_info.end_cursor,
+        callback
+      )
+    else
+      callback(pr, nil)
+    end
   end)
 end
 
