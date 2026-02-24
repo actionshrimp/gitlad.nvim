@@ -10,15 +10,72 @@ local types = require("gitlad.forge.types")
 
 ---@class ChecksRenderOptions
 ---@field collapsed? boolean Whether the section is collapsed (default: false)
+---@field sub_collapsed? table<string, boolean> Per-category collapsed state
+---@field sub_threshold? number Min checks to trigger sub-section (default: 5)
 
 ---@class CheckLineInfo
 ---@field type string Line type discriminator
 ---@field check? ForgeCheck Check reference for check lines
+---@field sub_category? string Category key for sub-section headers
 
 ---@class ChecksRenderResult
 ---@field lines string[] Formatted lines
 ---@field line_info table<number, CheckLineInfo> Maps line index (1-based) to line metadata
 ---@field ranges table<string, {start: number, end_line: number}> Named ranges
+
+-- Category definitions in display order
+M.categories = {
+  { key = "failed", label = "Failed" },
+  { key = "in_progress", label = "In progress" },
+  { key = "successful", label = "Successful" },
+  { key = "pending", label = "Pending" },
+  { key = "skipped", label = "Skipped" },
+}
+
+--- Classify a check into a category key
+---@param check ForgeCheck
+---@return string category One of "failed", "in_progress", "successful", "pending", "skipped"
+function M.classify_check(check)
+  if check.status == "in_progress" then
+    return "in_progress"
+  end
+  if check.status == "queued" then
+    return "pending"
+  end
+  if check.status == "completed" then
+    local c = check.conclusion
+    if c == "failure" or c == "timed_out" or c == "startup_failure" then
+      return "failed"
+    elseif c == "success" then
+      return "successful"
+    elseif c == "action_required" then
+      return "pending"
+    elseif c == "cancelled" or c == "skipped" or c == "neutral" then
+      return "skipped"
+    end
+  end
+  return "pending"
+end
+
+--- Format a single check line
+---@param check ForgeCheck
+---@param indent string Indentation prefix
+---@return string
+local function format_check_line(check, indent)
+  local icon, _ = types.format_check_icon(check)
+  local parts = { indent .. icon .. " " .. check.name }
+
+  if check.app_name then
+    table.insert(parts, " (" .. check.app_name .. ")")
+  end
+
+  local duration = types.format_check_duration(check.started_at, check.completed_at)
+  if duration ~= "" then
+    table.insert(parts, "  " .. duration)
+  end
+
+  return table.concat(parts)
+end
 
 --- Render a checks section
 ---@param checks_summary ForgeChecksSummary
@@ -27,6 +84,8 @@ local types = require("gitlad.forge.types")
 function M.render(checks_summary, opts)
   opts = opts or {}
   local collapsed = opts.collapsed or false
+  local sub_collapsed = opts.sub_collapsed or {}
+  local threshold = opts.sub_threshold or 5
 
   local result = {
     lines = {},
@@ -53,24 +112,44 @@ function M.render(checks_summary, opts)
     return result
   end
 
-  -- Individual check lines
-  local checks_start = #result.lines + 1
+  -- Classify checks into category buckets
+  local buckets = {}
+  for _, cat in ipairs(M.categories) do
+    buckets[cat.key] = {}
+  end
   for _, check in ipairs(checks_summary.checks) do
-    local icon, _ = types.format_check_icon(check)
-    local parts = { "  " .. icon .. " " .. check.name }
-
-    -- App name in parentheses
-    if check.app_name then
-      table.insert(parts, " (" .. check.app_name .. ")")
+    local cat = M.classify_check(check)
+    if buckets[cat] then
+      table.insert(buckets[cat], check)
     end
+  end
 
-    -- Duration
-    local duration = types.format_check_duration(check.started_at, check.completed_at)
-    if duration ~= "" then
-      table.insert(parts, "  " .. duration)
+  -- Render each category
+  local checks_start = #result.lines + 1
+  for _, cat in ipairs(M.categories) do
+    local checks = buckets[cat.key]
+    if #checks > 0 then
+      if #checks > threshold then
+        -- Sub-section with header
+        local is_collapsed = sub_collapsed[cat.key] or false
+        local sub_indicator = is_collapsed and ">" or "v"
+        local sub_header = "  " .. sub_indicator .. " " .. cat.label .. " (" .. #checks .. ")"
+        add_line(sub_header, { type = "checks_sub_header", sub_category = cat.key })
+
+        local sub_start = #result.lines
+        if not is_collapsed then
+          for _, check in ipairs(checks) do
+            add_line(format_check_line(check, "    "), { type = "check", check = check })
+          end
+        end
+        result.ranges["checks_sub_" .. cat.key] = { start = sub_start, end_line = #result.lines }
+      else
+        -- Flat rendering
+        for _, check in ipairs(checks) do
+          add_line(format_check_line(check, "  "), { type = "check", check = check })
+        end
+      end
     end
-
-    add_line(table.concat(parts), { type = "check", check = check })
   end
 
   if #checks_summary.checks > 0 then
@@ -99,6 +178,8 @@ function M.apply_highlights(bufnr, ns, start_line, result)
     end
 
     if info.type == "checks_header" then
+      hl.set(bufnr, ns, line_idx, 0, #line, "GitladSectionHeader")
+    elseif info.type == "checks_sub_header" then
       hl.set(bufnr, ns, line_idx, 0, #line, "GitladSectionHeader")
     elseif info.type == "check" and info.check then
       -- Highlight the icon character based on check state
