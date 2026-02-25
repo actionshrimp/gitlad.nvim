@@ -1,6 +1,7 @@
 -- Demo driver: Forge/GitHub (~45-60s)
 -- Covers: forge popup, PR list dashboard, PR detail view (comments, checks),
--- PR diff in native viewer with inline review threads, thread navigation.
+-- PR diff in native viewer with inline review threads, thread navigation,
+-- and adding a review comment.
 --
 -- Uses a real GitHub repo (set up by create-forge-test-repo.sh).
 --
@@ -90,13 +91,20 @@ step(500, function() end)
 
 -- Phase 6: Open PR diff in native viewer
 keys(600, "d")
-step(3500, function() end)
+-- Wait for diff + review threads to load from API
+step(5000, function() end)
 
--- Navigate files
+-- Navigate files in panel
 keys(500, "gj")
 step(1000, function() end)
 keys(500, "gj")
 step(1000, function() end)
+
+-- Select file and move focus to the diff buffer
+keys(500, "<CR>")
+step(500, function() end)
+keys(300, "<C-w>l")
+step(1500, function() end)
 
 -- Navigate review threads
 keys(500, "]t")
@@ -115,6 +123,21 @@ step(1500, function() end)
 -- Previous thread
 keys(500, "[t")
 step(1000, function() end)
+
+-- Phase 7: Add a review comment
+-- Move to a line in the diff and press c to open comment editor
+keys(500, "5j")
+step(600, function() end)
+keys(500, "c")
+step(1200, function() end)
+
+-- Type a comment
+keys(300, "iShould we add a nil guard here?<Esc>")
+step(1500, function() end)
+
+-- Submit with ZZ
+keys(500, "ZZ")
+step(2500, function() end)
 
 -- Close the diff viewer
 keys(600, "q")

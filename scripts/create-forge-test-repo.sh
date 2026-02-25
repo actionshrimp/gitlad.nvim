@@ -24,26 +24,41 @@ fi
 echo "==> Setting up forge demo repo: $REPO_NAME"
 
 # ---------------------------------------------------------------------------
-# Recreate the GitHub repo (delete if exists, then create fresh)
+# Check if repo + PR already exist — skip setup if so
 # ---------------------------------------------------------------------------
-echo "  Deleting existing repo (if any)..."
-gh repo delete "$REPO_NAME" --yes 2>/dev/null || true
+NEED_SETUP=true
+if gh repo view "$REPO_NAME" &>/dev/null; then
+  EXISTING_PR=$(gh pr list --repo "$REPO_NAME" --head feature/add-validation --state open --json number --jq '.[0].number' 2>/dev/null)
+  if [ -n "$EXISTING_PR" ]; then
+    echo "  Repo exists with open PR #$EXISTING_PR, skipping setup."
+    NEED_SETUP=false
+  fi
+else
+  echo "  Creating private repo..."
+  gh repo create "$REPO_NAME" --private --description "Demo repo for gitlad.nvim forge features"
+fi
 
-echo "  Creating private repo..."
-gh repo create "$REPO_NAME" --private --description "Demo repo for gitlad.nvim forge features" 2>/dev/null
+if [ "$NEED_SETUP" = true ]; then
+  # Close any stale PRs and delete feature branch
+  if gh repo view "$REPO_NAME" &>/dev/null; then
+    for pr in $(gh pr list --repo "$REPO_NAME" --state open --json number --jq '.[].number'); do
+      gh pr close "$pr" --repo "$REPO_NAME" 2>/dev/null || true
+    done
+    gh api "repos/$REPO_NAME/git/refs/heads/feature/add-validation" -X DELETE 2>/dev/null || true
+  fi
 
-# ---------------------------------------------------------------------------
-# Create local repo and push initial content
-# ---------------------------------------------------------------------------
-WORK_DIR=$(mktemp -d)
-cd "$WORK_DIR"
-git init
-git config user.email "demo@gitlad.nvim"
-git config user.name "gitlad demo"
+  # ---------------------------------------------------------------------------
+  # Create local repo and push initial content
+  # ---------------------------------------------------------------------------
+  WORK_DIR=$(mktemp -d)
+  cd "$WORK_DIR"
+  git init
+  git config user.email "demo@gitlad.nvim"
+  git config user.name "gitlad demo"
 
-# Initial commit: simple project structure
-mkdir -p src tests
-cat > src/main.lua << 'EOF'
+  # Initial commit: simple project structure
+  mkdir -p src tests
+  cat > src/main.lua << 'EOF'
 -- Main application entry point
 local M = {}
 
@@ -74,7 +89,7 @@ end
 return M
 EOF
 
-cat > src/utils.lua << 'EOF'
+  cat > src/utils.lua << 'EOF'
 -- Utility functions
 local M = {}
 
@@ -100,7 +115,7 @@ end
 return M
 EOF
 
-cat > tests/main_test.lua << 'EOF'
+  cat > tests/main_test.lua << 'EOF'
 -- Tests for main module
 local main = require("src.main")
 
@@ -118,17 +133,17 @@ assert(results[1] == 2)
 print("All tests passed!")
 EOF
 
-cat > README.md << 'EOF'
+  cat > README.md << 'EOF'
 # Demo Project
 
 A sample project for demonstrating gitlad.nvim forge features.
 EOF
 
-git add .
-git commit -m "Initial project structure"
+  git add .
+  git commit -m "Initial project structure"
 
-# Second commit
-cat > src/config.lua << 'EOF'
+  # Second commit
+  cat > src/config.lua << 'EOF'
 -- Configuration module
 local M = {}
 
@@ -154,21 +169,21 @@ end
 return M
 EOF
 
-git add .
-git commit -m "Add configuration module"
+  git add .
+  git commit -m "Add configuration module"
 
-# Push main branch
-git remote add origin "https://github.com/$REPO_NAME.git"
-git branch -M main
-git push -u origin main
+  # Push main branch
+  git remote add origin "git@github.com:$REPO_NAME.git"
+  git branch -M main
+  git push -u origin main --force
 
-# ---------------------------------------------------------------------------
-# Create feature branch with meaningful changes
-# ---------------------------------------------------------------------------
-git checkout -b feature/add-validation
+  # ---------------------------------------------------------------------------
+  # Create feature branch with meaningful changes
+  # ---------------------------------------------------------------------------
+  git checkout -b feature/add-validation
 
-# Commit 1: Add validation module
-cat > src/validate.lua << 'EOF'
+  # Commit 1: Add validation module
+  cat > src/validate.lua << 'EOF'
 -- Input validation utilities
 local M = {}
 
@@ -207,8 +222,8 @@ end
 return M
 EOF
 
-# Commit 1: Also modify main.lua to use validation
-cat > src/main.lua << 'EOF'
+  # Commit 1: Also modify main.lua to use validation
+  cat > src/main.lua << 'EOF'
 -- Main application entry point
 local validate = require("src.validate")
 local M = {}
@@ -249,14 +264,14 @@ end
 return M
 EOF
 
-git add .
-git commit -m "Add input validation module
+  git add .
+  git commit -m "Add input validation module
 
 Introduces a validation library for type checking and config validation.
 Updated main.lua to validate configuration on setup."
 
-# Commit 2: Add tests for validation
-cat > tests/validate_test.lua << 'EOF'
+  # Commit 2: Add tests for validation
+  cat > tests/validate_test.lua << 'EOF'
 -- Tests for validation module
 local validate = require("src.validate")
 
@@ -288,8 +303,8 @@ assert(#errors2 == 1)
 print("All validation tests passed!")
 EOF
 
-# Also update utils with a new function
-cat > src/utils.lua << 'EOF'
+  # Also update utils with a new function
+  cat > src/utils.lua << 'EOF'
 -- Utility functions
 local M = {}
 
@@ -333,22 +348,22 @@ end
 return M
 EOF
 
-git add .
-git commit -m "Add validation tests and extend utils
+  git add .
+  git commit -m "Add validation tests and extend utils
 
 Comprehensive tests for the validation module.
 Added map() and filter() utility functions."
 
-# Push the feature branch
-git push -u origin feature/add-validation
+  # Push the feature branch
+  git push -u origin feature/add-validation --force
 
-# ---------------------------------------------------------------------------
-# Create PR
-# ---------------------------------------------------------------------------
-echo "  Creating pull request..."
-PR_URL=$(gh pr create \
-  --title "Add input validation module" \
-  --body "$(cat <<'PRBODY'
+  # ---------------------------------------------------------------------------
+  # Create PR
+  # ---------------------------------------------------------------------------
+  echo "  Creating pull request..."
+  PR_URL=$(gh pr create \
+    --title "Add input validation module" \
+    --body "$(cat <<'PRBODY'
 ## Summary
 
 This PR adds a validation module for input type checking and configuration validation.
@@ -365,51 +380,55 @@ This PR adds a validation module for input type checking and configuration valid
 - [ ] Manual testing with edge cases
 PRBODY
 )" \
-  --head feature/add-validation \
-  --base main)
+    --head feature/add-validation \
+    --base main)
 
-PR_NUMBER=$(echo "$PR_URL" | grep -o '[0-9]*$')
-echo "  Created PR #$PR_NUMBER: $PR_URL"
+  PR_NUMBER=$(echo "$PR_URL" | grep -o '[0-9]*$')
+  echo "  Created PR #$PR_NUMBER: $PR_URL"
 
-# ---------------------------------------------------------------------------
-# Add PR comments and reviews via API
-# ---------------------------------------------------------------------------
-echo "  Adding PR comments..."
+  # ---------------------------------------------------------------------------
+  # Add PR comments and reviews via API
+  # ---------------------------------------------------------------------------
+  echo "  Adding PR comments..."
 
-# General PR comment
-gh api "repos/$REPO_NAME/issues/$PR_NUMBER/comments" \
-  -f body="Looks like a solid foundation for validation! A couple of thoughts:
+  # General PR comment
+  gh api "repos/$REPO_NAME/issues/$PR_NUMBER/comments" \
+    -f body="Looks like a solid foundation for validation! A couple of thoughts:
 
 1. The \`validate_config\` function is clean — love that it returns both a boolean and the error list.
 2. Have you considered adding a \`validate_schema\` function for more complex nested configs?
 
 Nice work overall." > /dev/null
 
-# Code review with inline comments
-echo "  Adding code review with inline comments..."
+  # Code review with inline comments
+  echo "  Adding code review with inline comments..."
 
-# Get the latest commit SHA for the PR
-HEAD_SHA=$(gh api "repos/$REPO_NAME/pulls/$PR_NUMBER" --jq '.head.sha')
+  # Get the latest commit SHA for the PR
+  HEAD_SHA=$(gh api "repos/$REPO_NAME/pulls/$PR_NUMBER" --jq '.head.sha')
 
-# Create a review with inline comments
-gh api "repos/$REPO_NAME/pulls/$PR_NUMBER/reviews" \
-  -f event="COMMENT" \
-  -f body="Good progress! Left a few inline suggestions." \
-  -f commit_id="$HEAD_SHA" \
-  --jq '.id' \
-  -F "comments[][path]=src/validate.lua" \
-  -F "comments[][line]=26" \
-  -F "comments[][body]=Consider using \`tonumber()\` here as a fallback — some callers might pass string representations of numbers." \
-  -F "comments[][path]=src/main.lua" \
-  -F "comments[][line]=18" \
-  -F "comments[][body]=This error message could be more descriptive. Maybe include which config keys failed validation?" \
-  -F "comments[][path]=src/utils.lua" \
-  -F "comments[][line]=38" \
-  -F "comments[][body]=Nice addition! But the \`map\` function signature should probably document that \`fn\` receives \`(value, index)\` — it's not obvious from the name alone." > /dev/null
+  # Create a review with inline comments
+  gh api "repos/$REPO_NAME/pulls/$PR_NUMBER/reviews" \
+    -f event="COMMENT" \
+    -f body="Good progress! Left a few inline suggestions." \
+    -f commit_id="$HEAD_SHA" \
+    --jq '.id' \
+    -F "comments[][path]=src/validate.lua" \
+    -F "comments[][line]=26" \
+    -F "comments[][body]=Consider using \`tonumber()\` here as a fallback — some callers might pass string representations of numbers." \
+    -F "comments[][path]=src/main.lua" \
+    -F "comments[][line]=18" \
+    -F "comments[][body]=This error message could be more descriptive. Maybe include which config keys failed validation?" \
+    -F "comments[][path]=src/utils.lua" \
+    -F "comments[][line]=38" \
+    -F "comments[][body]=Nice addition! But the \`map\` function signature should probably document that \`fn\` receives \`(value, index)\` — it's not obvious from the name alone." > /dev/null
 
-# Add another general comment as a follow-up
-gh api "repos/$REPO_NAME/issues/$PR_NUMBER/comments" \
-  -f body="One more thing — the \`matches_pattern\` function uses Lua patterns, not regex. Might be worth adding a note in the docstring so users don't get confused by the difference." > /dev/null
+  # Add another general comment as a follow-up
+  gh api "repos/$REPO_NAME/issues/$PR_NUMBER/comments" \
+    -f body="One more thing — the \`matches_pattern\` function uses Lua patterns, not regex. Might be worth adding a note in the docstring so users don't get confused by the difference." > /dev/null
+
+  # Clean up temp dir
+  rm -rf "$WORK_DIR"
+fi
 
 # ---------------------------------------------------------------------------
 # Clone to target directory
@@ -421,20 +440,7 @@ cd "$CLONE_DIR"
 git config user.email "demo@gitlad.nvim"
 git config user.name "gitlad demo"
 
-# Clean up temp dir
-rm -rf "$WORK_DIR"
-
 echo ""
 echo "=========================================="
 echo "Forge demo repo ready: $CLONE_DIR"
 echo "=========================================="
-echo ""
-echo "PR: $PR_URL"
-echo ""
-echo "Contents:"
-echo "  - PR #$PR_NUMBER with 2 general comments"
-echo "  - 1 code review with 3 inline comments"
-echo "  - Feature branch: feature/add-validation"
-echo ""
-echo "To use with gitlad.nvim:"
-echo "  cd $CLONE_DIR && nvim -u <path>/scripts/demo-init.lua"
