@@ -19,38 +19,48 @@ local popup = require("gitlad.ui.popup")
 ---@field current_upstream? string Upstream of the current (HEAD) branch (e.g., origin/main)
 
 --- Open the native diff viewer with the given DiffSpec
+---@param initial_file? string File path to pre-select in the viewer
 ---@param spec DiffSpec|nil The diff specification
 ---@param err string|nil Error message from the producer
-local function open_native(spec, err)
+local function open_native(initial_file, spec, err)
   if err then
     vim.notify("[gitlad] " .. err, vim.log.levels.ERROR)
     return
   end
   vim.schedule(function()
     local diff_view = require("gitlad.ui.views.diff")
-    diff_view.open(spec)
+    diff_view.open(spec, { initial_file = initial_file })
   end)
 end
 
 --- Diff staged changes (index vs HEAD)
 ---@param repo_state RepoState
-function M._diff_staged(repo_state)
+---@param file_path? string File path to pre-select
+function M._diff_staged(repo_state, file_path)
   local source = require("gitlad.ui.views.diff.source")
-  source.produce_staged(repo_state.repo_root, open_native)
+  source.produce_staged(repo_state.repo_root, function(spec, err)
+    open_native(file_path, spec, err)
+  end)
 end
 
 --- Diff unstaged changes (working tree vs index)
 ---@param repo_state RepoState
-function M._diff_unstaged(repo_state)
+---@param file_path? string File path to pre-select
+function M._diff_unstaged(repo_state, file_path)
   local source = require("gitlad.ui.views.diff.source")
-  source.produce_unstaged(repo_state.repo_root, open_native)
+  source.produce_unstaged(repo_state.repo_root, function(spec, err)
+    open_native(file_path, spec, err)
+  end)
 end
 
 --- Diff worktree (working tree vs HEAD)
 ---@param repo_state RepoState
-function M._diff_worktree(repo_state)
+---@param file_path? string File path to pre-select
+function M._diff_worktree(repo_state, file_path)
   local source = require("gitlad.ui.views.diff.source")
-  source.produce_worktree(repo_state.repo_root, open_native)
+  source.produce_worktree(repo_state.repo_root, function(spec, err)
+    open_native(file_path, spec, err)
+  end)
 end
 
 --- Show commit diff
@@ -62,7 +72,9 @@ function M._diff_commit(repo_state, commit)
     return
   end
   local source = require("gitlad.ui.views.diff.source")
-  source.produce_commit(repo_state.repo_root, commit.hash, open_native)
+  source.produce_commit(repo_state.repo_root, commit.hash, function(spec, err)
+    open_native(nil, spec, err)
+  end)
 end
 
 --- Show stash diff
@@ -74,7 +86,9 @@ function M._diff_stash(repo_state, stash)
     return
   end
   local source = require("gitlad.ui.views.diff.source")
-  source.produce_stash(repo_state.repo_root, stash.ref, open_native)
+  source.produce_stash(repo_state.repo_root, stash.ref, function(spec, err)
+    open_native(nil, spec, err)
+  end)
 end
 
 --- Compute the default range expression based on context.
@@ -121,7 +135,9 @@ function M._diff_range(repo_state, context)
       return
     end
     local source = require("gitlad.ui.views.diff.source")
-    source.produce_range(repo_state.repo_root, input, open_native)
+    source.produce_range(repo_state.repo_root, input, function(spec, err)
+      open_native(nil, spec, err)
+    end)
   end)
 end
 
@@ -148,7 +164,9 @@ function M._diff_upstream(repo_state, context)
 
   local range = upstream .. "..." .. context.ref
   local source = require("gitlad.ui.views.diff.source")
-  source.produce_range(repo_state.repo_root, range, open_native)
+  source.produce_range(repo_state.repo_root, range, function(spec, err)
+    open_native(nil, spec, err)
+  end)
 end
 
 --- Build range via guided 3-step flow (base ref -> range type -> other ref)
@@ -160,7 +178,9 @@ function M._diff_build_range(repo_state)
       return
     end
     local source = require("gitlad.ui.views.diff.source")
-    source.produce_range(repo_state.repo_root, range, open_native)
+    source.produce_range(repo_state.repo_root, range, function(spec, err)
+      open_native(nil, spec, err)
+    end)
   end)
 end
 
@@ -171,7 +191,9 @@ end
 function M._diff_ref_against(repo_state, ref, base)
   local range = base .. ".." .. ref
   local source = require("gitlad.ui.views.diff.source")
-  source.produce_range(repo_state.repo_root, range, open_native)
+  source.produce_range(repo_state.repo_root, range, function(spec, err)
+    open_native(nil, spec, err)
+  end)
 end
 
 --- 3-way staging view (HEAD/index/working tree)
@@ -239,10 +261,10 @@ function M._diff_dwim(repo_state, context)
   -- If on a file, diff based on section
   if context.file_path then
     if context.section == "staged" then
-      M._diff_staged(repo_state)
+      M._diff_staged(repo_state, context.file_path)
     else
       -- unstaged, untracked, or unknown -> diff unstaged
-      M._diff_unstaged(repo_state)
+      M._diff_unstaged(repo_state, context.file_path)
     end
     return
   end
@@ -265,13 +287,13 @@ function M.open(repo_state, context)
       M._diff_dwim(repo_state, context)
     end)
     :action("s", "Diff staged", function()
-      M._diff_staged(repo_state)
+      M._diff_staged(repo_state, context.file_path)
     end)
     :action("u", "Diff unstaged", function()
-      M._diff_unstaged(repo_state)
+      M._diff_unstaged(repo_state, context.file_path)
     end)
     :action("w", "Diff worktree", function()
-      M._diff_worktree(repo_state)
+      M._diff_worktree(repo_state, context.file_path)
     end)
   -- Range action - unified flow with context-aware defaults
   builder:action("r", "Diff range...", function()
