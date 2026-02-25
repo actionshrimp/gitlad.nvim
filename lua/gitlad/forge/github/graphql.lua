@@ -388,7 +388,7 @@ local function parse_checks_summary(commits_node, include_details)
   end
 
   local rollup = commit_node.commit.statusCheckRollup
-  if not rollup then
+  if not rollup or rollup == vim.NIL then
     return nil
   end
 
