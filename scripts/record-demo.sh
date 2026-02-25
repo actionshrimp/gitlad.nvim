@@ -2,8 +2,6 @@
 # Record asciinema demos of gitlad.nvim
 # Uses tmux to create a terminal of the correct dimensions
 #
-# Prerequisites: brew install asciinema tmux agg; npm install -g tree-sitter-cli
-#
 # Dependencies (lazy.nvim, kanagawa, treesitter) are bootstrapped by
 # demo-init.lua and cached in /tmp/gitlad-demo-deps/ across runs.
 #
@@ -24,21 +22,20 @@ SESSION="gitlad-demo"
 
 DEMO="${1:-all}"
 
-# Check prerequisites
-for cmd in asciinema tmux tree-sitter nvim; do
+# ---------------------------------------------------------------------------
+# Enter nix-shell if not already inside one
+# ---------------------------------------------------------------------------
+if [ -z "$IN_NIX_SHELL" ]; then
+  exec nix-shell -p asciinema_3 asciinema-agg tmux --run "IN_NIX_SHELL=1 $0 $*"
+fi
+
+# Check prerequisites not provided by nix
+for cmd in tree-sitter nvim; do
   if ! command -v "$cmd" &>/dev/null; then
-    echo "Error: $cmd is required. Install with: brew install $cmd"
+    echo "Error: $cmd is required but not found on PATH"
     exit 1
   fi
 done
-
-# agg is only needed for basics (GIF generation)
-if [[ "$DEMO" == "all" || "$DEMO" == "basics" ]]; then
-  if ! command -v agg &>/dev/null; then
-    echo "Error: agg is required for GIF generation. Install with: brew install agg"
-    exit 1
-  fi
-fi
 
 # gh is needed for forge demo
 if [[ "$DEMO" == "all" || "$DEMO" == "forge" ]]; then
