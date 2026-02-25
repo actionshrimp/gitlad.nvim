@@ -146,14 +146,14 @@ if [[ "$DEMO" == "all" || "$DEMO" == "advanced" ]]; then
   REPO_DIR="/tmp/gitlad-demo-repo"
   echo "==> Creating test repo for advanced demo..."
   "$SCRIPT_DIR/create-test-repo.sh" "$REPO_DIR" > /dev/null 2>&1
-  record_demo "advanced" "demo-advanced-driver.lua" "$REPO_DIR" "no"
+  record_demo "advanced" "demo-advanced-driver.lua" "$REPO_DIR" "yes"
 fi
 
 if [[ "$DEMO" == "all" || "$DEMO" == "forge" ]]; then
   FORGE_REPO_DIR="/tmp/gitlad-forge-demo-repo"
   echo "==> Creating forge test repo (requires GitHub API)..."
   "$SCRIPT_DIR/create-forge-test-repo.sh" "$FORGE_REPO_DIR"
-  record_demo "forge" "demo-forge-driver.lua" "$FORGE_REPO_DIR" "no"
+  record_demo "forge" "demo-forge-driver.lua" "$FORGE_REPO_DIR" "yes"
 fi
 
 echo ""

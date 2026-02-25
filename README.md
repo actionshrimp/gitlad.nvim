@@ -2,12 +2,32 @@
 
 A performance-focused, magit-inspired git interface for Neovim.
 
+### Core workflow
+
+Status view, staging, commit, branch, log, and git command history.
+
+<a href="https://actionshrimp.com/gitlad.nvim/#demo">
+  <img src="https://github.com/actionshrimp/gitlad.nvim/raw/main/docs/demo-basics-preview.gif" alt="gitlad.nvim basics demo">
+</a>
+
+### Advanced diff
+
+Native side-by-side diff viewer, 3-way staging, and merge conflict resolution.
+
+<a href="https://actionshrimp.com/gitlad.nvim/#demo">
+  <img src="https://github.com/actionshrimp/gitlad.nvim/raw/main/docs/demo-advanced-preview.gif" alt="gitlad.nvim advanced diff demo">
+</a>
+
+### GitHub integration
+
+PR list, detail view, inline review comments, and code review.
+
+<a href="https://actionshrimp.com/gitlad.nvim/#demo">
+  <img src="https://github.com/actionshrimp/gitlad.nvim/raw/main/docs/demo-forge-preview.gif" alt="gitlad.nvim GitHub integration demo">
+</a>
+
 <p align="center">
-  <a href="https://actionshrimp.com/gitlad.nvim/#demo">
-    <img src="https://github.com/actionshrimp/gitlad.nvim/raw/main/docs/demo-basics-preview.gif" alt="gitlad.nvim demo">
-  </a>
-  <br>
-  <em><a href="https://actionshrimp.com/gitlad.nvim/#demo">Interactive demos</a> — basics, advanced diff, and GitHub integration</em>
+  <em><a href="https://actionshrimp.com/gitlad.nvim/#demo">Interactive demos</a> with full playback controls</em>
 </p>
 
 ## Installation
