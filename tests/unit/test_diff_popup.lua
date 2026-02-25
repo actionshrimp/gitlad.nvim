@@ -185,6 +185,57 @@ T["diff context"]["dwim selects stash diff when on stash"] = function()
 end
 
 -- =============================================================================
+-- initial_file passthrough tests
+-- =============================================================================
+
+T["initial file"] = MiniTest.new_set()
+
+T["initial file"]["dwim passes file_path to _diff_staged for staged files"] = function()
+  local diff = require("gitlad.popups.diff")
+  local captured_file_path
+  local orig = diff._diff_staged
+  diff._diff_staged = function(_, file_path)
+    captured_file_path = file_path
+  end
+
+  diff._diff_dwim({}, { file_path = "src/foo.lua", section = "staged" })
+  eq(captured_file_path, "src/foo.lua")
+
+  diff._diff_staged = orig
+end
+
+T["initial file"]["dwim passes file_path to _diff_unstaged for unstaged files"] = function()
+  local diff = require("gitlad.popups.diff")
+  local captured_file_path
+  local orig = diff._diff_unstaged
+  diff._diff_unstaged = function(_, file_path)
+    captured_file_path = file_path
+  end
+
+  diff._diff_dwim({}, { file_path = "src/bar.lua", section = "unstaged" })
+  eq(captured_file_path, "src/bar.lua")
+
+  diff._diff_unstaged = orig
+end
+
+T["initial file"]["dwim passes nil file_path when no file context"] = function()
+  local diff = require("gitlad.popups.diff")
+  local called = false
+  local captured_file_path = "sentinel"
+  local orig = diff._diff_unstaged
+  diff._diff_unstaged = function(_, file_path)
+    called = true
+    captured_file_path = file_path
+  end
+
+  diff._diff_dwim({}, {})
+  eq(called, true)
+  eq(captured_file_path, nil)
+
+  diff._diff_unstaged = orig
+end
+
+-- =============================================================================
 -- Diffview argument tests
 -- =============================================================================
 
