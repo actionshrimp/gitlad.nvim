@@ -275,6 +275,24 @@ function Watcher:_build_gitignore_cache(callback)
   end
 end
 
+--- Check if a filename (possibly nested) is gitignored via the cache
+--- The cache contains top-level entries only, so we extract the first
+--- path component from nested paths like "build/output.o" → "build".
+---@param filename string Filename reported by fs_event (may contain path separators)
+---@return boolean
+function Watcher:_is_gitignored(filename)
+  -- Exact match for top-level entries
+  if self._gitignore_cache[filename] then
+    return true
+  end
+  -- Extract first path component for nested paths
+  local top_level = filename:match("^([^/]+)/")
+  if top_level and self._gitignore_cache[top_level] then
+    return true
+  end
+  return false
+end
+
 --- Start worktree fs_event watcher on the repo root
 function Watcher:_start_worktree_watcher()
   if not self._watch_worktree then
@@ -301,7 +319,7 @@ function Watcher:_start_worktree_watcher()
       end
 
       -- Always skip .git directory changes (handled by git dir watchers)
-      if filename == ".git" then
+      if filename == ".git" or filename:match("^%.git/") then
         return
       end
 
@@ -315,7 +333,9 @@ function Watcher:_start_worktree_watcher()
       end
 
       -- Skip entries that are cached as ignored
-      if self._gitignore_cache[filename] then
+      -- The recursive watcher reports nested paths like "build/output.o",
+      -- so extract the top-level component and check the cache
+      if self:_is_gitignored(filename) then
         return
       end
 
@@ -483,5 +503,8 @@ end
 
 -- Export the should_ignore function for testing
 M._should_ignore = should_ignore
+
+-- Export _is_gitignored for testing (needs a watcher instance)
+M._Watcher = Watcher
 
 return M

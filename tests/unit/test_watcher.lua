@@ -506,4 +506,90 @@ T["watcher"]["initializes with nil augroup"] = function()
   eq(w._augroup, nil)
 end
 
+-- =============================================================================
+-- _is_gitignored tests
+-- =============================================================================
+
+T["watcher"]["_is_gitignored matches top-level entry exactly"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._gitignore_cache = { build = true, node_modules = true }
+
+  eq(w:_is_gitignored("build"), true)
+  eq(w:_is_gitignored("node_modules"), true)
+end
+
+T["watcher"]["_is_gitignored matches nested path via top-level component"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._gitignore_cache = { build = true, node_modules = true }
+
+  eq(w:_is_gitignored("build/output.o"), true)
+  eq(w:_is_gitignored("build/lib/foo.so"), true)
+  eq(w:_is_gitignored("node_modules/lodash/index.js"), true)
+end
+
+T["watcher"]["_is_gitignored does not match prefix-similar paths"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._gitignore_cache = { build = true }
+
+  -- "builder" is not "build" — should not match
+  eq(w:_is_gitignored("builder/x"), false)
+  eq(w:_is_gitignored("building"), false)
+end
+
+T["watcher"]["_is_gitignored returns false for non-ignored entries"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._gitignore_cache = { build = true }
+
+  eq(w:_is_gitignored("src/main.lua"), false)
+  eq(w:_is_gitignored("README.md"), false)
+end
+
+T["watcher"]["_is_gitignored returns false with empty cache"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._gitignore_cache = {}
+
+  eq(w:_is_gitignored("build/output.o"), false)
+  eq(w:_is_gitignored("anything"), false)
+end
+
 return T
