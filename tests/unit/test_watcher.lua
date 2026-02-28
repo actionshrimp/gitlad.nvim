@@ -592,4 +592,192 @@ T["watcher"]["_is_gitignored returns false with empty cache"] = function()
   eq(w:_is_gitignored("anything"), false)
 end
 
+-- =============================================================================
+-- _is_submodule_path tests
+-- =============================================================================
+
+T["watcher"]["_is_submodule_path returns false with no submodules"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._submodule_paths = {}
+
+  eq(w:_is_submodule_path("src/main.lua"), false)
+  eq(w:_is_submodule_path("vendor/lib"), false)
+end
+
+T["watcher"]["_is_submodule_path matches exact submodule path"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._submodule_paths = { ["vendor/lib"] = true, ["external/sdk"] = true }
+
+  eq(w:_is_submodule_path("vendor/lib"), true)
+  eq(w:_is_submodule_path("external/sdk"), true)
+end
+
+T["watcher"]["_is_submodule_path matches nested file within submodule"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._submodule_paths = { ["vendor/lib"] = true }
+
+  eq(w:_is_submodule_path("vendor/lib/src/main.c"), true)
+  eq(w:_is_submodule_path("vendor/lib/build/output.o"), true)
+end
+
+T["watcher"]["_is_submodule_path rejects prefix-similar paths"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._submodule_paths = { ["mysub"] = true }
+
+  -- "mysub2" starts with "mysub" but is NOT a submodule path
+  eq(w:_is_submodule_path("mysub2/file.txt"), false)
+  eq(w:_is_submodule_path("mysubmodule"), false)
+end
+
+T["watcher"]["_is_submodule_path handles nested submodule paths"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w._submodule_paths = { ["vendor/lib"] = true }
+
+  -- "vendor/lib2" should not match "vendor/lib"
+  eq(w:_is_submodule_path("vendor/lib2/file.txt"), false)
+  -- But "vendor/lib/..." should match
+  eq(w:_is_submodule_path("vendor/lib/nested/deep.c"), true)
+end
+
+-- =============================================================================
+-- Submodule debouncer tests
+-- =============================================================================
+
+T["watcher"]["creates submodule debouncer by default"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  eq(w._submodule_debounced ~= nil, true)
+  eq(w._submodule_debounce_ms, 5000)
+end
+
+T["watcher"]["accepts custom submodule_debounce_ms"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+  }
+
+  local w = watcher.new(mock_repo_state, { submodule_debounce_ms = 10000 })
+  eq(w._submodule_debounce_ms, 10000)
+end
+
+T["watcher"]["_handle_submodule_event does nothing when not running"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+    last_operation_time = 0,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  local debounce_called = false
+  w._submodule_debounced = {
+    call = function()
+      debounce_called = true
+    end,
+  }
+
+  w:_handle_submodule_event()
+  eq(debounce_called, false)
+end
+
+T["watcher"]["_handle_submodule_event respects cooldown"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+    last_operation_time = vim.loop.now(),
+  }
+
+  local w = watcher.new(mock_repo_state, { cooldown_ms = 5000 })
+  w.running = true
+
+  local debounce_called = false
+  w._submodule_debounced = {
+    call = function()
+      debounce_called = true
+    end,
+  }
+
+  w:_handle_submodule_event()
+  eq(debounce_called, false)
+end
+
+T["watcher"]["_handle_submodule_event calls debouncer when running and no cooldown"] = function()
+  local watcher = require("gitlad.watcher")
+
+  local mock_repo_state = {
+    git_dir = "/tmp/test/.git",
+    repo_root = "/tmp/test/",
+    mark_stale = function() end,
+    last_operation_time = 0,
+  }
+
+  local w = watcher.new(mock_repo_state)
+  w.running = true
+
+  local debounce_called = false
+  w._submodule_debounced = {
+    call = function()
+      debounce_called = true
+    end,
+  }
+
+  w:_handle_submodule_event()
+  eq(debounce_called, true)
+end
+
 return T

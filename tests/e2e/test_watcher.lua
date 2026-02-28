@@ -1155,4 +1155,157 @@ T["worktree watcher"]["watch_worktree=false prevents worktree watcher"] = functi
   cleanup_test_repo(child, repo)
 end
 
+-- =============================================================================
+-- Submodule watcher tests
+-- =============================================================================
+
+T["submodule watcher"] = MiniTest.new_set()
+
+T["submodule watcher"]["submodule_debounce_ms has default in config"] = function()
+  child.lua([[require("gitlad").setup({})]])
+
+  local debounce = child.lua_get([[require("gitlad.config").get().watcher.submodule_debounce_ms]])
+  eq(debounce, 5000)
+end
+
+T["submodule watcher"]["can configure submodule_debounce_ms"] = function()
+  child.lua([[require("gitlad").setup({ watcher = { submodule_debounce_ms = 10000 } })]])
+
+  local debounce = child.lua_get([[require("gitlad.config").get().watcher.submodule_debounce_ms]])
+  eq(debounce, 10000)
+end
+
+T["submodule watcher"]["passes submodule_debounce_ms to watcher"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with custom submodule debounce
+  child.lua(
+    [[require("gitlad").setup({ watcher = { enabled = true, submodule_debounce_ms = 8000 } })]]
+  )
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Check that watcher has the custom submodule_debounce_ms
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_submodule_debounce_ms = buf and buf.watcher and buf.watcher._submodule_debounce_ms
+  ]])
+  local debounce_ms = child.lua_get("_G.test_submodule_debounce_ms")
+  eq(debounce_ms, 8000)
+
+  cleanup_test_repo(child, repo)
+end
+
+T["submodule watcher"]["builds submodule cache on start"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Create a submodule (use a bare repo as the "remote")
+  local sub_remote = child.lua_get("vim.fn.tempname()")
+  child.lua(string.format([[vim.fn.system("git init --bare " .. %q)]], sub_remote))
+
+  -- Initialize the bare remote with a commit so submodule add works
+  local sub_temp = child.lua_get("vim.fn.tempname()")
+  child.lua(string.format(
+    [[
+    vim.fn.system("git -c protocol.file.allow=always clone " .. %q .. " " .. %q)
+    vim.fn.system("git -C " .. %q .. " config user.email 'test@test.com'")
+    vim.fn.system("git -C " .. %q .. " config user.name 'Test User'")
+    vim.fn.system("git -C " .. %q .. " config commit.gpgsign false")
+    local f = io.open(%q .. "/dummy.txt", "w")
+    f:write("dummy")
+    f:close()
+    vim.fn.system("git -C " .. %q .. " add .")
+    vim.fn.system("git -C " .. %q .. " commit -m 'init'")
+    vim.fn.system("git -C " .. %q .. " push")
+  ]],
+    sub_remote,
+    sub_temp,
+    sub_temp,
+    sub_temp,
+    sub_temp,
+    sub_temp,
+    sub_temp,
+    sub_temp,
+    sub_temp
+  ))
+
+  helpers.git(
+    child,
+    repo,
+    string.format("-c protocol.file.allow=always submodule add %s vendor/lib", sub_remote)
+  )
+  helpers.git(child, repo, "commit -m 'Add submodule'")
+
+  -- Setup with watcher enabled
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true, cooldown_ms = 100 } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+  helpers.wait_short(child, 500)
+
+  -- Check that submodule cache has the submodule path
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_submodule_cache = buf and buf.watcher and buf.watcher._submodule_paths or {}
+  ]])
+  local cache = child.lua_get("_G.test_submodule_cache")
+  eq(cache["vendor/lib"], true)
+
+  child.lua(string.format([[vim.fn.delete(%q, "rf")]], sub_remote))
+  child.lua(string.format([[vim.fn.delete(%q, "rf")]], sub_temp))
+  cleanup_test_repo(child, repo)
+end
+
+T["submodule watcher"]["empty submodule cache when no .gitmodules"] = function()
+  local repo = helpers.create_test_repo(child)
+  cd(child, repo)
+
+  -- Create initial commit (no submodules)
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  -- Setup with watcher enabled
+  child.lua([[require("gitlad").setup({ watcher = { enabled = true } })]])
+
+  -- Open status buffer
+  child.cmd("Gitlad")
+  helpers.wait_for_status(child)
+
+  -- Check that submodule cache is empty
+  child.lua([[
+    local status_view = require("gitlad.ui.views.status")
+    local state = require("gitlad.state")
+    local repo_state = state.get()
+    local buf = status_view.get_buffer(repo_state)
+    _G.test_submodule_cache = buf and buf.watcher and buf.watcher._submodule_paths or {}
+  ]])
+  local cache = child.lua_get("_G.test_submodule_cache")
+  -- Should be empty table (no submodules)
+  eq(next(cache), nil)
+
+  cleanup_test_repo(child, repo)
+end
+
 return T
