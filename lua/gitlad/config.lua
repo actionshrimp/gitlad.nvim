@@ -40,6 +40,9 @@ local M = {}
 ---@class GitladDiffConfig
 ---@field viewer "native" Diff viewer to use ("native" = built-in side-by-side)
 
+---@class GitladGitConfig
+---@field ignore_submodules false|"dirty"|"untracked"|"all" Pass --ignore-submodules to git status (default: false). "dirty" hides submodules with only working tree changes, "untracked" also hides untracked files, "all" hides all submodule changes. Makes git status dramatically faster in repos with many submodules.
+
 ---@class GitladConfig
 ---@field signs GitladSigns
 ---@field commit_editor GitladCommitEditorConfig
@@ -49,6 +52,7 @@ local M = {}
 ---@field output GitladOutputConfig
 ---@field forge GitladForgeConfig
 ---@field diff GitladDiffConfig
+---@field git GitladGitConfig
 ---@field show_tags_in_refs boolean Whether to show tags alongside branch names in refs (default: false)
 local defaults = {
   signs = {
@@ -82,6 +86,9 @@ local defaults = {
   },
   diff = {
     viewer = "native",
+  },
+  git = {
+    ignore_submodules = false, -- false | "dirty" | "untracked" | "all"
   },
   show_tags_in_refs = false,
 }

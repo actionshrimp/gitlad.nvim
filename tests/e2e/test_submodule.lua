@@ -848,4 +848,189 @@ T["submodule list"]["l action triggers submodule list"] = function()
   helpers.cleanup_repo(child, submodule_repo)
 end
 
+-- =============================================================================
+-- git.ignore_submodules config tests
+-- =============================================================================
+
+T["ignore_submodules config"] = MiniTest.new_set()
+
+T["ignore_submodules config"]["defaults to false"] = function()
+  child.lua([[require("gitlad").setup({})]])
+
+  local value = child.lua_get([[require("gitlad.config").get().git.ignore_submodules]])
+  eq(value, false)
+end
+
+T["ignore_submodules config"]["accepts dirty"] = function()
+  child.lua([[require("gitlad").setup({ git = { ignore_submodules = "dirty" } })]])
+
+  local value = child.lua_get([[require("gitlad.config").get().git.ignore_submodules]])
+  eq(value, "dirty")
+end
+
+T["ignore_submodules config"]["accepts untracked"] = function()
+  child.lua([[require("gitlad").setup({ git = { ignore_submodules = "untracked" } })]])
+
+  local value = child.lua_get([[require("gitlad.config").get().git.ignore_submodules]])
+  eq(value, "untracked")
+end
+
+T["ignore_submodules config"]["accepts all"] = function()
+  child.lua([[require("gitlad").setup({ git = { ignore_submodules = "all" } })]])
+
+  local value = child.lua_get([[require("gitlad.config").get().git.ignore_submodules]])
+  eq(value, "all")
+end
+
+T["ignore_submodules status"] = MiniTest.new_set()
+
+T["ignore_submodules status"]["build_status_args includes --ignore-submodules when configured"] = function()
+  child.lua([[require("gitlad").setup({ git = { ignore_submodules = "dirty" } })]])
+
+  -- Verify the build_status_args helper produces the right args
+  -- by requiring git/init.lua directly and checking the internal function
+  local has_flag = child.lua_get([[
+    (function()
+      local cfg = require("gitlad.config").get()
+      local ignore = cfg.git and cfg.git.ignore_submodules
+      return ignore == "dirty"
+    end)()
+  ]])
+  eq(has_flag, true)
+
+  -- Run a real status call and verify the flag appears in history
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    _G.test_done = false
+    git.status({ cwd = %q }, function()
+      _G.test_done = true
+    end)
+  ]],
+    repo
+  ))
+  helpers.wait_for_var(child, "_G.test_done")
+  helpers.wait_short(child)
+
+  -- Check history for the flag
+  child.lua([[
+    local history = require("gitlad.git.history")
+    local entries = history.get_all()
+    _G.test_flag_found = false
+    for _, entry in ipairs(entries) do
+      for _, arg in ipairs(entry.args or {}) do
+        if arg == "--ignore-submodules=dirty" then
+          _G.test_flag_found = true
+        end
+      end
+    end
+  ]])
+  eq(child.lua_get("_G.test_flag_found"), true)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["ignore_submodules status"]["build_status_args omits --ignore-submodules when false"] = function()
+  child.lua([[require("gitlad").setup({})]])
+
+  local repo = helpers.create_test_repo(child)
+  helpers.create_file(child, repo, "init.txt", "init")
+  helpers.git(child, repo, "add init.txt")
+  helpers.git(child, repo, "commit -m 'Initial commit'")
+
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    _G.test_done = false
+    git.status({ cwd = %q }, function()
+      _G.test_done = true
+    end)
+  ]],
+    repo
+  ))
+  helpers.wait_for_var(child, "_G.test_done")
+
+  -- Check history - should NOT contain --ignore-submodules
+  child.lua([[
+    local history = require("gitlad.git.history")
+    local entries = history.get_all()
+    _G.test_flag_found = false
+    for _, entry in ipairs(entries) do
+      for _, arg in ipairs(entry.args or {}) do
+        if arg:find("ignore%-submodules") then
+          _G.test_flag_found = true
+        end
+      end
+    end
+  ]])
+  eq(child.lua_get("_G.test_flag_found"), false)
+
+  helpers.cleanup_repo(child, repo)
+end
+
+T["ignore_submodules status"]["dirty submodule hidden with ignore_submodules=dirty"] = function()
+  local parent_repo, submodule_repo = create_repo_with_submodule(child)
+
+  -- Make the submodule dirty (modify a file inside it)
+  helpers.create_file(child, parent_repo, "mysub/new_file.txt", "dirty content")
+
+  -- First check: without ignore_submodules, mysub should appear in git status
+  child.lua(string.format(
+    [[
+    _G.test_raw_without = vim.fn.system("git -C %s status --porcelain=v2")
+  ]],
+    parent_repo
+  ))
+  local raw_without = child.lua_get("_G.test_raw_without")
+  eq(raw_without:find("mysub") ~= nil, true)
+
+  -- Second check: with --ignore-submodules=dirty, mysub should NOT appear
+  child.lua(string.format(
+    [[
+    _G.test_raw_with = vim.fn.system("git -C %s status --porcelain=v2 --ignore-submodules=dirty")
+  ]],
+    parent_repo
+  ))
+  local raw_with = child.lua_get("_G.test_raw_with")
+  eq(raw_with:find("mysub") == nil, true)
+
+  -- Third check: through gitlad API with config set
+  child.lua([[require("gitlad.config").setup({ git = { ignore_submodules = "dirty" } })]])
+
+  child.lua(string.format(
+    [[
+    local git = require("gitlad.git")
+    _G.test_status_result = nil
+    git.status({ cwd = %q }, function(result, err)
+      _G.test_status_result = result
+    end)
+  ]],
+    parent_repo
+  ))
+  helpers.wait_for_var(child, "_G.test_status_result")
+
+  local has_mysub = child.lua_get([[
+    (function()
+      local status = _G.test_status_result
+      if not status then return false end
+      -- Check all entry lists
+      for _, list_name in ipairs({"staged", "unstaged", "untracked", "conflicted"}) do
+        for _, entry in ipairs(status[list_name] or {}) do
+          if entry.path == "mysub" then return true end
+        end
+      end
+      return false
+    end)()
+  ]])
+  eq(has_mysub, false)
+
+  helpers.cleanup_repo(child, parent_repo)
+  helpers.cleanup_repo(child, submodule_repo)
+end
+
 return T

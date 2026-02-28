@@ -118,31 +118,37 @@ M.remote_get_url = git_remotes.remote_get_url
 -- Core operations (kept in this file)
 -- =============================================================================
 
+--- Build the base args for git status, including --ignore-submodules if configured
+---@return string[]
+local function build_status_args()
+  local args =
+    { "status", "--porcelain=v2", "--branch", "--find-renames", "--untracked-files=normal" }
+  local cfg = require("gitlad.config").get()
+  local ignore = cfg.git and cfg.git.ignore_submodules
+  if ignore and ignore ~= false then
+    table.insert(args, "--ignore-submodules=" .. tostring(ignore))
+  end
+  return args
+end
+
 --- Get repository status
 ---@param opts? GitCommandOptions
 ---@param callback fun(result: GitStatusResult|nil, err: string|nil)
 function M.status(opts, callback)
-  cli.run_async(
-    { "status", "--porcelain=v2", "--branch", "--find-renames", "--untracked-files=normal" },
-    opts,
-    function(result)
-      if result.code ~= 0 then
-        callback(nil, table.concat(result.stderr, "\n"))
-        return
-      end
-      callback(parse.parse_status(result.stdout), nil)
+  cli.run_async(build_status_args(), opts, function(result)
+    if result.code ~= 0 then
+      callback(nil, table.concat(result.stderr, "\n"))
+      return
     end
-  )
+    callback(parse.parse_status(result.stdout), nil)
+  end)
 end
 
 --- Get repository status synchronously
 ---@param opts? GitCommandOptions
 ---@return GitStatusResult|nil, string|nil
 function M.status_sync(opts)
-  local result = cli.run_sync(
-    { "status", "--porcelain=v2", "--branch", "--find-renames", "--untracked-files=normal" },
-    opts
-  )
+  local result = cli.run_sync(build_status_args(), opts)
   if result.code ~= 0 then
     return nil, table.concat(result.stderr, "\n")
   end
