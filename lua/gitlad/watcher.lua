@@ -81,13 +81,16 @@ end
 ---@field _repo_root string Path to repo root
 ---@field _watch_worktree boolean Whether to watch working tree
 ---@field _gitignore_cache table<string, boolean> Cache of top-level entries: true = ignored
+---@field _submodule_paths table<string, boolean> Cache of submodule paths from .gitmodules
+---@field _submodule_debounced DebouncedFunction|nil Debounced callback for submodule events
+---@field _submodule_debounce_ms number Debounce delay for submodule events
 ---@field _augroup number|nil Autocmd group ID
 local Watcher = {}
 Watcher.__index = Watcher
 
 --- Create a new watcher instance
 ---@param repo_state table RepoState instance
----@param opts? { cooldown_ms?: number, stale_indicator?: boolean, auto_refresh?: boolean, auto_refresh_debounce_ms?: number, on_refresh?: function, watch_worktree?: boolean } Optional configuration
+---@param opts? { cooldown_ms?: number, stale_indicator?: boolean, auto_refresh?: boolean, auto_refresh_debounce_ms?: number, submodule_debounce_ms?: number, on_refresh?: function, watch_worktree?: boolean } Optional configuration
 ---@return Watcher
 function M.new(repo_state, opts)
   opts = opts or {}
@@ -104,6 +107,8 @@ function M.new(repo_state, opts)
   self._repo_root = repo_state.repo_root
   self._watch_worktree = opts.watch_worktree ~= false -- default true
   self._gitignore_cache = {}
+  self._submodule_paths = {}
+  self._submodule_debounce_ms = opts.submodule_debounce_ms or 5000
   self._augroup = nil
 
   -- Create debounced callback for stale indicator (marks state as stale)
@@ -125,6 +130,16 @@ function M.new(repo_state, opts)
     end, debounce_ms)
   end
 
+  -- Create debounced callback for submodule events (longer timeout)
+  -- Uses the same action as _handle_event but with a separate, longer debounce
+  self._submodule_debounced = async.debounce(function()
+    if self._auto_refresh and self._auto_refresh_debounced then
+      self._auto_refresh_debounced:call()
+    elseif self._stale_indicator and self._stale_indicator_debounced then
+      self._stale_indicator_debounced:call()
+    end
+  end, self._submodule_debounce_ms)
+
   return self
 end
 
@@ -138,6 +153,21 @@ function Watcher:is_in_cooldown()
   local last_op = self.repo_state.last_operation_time or 0
   local now = vim.loop.now()
   return (now - last_op) < self._cooldown_duration
+end
+
+--- Handle a submodule file event
+--- Same checks as _handle_event but uses the separate submodule debouncer
+--- with a longer timeout to avoid churn from build activity in submodules.
+function Watcher:_handle_submodule_event()
+  if not self.running then
+    return
+  end
+  if self:is_in_cooldown() then
+    return
+  end
+  if self._submodule_debounced then
+    self._submodule_debounced:call()
+  end
 end
 
 --- Handle an event from any source (fs_event, autocmd)
@@ -275,6 +305,77 @@ function Watcher:_build_gitignore_cache(callback)
   end
 end
 
+--- Check if a filename (possibly nested) is gitignored via the cache
+--- The cache contains top-level entries only, so we extract the first
+--- path component from nested paths like "build/output.o" → "build".
+---@param filename string Filename reported by fs_event (may contain path separators)
+---@return boolean
+function Watcher:_is_gitignored(filename)
+  -- Exact match for top-level entries
+  if self._gitignore_cache[filename] then
+    return true
+  end
+  -- Extract first path component for nested paths
+  local top_level = filename:match("^([^/]+)/")
+  if top_level and self._gitignore_cache[top_level] then
+    return true
+  end
+  return false
+end
+
+--- Check if a filename is within a submodule directory
+--- Iterates _submodule_paths to check if filename equals or starts with a submodule path.
+---@param filename string Filename reported by fs_event
+---@return boolean
+function Watcher:_is_submodule_path(filename)
+  for sub_path, _ in pairs(self._submodule_paths) do
+    if filename == sub_path or filename:sub(1, #sub_path + 1) == sub_path .. "/" then
+      return true
+    end
+  end
+  return false
+end
+
+--- Build submodule path cache from .gitmodules
+--- Parses .gitmodules using git config to get submodule paths.
+--- Runs synchronously (like gitignore cache) at watcher start.
+function Watcher:_build_submodule_cache()
+  local repo_root = self._repo_root
+  if not repo_root then
+    self._submodule_paths = {}
+    return
+  end
+
+  -- Check if .gitmodules exists
+  local gitmodules_path = repo_root:gsub("/$", "") .. "/.gitmodules"
+  if vim.fn.filereadable(gitmodules_path) ~= 1 then
+    self._submodule_paths = {}
+    return
+  end
+
+  -- Parse submodule paths from .gitmodules
+  local output = vim.fn.system(
+    "git -C "
+      .. vim.fn.shellescape(repo_root)
+      .. " config --file .gitmodules --get-regexp ^submodule\\\\..+\\\\.path$"
+  )
+
+  local new_cache = {}
+  if vim.v.shell_error == 0 then
+    for _, line in ipairs(vim.split(output, "\n", { trimempty = true })) do
+      -- Format: "submodule.foo/bar.path foo/bar"
+      local path = line:match("^submodule%..+%.path%s+(.+)$")
+      if path then
+        path = vim.trim(path)
+        if path ~= "" then
+          new_cache[path] = true
+        end
+      end
+    end
+  end
+  self._submodule_paths = new_cache
+end
+
 --- Start worktree fs_event watcher on the repo root
 function Watcher:_start_worktree_watcher()
   if not self._watch_worktree then
@@ -301,7 +402,7 @@ function Watcher:_start_worktree_watcher()
       end
 
       -- Always skip .git directory changes (handled by git dir watchers)
-      if filename == ".git" then
+      if filename == ".git" or filename:match("^%.git/") then
         return
       end
 
@@ -314,8 +415,27 @@ function Watcher:_start_worktree_watcher()
         return
       end
 
+      -- Rebuild submodule cache when .gitmodules changes
+      if filename == ".gitmodules" then
+        vim.schedule(function()
+          self:_build_submodule_cache()
+          self:_handle_event()
+        end)
+        return
+      end
+
       -- Skip entries that are cached as ignored
-      if self._gitignore_cache[filename] then
+      -- The recursive watcher reports nested paths like "build/output.o",
+      -- so extract the top-level component and check the cache
+      if self:_is_gitignored(filename) then
+        return
+      end
+
+      -- Route submodule events through the separate longer debouncer
+      if self:_is_submodule_path(filename) then
+        vim.schedule(function()
+          self:_handle_submodule_event()
+        end)
         return
       end
 
@@ -421,9 +541,10 @@ function Watcher:start()
   end
   self:_watch_directory(git_dir .. "/refs/tags", git_callback)
 
-  -- Layer 2: Watch working tree with gitignore filtering
+  -- Layer 2: Watch working tree with gitignore and submodule filtering
   if self._watch_worktree then
     self:_build_gitignore_cache()
+    self:_build_submodule_cache()
     self:_start_worktree_watcher()
   end
 
@@ -451,6 +572,9 @@ function Watcher:stop()
   end
   if self._auto_refresh_debounced then
     self._auto_refresh_debounced:cancel()
+  end
+  if self._submodule_debounced then
+    self._submodule_debounced:cancel()
   end
 
   -- Stop and close all .git/ fs_event handles
@@ -483,5 +607,8 @@ end
 
 -- Export the should_ignore function for testing
 M._should_ignore = should_ignore
+
+-- Export _is_gitignored for testing (needs a watcher instance)
+M._Watcher = Watcher
 
 return M
