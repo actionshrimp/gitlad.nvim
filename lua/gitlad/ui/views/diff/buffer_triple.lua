@@ -183,6 +183,15 @@ function DiffBufferTriple:set_content(aligned, file_path)
   -- Replace filler lines with ~ characters
   M._apply_filler_content(self.left_lines, self.mid_lines, self.right_lines, self.line_map)
 
+  -- Suspend scrollbind during content update to prevent the windows from
+  -- fighting each other as line counts change mid-replacement.
+  local all_winnrs = { self.left_winnr, self.mid_winnr, self.right_winnr }
+  for _, winnr in ipairs(all_winnrs) do
+    if vim.api.nvim_win_is_valid(winnr) then
+      vim.api.nvim_set_option_value("scrollbind", false, { win = winnr, scope = "local" })
+    end
+  end
+
   -- Unlock all buffers
   vim.bo[self.left_bufnr].modifiable = true
   vim.bo[self.mid_bufnr].modifiable = true
@@ -258,8 +267,24 @@ function DiffBufferTriple:set_content(aligned, file_path)
     vim.bo[self.right_bufnr].modifiable = false
   end
 
-  -- Sync scroll positions
-  vim.cmd("syncbind")
+  -- Reset all windows to top-left before re-enabling scrollbind.
+  for _, winnr in ipairs(all_winnrs) do
+    if vim.api.nvim_win_is_valid(winnr) then
+      vim.api.nvim_win_set_cursor(winnr, { 1, 0 })
+    end
+  end
+
+  -- Re-enable scrollbind and force sync.
+  -- Deferred via vim.schedule so that all pending buffer/window operations
+  -- (filetype detection, extmark placement, treesitter attachment) settle first.
+  vim.schedule(function()
+    for _, winnr in ipairs(all_winnrs) do
+      if vim.api.nvim_win_is_valid(winnr) then
+        vim.api.nvim_set_option_value("scrollbind", true, { win = winnr, scope = "local" })
+      end
+    end
+    vim.cmd("syncbind")
+  end)
 end
 
 --- Apply line-level highlights for all three panes.

@@ -144,6 +144,14 @@ function DiffBufferPair:set_content(aligned, file_path)
   -- Replace filler lines with ~ characters
   M._apply_filler_content(self.left_lines, self.right_lines, self.line_map)
 
+  -- Suspend scrollbind during content update to prevent the windows from
+  -- fighting each other as line counts change mid-replacement.
+  for _, winnr in ipairs({ self.left_winnr, self.right_winnr }) do
+    if vim.api.nvim_win_is_valid(winnr) then
+      vim.api.nvim_set_option_value("scrollbind", false, { win = winnr, scope = "local" })
+    end
+  end
+
   -- Unlock both buffers
   vim.bo[self.left_bufnr].modifiable = true
   vim.bo[self.right_bufnr].modifiable = true
@@ -192,8 +200,25 @@ function DiffBufferPair:set_content(aligned, file_path)
     vim.bo[self.right_bufnr].modifiable = false
   end
 
-  -- Sync scroll positions
-  vim.cmd("syncbind")
+  -- Reset both windows to top-left before re-enabling scrollbind.
+  -- This ensures a clean baseline so scrollbind offsets start at zero.
+  for _, winnr in ipairs({ self.left_winnr, self.right_winnr }) do
+    if vim.api.nvim_win_is_valid(winnr) then
+      vim.api.nvim_win_set_cursor(winnr, { 1, 0 })
+    end
+  end
+
+  -- Re-enable scrollbind and force sync.
+  -- Deferred via vim.schedule so that all pending buffer/window operations
+  -- (filetype detection, extmark placement, treesitter attachment) settle first.
+  vim.schedule(function()
+    for _, winnr in ipairs({ self.left_winnr, self.right_winnr }) do
+      if vim.api.nvim_win_is_valid(winnr) then
+        vim.api.nvim_set_option_value("scrollbind", true, { win = winnr, scope = "local" })
+      end
+    end
+    vim.cmd("syncbind")
+  end)
 end
 
 --- Apply line-level highlights based on the line_map.
@@ -245,6 +270,94 @@ function DiffBufferPair:apply_diff_highlights()
           priority = 200,
         })
       end
+    end
+  end
+end
+
+--- Compute fold ranges for context-only regions in a 2-pane line_map.
+--- Marks non-context lines + surrounding context_lines as visible, then returns
+--- contiguous invisible regions of 2+ lines as fold ranges.
+---@param line_map AlignedLineInfo[] Line metadata from content.align_sides()
+---@param context_lines? number Lines of context around changes (default 3)
+---@return number[][] fold_ranges List of {start, end} pairs (1-based line numbers)
+function M.compute_fold_ranges(line_map, context_lines)
+  context_lines = context_lines or 3
+  local total = #line_map
+  if total == 0 then
+    return {}
+  end
+
+  -- Mark all lines as invisible initially
+  local visible = {}
+  for i = 1, total do
+    visible[i] = false
+  end
+
+  -- Find non-context lines and mark them + surrounding context as visible
+  for i, info in ipairs(line_map) do
+    local is_context = (info.left_type == "context") and (info.right_type == "context")
+    if not is_context then
+      local start = math.max(1, i - context_lines)
+      local stop = math.min(total, i + context_lines)
+      for j = start, stop do
+        visible[j] = true
+      end
+    end
+  end
+
+  -- Collect contiguous invisible regions as fold ranges
+  local ranges = {}
+  local fold_start = nil
+  for i = 1, total do
+    if not visible[i] then
+      if not fold_start then
+        fold_start = i
+      end
+    else
+      if fold_start then
+        local fold_end = i - 1
+        -- Only fold ranges of 2+ lines (single-line folds aren't useful)
+        if fold_end - fold_start + 1 >= 2 then
+          table.insert(ranges, { fold_start, fold_end })
+        end
+        fold_start = nil
+      end
+    end
+  end
+  -- Handle trailing fold
+  if fold_start then
+    local fold_end = total
+    if fold_end - fold_start + 1 >= 2 then
+      table.insert(ranges, { fold_start, fold_end })
+    end
+  end
+
+  return ranges
+end
+
+--- Apply folds to both windows to hide large context regions between changes.
+---@param line_map AlignedLineInfo[] Line metadata from alignment
+---@param context_lines? number Lines of context around changes (default 3)
+function DiffBufferPair:apply_folds(line_map, context_lines)
+  local fold_ranges = M.compute_fold_ranges(line_map, context_lines)
+
+  if #fold_ranges == 0 then
+    return
+  end
+
+  -- Apply folds in both windows
+  for _, winnr in ipairs({ self.left_winnr, self.right_winnr }) do
+    if vim.api.nvim_win_is_valid(winnr) then
+      vim.api.nvim_win_call(winnr, function()
+        vim.wo[winnr].foldtext = 'v:lua.require("gitlad.ui.views.diff.gutter").foldtext()'
+        vim.wo[winnr].foldenable = true
+        -- Clear existing folds
+        vim.cmd("normal! zE")
+        -- Create folds for each range
+        for _, range in ipairs(fold_ranges) do
+          vim.cmd(range[1] .. "," .. range[2] .. "fold")
+        end
+      end)
     end
   end
 end

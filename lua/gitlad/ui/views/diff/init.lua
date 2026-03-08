@@ -304,6 +304,7 @@ function DiffView:select_file(index)
     local file_pair = file_pairs[index]
     local aligned = content.align_sides(file_pair)
     self.buffer_pair:set_content(aligned, file_pair.new_path)
+    self.buffer_pair:apply_folds(aligned.line_map)
 
     -- Apply review overlays if we have review state
     self:_apply_review_overlays(file_pair.new_path)
@@ -1009,6 +1010,22 @@ function DiffView:_setup_keymaps()
       buffer = ebuf,
       callback = function()
         self:_do_save(ebuf)
+      end,
+    })
+  end
+
+  -- Re-sync scrollbind whenever a diff window gains focus.
+  -- This recovers from desync caused by mouse-scrolling an inactive window
+  -- (Vim's "quickadj" behavior intentionally bypasses scrollbind for mouse scroll
+  -- on non-focused windows).
+  for _, bufnr in ipairs(buffers) do
+    vim.api.nvim_create_autocmd("BufEnter", {
+      buffer = bufnr,
+      callback = function()
+        if self._closed then
+          return true -- Remove autocmd
+        end
+        vim.cmd("syncbind")
       end,
     })
   end
