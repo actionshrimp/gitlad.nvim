@@ -606,4 +606,108 @@ T["diff_buffer"]["_find_file_index"]["matches old_path for renamed files"] = fun
   eq(diff_view._find_file_index(file_pairs, "new_name.lua"), 1)
 end
 
+-- =============================================================================
+-- compute_fold_ranges tests
+-- =============================================================================
+
+T["diff_buffer"]["compute_fold_ranges"] = MiniTest.new_set()
+
+T["diff_buffer"]["compute_fold_ranges"]["returns empty for empty line_map"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+  eq(buffer.compute_fold_ranges({}), {})
+end
+
+T["diff_buffer"]["compute_fold_ranges"]["returns empty when all lines are non-context"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+  local line_map = {
+    { left_type = "delete", right_type = "filler" },
+    { left_type = "filler", right_type = "add" },
+  }
+  eq(buffer.compute_fold_ranges(line_map), {})
+end
+
+T["diff_buffer"]["compute_fold_ranges"]["folds large context region between hunks"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+
+  -- Build: 1 change, 10 context lines, 1 change
+  local line_map = {}
+  table.insert(line_map, { left_type = "change", right_type = "change" })
+  for _ = 1, 10 do
+    table.insert(line_map, { left_type = "context", right_type = "context" })
+  end
+  table.insert(line_map, { left_type = "change", right_type = "change" })
+
+  -- With default context_lines=3: lines 1-4 visible (change + 3 context),
+  -- lines 5-8 folded, lines 9-12 visible (3 context + change)
+  local ranges = buffer.compute_fold_ranges(line_map)
+  eq(#ranges, 1)
+  eq(ranges[1], { 5, 8 })
+end
+
+T["diff_buffer"]["compute_fold_ranges"]["folds leading context before first hunk"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+
+  -- 8 context lines then 1 change
+  local line_map = {}
+  for _ = 1, 8 do
+    table.insert(line_map, { left_type = "context", right_type = "context" })
+  end
+  table.insert(line_map, { left_type = "change", right_type = "change" })
+
+  -- Lines 1-5 should be folded, lines 6-9 visible (3 context + change)
+  local ranges = buffer.compute_fold_ranges(line_map)
+  eq(#ranges, 1)
+  eq(ranges[1], { 1, 5 })
+end
+
+T["diff_buffer"]["compute_fold_ranges"]["folds trailing context after last hunk"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+
+  -- 1 change then 8 context lines
+  local line_map = {}
+  table.insert(line_map, { left_type = "change", right_type = "change" })
+  for _ = 1, 8 do
+    table.insert(line_map, { left_type = "context", right_type = "context" })
+  end
+
+  -- Lines 1-4 visible (change + 3 context), lines 5-9 folded
+  local ranges = buffer.compute_fold_ranges(line_map)
+  eq(#ranges, 1)
+  eq(ranges[1], { 5, 9 })
+end
+
+T["diff_buffer"]["compute_fold_ranges"]["respects custom context_lines"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+
+  -- 1 change, 10 context, 1 change
+  local line_map = {}
+  table.insert(line_map, { left_type = "change", right_type = "change" })
+  for _ = 1, 10 do
+    table.insert(line_map, { left_type = "context", right_type = "context" })
+  end
+  table.insert(line_map, { left_type = "change", right_type = "change" })
+
+  -- With context_lines=1: lines 1-2 visible, lines 3-10 folded, lines 11-12 visible
+  local ranges = buffer.compute_fold_ranges(line_map, 1)
+  eq(#ranges, 1)
+  eq(ranges[1], { 3, 10 })
+end
+
+T["diff_buffer"]["compute_fold_ranges"]["does not fold single-line regions"] = function()
+  local buffer = require("gitlad.ui.views.diff.buffer")
+
+  -- 1 change, 7 context, 1 change (with context_lines=3: only 1 line gap)
+  local line_map = {}
+  table.insert(line_map, { left_type = "change", right_type = "change" })
+  for _ = 1, 7 do
+    table.insert(line_map, { left_type = "context", right_type = "context" })
+  end
+  table.insert(line_map, { left_type = "change", right_type = "change" })
+
+  -- With context_lines=3: 1 change + 3 context visible, 1 context gap, 3 context + 1 change visible
+  -- Gap is only 1 line, too small to fold
+  local ranges = buffer.compute_fold_ranges(line_map)
+  eq(#ranges, 0)
+end
+
 return T
