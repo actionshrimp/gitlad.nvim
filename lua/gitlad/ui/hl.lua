@@ -146,6 +146,7 @@ local highlight_groups = {
   GitladPopupHeading = { link = "Title" },
   GitladPopupSwitchKey = { link = "Special" },
   GitladPopupSwitchEnabled = { link = "DiagnosticOk" },
+  GitladPopupSwitchPersistent = { link = "DiagnosticHint" },
   GitladPopupOptionKey = { link = "Keyword" },
   GitladPopupActionKey = { link = "Keyword" },
   GitladPopupDescription = { link = "Normal" },

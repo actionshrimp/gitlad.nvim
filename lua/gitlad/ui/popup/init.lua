@@ -17,6 +17,7 @@ local git = require("gitlad.git")
 ---@field enabled boolean Current state
 ---@field cli_prefix string Prefix for CLI flag (default "--")
 ---@field exclusive_with? string[] CLI names of switches that are mutually exclusive
+---@field persist_key? string If set, enabled state is saved/loaded across popup invocations
 
 ---@class PopupOption
 ---@field key string Single character key binding
@@ -126,7 +127,7 @@ end
 ---@param key string Single character key
 ---@param cli string CLI flag name (without --)
 ---@param description string User-facing description
----@param opts? { enabled?: boolean, cli_prefix?: string, exclusive_with?: string[] }
+---@param opts? { enabled?: boolean, cli_prefix?: string, exclusive_with?: string[], persist_key?: string }
 ---@return PopupBuilder
 function PopupBuilder:switch(key, cli, description, opts)
   opts = opts or {}
@@ -137,6 +138,7 @@ function PopupBuilder:switch(key, cli, description, opts)
     enabled = opts.enabled or false,
     cli_prefix = opts.cli_prefix or "--",
     exclusive_with = opts.exclusive_with,
+    persist_key = opts.persist_key,
   })
   return self
 end
@@ -292,6 +294,17 @@ function PopupBuilder:build()
   local data = setmetatable({}, PopupData)
   data.name = self._name
   data.switches = vim.deepcopy(self._switches)
+
+  -- Apply persisted enabled states for sticky switches
+  local persist = require("gitlad.utils.persist")
+  for _, sw in ipairs(data.switches) do
+    if sw.persist_key then
+      local saved = persist.get(sw.persist_key)
+      if saved ~= nil then
+        sw.enabled = saved
+      end
+    end
+  end
   data.options = vim.deepcopy(self._options)
   data.actions = vim.deepcopy(self._actions)
   data.branch_scope = self._branch_scope
@@ -372,6 +385,7 @@ end
 --- Toggle a switch by key
 ---@param key string Switch key
 function PopupData:toggle_switch(key)
+  local persist = require("gitlad.utils.persist")
   for _, sw in ipairs(self.switches) do
     if sw.key == key then
       sw.enabled = not sw.enabled
@@ -381,9 +395,15 @@ function PopupData:toggle_switch(key)
           for _, excl_cli in ipairs(sw.exclusive_with) do
             if other.cli == excl_cli then
               other.enabled = false
+              if other.persist_key then
+                persist.set(other.persist_key, false)
+              end
             end
           end
         end
+      end
+      if sw.persist_key then
+        persist.set(sw.persist_key, sw.enabled)
       end
       return
     end
