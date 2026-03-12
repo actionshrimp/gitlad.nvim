@@ -182,4 +182,53 @@ T["persistent switch arguments included in get_arguments when enabled"] = functi
   eq(args[1], "--copy-ignored")
 end
 
+-- Cross-session: write in one child, read back in a fresh child process.
+-- This is the real-world case: user toggles a switch, restarts Neovim,
+-- reopens the popup — switch should still be on.
+T["cross-session: persistent switch survives Neovim restart"] = function()
+  local shared_path = vim.fn.tempname() .. "_cross_session_persist.json"
+
+  -- Session 1: toggle switch on
+  local child1 = MiniTest.new_child_neovim()
+  child1.start({ "-u", "tests/minimal_init.lua" })
+  child1.lua(string.format(
+    [[
+      local persist = require("gitlad.utils.persist")
+      persist._override_path = %q
+      persist._reset_cache()
+      local popup = require("gitlad.ui.popup")
+      local p = popup.builder()
+        :switch("i", "copy-ignored", "Copy ignored", { persist_key = "wt_copy_ignored" })
+        :build()
+      p:toggle_switch("i")
+    ]],
+    shared_path
+  ))
+  child1.stop()
+
+  -- Session 2: fresh Neovim, same persist file — switch should be loaded as enabled
+  local child2 = MiniTest.new_child_neovim()
+  child2.start({ "-u", "tests/minimal_init.lua" })
+  child2.lua(string.format(
+    [[
+      local persist = require("gitlad.utils.persist")
+      persist._override_path = %q
+      persist._reset_cache()
+    ]],
+    shared_path
+  ))
+  child2.lua([[
+    local popup = require("gitlad.ui.popup")
+    result_popup = popup.builder()
+      :switch("i", "copy-ignored", "Copy ignored", { persist_key = "wt_copy_ignored" })
+      :build()
+  ]])
+
+  local enabled = child2.lua_get([[result_popup.switches[1].enabled]])
+  child2.stop()
+  os.remove(shared_path)
+
+  eq(enabled, true)
+end
+
 return T
