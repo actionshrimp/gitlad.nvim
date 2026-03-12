@@ -56,4 +56,24 @@ function M.parse_list(output)
   return result
 end
 
+--- Merge WorktreeInfo from wt list into WorktreeEntry list.
+--- Matches by branch name and attaches wt data as a `.wt` field.
+---@param worktrees WorktreeEntry[]
+---@param infos WorktreeInfo[]
+---@return WorktreeEntry[]
+function M.merge(worktrees, infos)
+  local by_branch = {}
+  for _, info in ipairs(infos) do
+    if info.branch then
+      by_branch[info.branch] = info
+    end
+  end
+  for _, entry in ipairs(worktrees) do
+    if entry.branch then
+      entry.wt = by_branch[entry.branch]
+    end
+  end
+  return worktrees
+end
+
 return M

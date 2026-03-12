@@ -293,7 +293,33 @@ local function render_worktrees(ctx, opts)
           short_path = short_path .. "/"
         end
 
-        local line_text = string.format("%-" .. max_branch_len .. "s  %s", branch_info, short_path)
+        -- Build enrichment string from wt data when available
+        local enrich = ""
+        local wt = worktree.wt
+        if wt then
+          local parts = {}
+          if wt.main then
+            if wt.main.ahead > 0 then
+              table.insert(parts, "↑" .. wt.main.ahead)
+            end
+            if wt.main.behind > 0 then
+              table.insert(parts, "↓" .. wt.main.behind)
+            end
+          end
+          local wt_wt = wt.working_tree
+          if wt_wt and (wt_wt.staged or wt_wt.modified or wt_wt.untracked) then
+            table.insert(parts, "●")
+          end
+          if wt.operation_state == "conflicts" then
+            table.insert(parts, "[C]")
+          end
+          if #parts > 0 then
+            enrich = "  " .. table.concat(parts, " ")
+          end
+        end
+
+        local line_text =
+          string.format("%-" .. max_branch_len .. "s%s  %s", branch_info, enrich, short_path)
 
         table.insert(ctx.lines, line_text)
         self.line_map[#ctx.lines] = {
