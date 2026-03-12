@@ -8,6 +8,7 @@ local M = {}
 M.errors = require("gitlad.utils.errors")
 M.keymap = require("gitlad.utils.keymap")
 M.path = require("gitlad.utils.path")
+M.persist = require("gitlad.utils.persist")
 M.prompt = require("gitlad.utils.prompt")
 M.remote = require("gitlad.utils.remote")
 

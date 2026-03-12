@@ -793,7 +793,7 @@ function M.apply_popup_highlights(
   -- Build lookup for switch keys
   local switch_keys = {}
   for _, sw in ipairs(switches) do
-    switch_keys[sw.key] = sw.enabled
+    switch_keys[sw.key] = { enabled = sw.enabled, persistent = sw.persist_key ~= nil }
   end
 
   -- Build lookup for option keys
@@ -834,7 +834,7 @@ function M.apply_popup_highlights(
     -- Switch line: "  -a description (--flag)"
     local switch_key = line:match("^%s%s%-(%S)")
     if switch_key and switch_keys[switch_key] ~= nil then
-      local is_enabled = switch_keys[switch_key]
+      local sw_info = switch_keys[switch_key]
       -- Highlight the -key part
       local key_start = line:find("%-")
       if key_start then
@@ -848,11 +848,19 @@ function M.apply_popup_highlights(
         )
       end
       -- Highlight the flag text inside parens (not the parens themselves)
+      -- Persistent+enabled switches use a distinct color from transient+enabled
       local cli_start = line:find("%(%-")
       if cli_start then
         local cli_end = line:find("%)", cli_start)
         if cli_end then
-          local hl_group = is_enabled and "GitladPopupSwitchEnabled" or "Comment"
+          local hl_group
+          if sw_info.enabled and sw_info.persistent then
+            hl_group = "GitladPopupSwitchPersistent"
+          elseif sw_info.enabled then
+            hl_group = "GitladPopupSwitchEnabled"
+          else
+            hl_group = "Comment"
+          end
           hl_module.set(bufnr, ns_popup, line_idx, cli_start, cli_end - 1, hl_group)
         end
       end
