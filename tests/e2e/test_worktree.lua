@@ -27,6 +27,9 @@ T["worktree popup"]["opens from status buffer with % key"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
+  -- Ensure git mode (disable worktrunk) so popup structure is predictable
+  child.lua([[require("gitlad").setup({ worktree = { worktrunk = "never" } })]])
+
   -- Create initial commit
   helpers.create_file(child, repo, "test.txt", "hello")
   helpers.git(child, repo, "add test.txt")
@@ -86,6 +89,9 @@ end
 T["worktree popup"]["has correct switches"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
+
+  -- Ensure git mode (disable worktrunk) so popup structure is predictable
+  child.lua([[require("gitlad").setup({ worktree = { worktrunk = "never" } })]])
 
   -- Create initial commit
   helpers.create_file(child, repo, "test.txt", "hello")
@@ -213,6 +219,9 @@ T["worktree popup"]["shows all action groups"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
+  -- Ensure git mode (disable worktrunk) so popup structure is predictable
+  child.lua([[require("gitlad").setup({ worktree = { worktrunk = "never" } })]])
+
   -- Create initial commit
   helpers.create_file(child, repo, "test.txt", "hello")
   helpers.git(child, repo, "add test.txt")
@@ -265,6 +274,9 @@ end
 T["worktree popup"]["branch and worktree action available"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
+
+  -- Ensure git mode (disable worktrunk) so popup structure is predictable
+  child.lua([[require("gitlad").setup({ worktree = { worktrunk = "never" } })]])
 
   -- Create initial commit
   helpers.create_file(child, repo, "test.txt", "hello")

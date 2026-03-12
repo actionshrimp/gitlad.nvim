@@ -1,3 +1,61 @@
-{"branch":"main","path":"/home/user/repo/main","kind":"main","working_tree":{"modified":0,"staged":0,"untracked":0},"main":null,"remote":{"ahead":0,"behind":0},"ci":null,"operation_state":null,"main_state":null}
-{"branch":"feature/new-ui","path":"/home/user/repo/feature-new-ui","kind":"linked","working_tree":{"modified":2,"staged":1,"untracked":3},"main":{"ahead":4,"behind":0},"remote":{"ahead":4,"behind":0},"ci":{"status":"passing","stale":false},"operation_state":null,"main_state":null}
-{"branch":"bugfix/login-crash","path":"/home/user/repo/bugfix-login-crash","kind":"linked","working_tree":{"modified":0,"staged":0,"untracked":0},"main":{"ahead":1,"behind":2},"remote":null,"ci":{"status":"failing","stale":true},"operation_state":"conflicts","main_state":null}
+[
+  {
+    "branch": "main",
+    "path": "/home/user/repo/main",
+    "kind": "worktree",
+    "is_main": true,
+    "is_current": false,
+    "is_previous": false,
+    "working_tree": {
+      "staged": false,
+      "modified": false,
+      "untracked": false,
+      "renamed": false,
+      "deleted": false,
+      "diff": { "added": 0, "deleted": 0 }
+    },
+    "main_state": "is_main",
+    "remote": { "name": "origin", "branch": "main", "ahead": 0, "behind": 0 },
+    "worktree": { "detached": false }
+  },
+  {
+    "branch": "feature/new-ui",
+    "path": "/home/user/repo/feature-new-ui",
+    "kind": "worktree",
+    "is_main": false,
+    "is_current": true,
+    "is_previous": false,
+    "working_tree": {
+      "staged": true,
+      "modified": true,
+      "untracked": true,
+      "renamed": false,
+      "deleted": false,
+      "diff": { "added": 10, "deleted": 5 }
+    },
+    "main_state": "ahead",
+    "main": { "ahead": 4, "behind": 0 },
+    "remote": { "name": "origin", "branch": "feature/new-ui", "ahead": 4, "behind": 0 },
+    "worktree": { "detached": false }
+  },
+  {
+    "branch": "bugfix/login-crash",
+    "path": "/home/user/repo/bugfix-login-crash",
+    "kind": "worktree",
+    "is_main": false,
+    "is_current": false,
+    "is_previous": true,
+    "working_tree": {
+      "staged": false,
+      "modified": false,
+      "untracked": false,
+      "renamed": false,
+      "deleted": false,
+      "diff": { "added": 0, "deleted": 0 }
+    },
+    "main_state": "ahead",
+    "main": { "ahead": 1, "behind": 2 },
+    "operation_state": "conflicts",
+    "worktree": { "detached": false }
+  }
+]

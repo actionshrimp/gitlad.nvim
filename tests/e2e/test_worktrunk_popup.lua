@@ -36,97 +36,92 @@ T["worktrunk popup e2e"]["popup opens in worktrunk mode when wt installed and au
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  -- Ensure worktrunk = "auto" and wt is detected
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  -- Configure with worktrunk = "auto" (wt installed → worktrunk mode)
+  child.lua([[require("gitlad").setup({ worktree = { worktrunk = "auto" } })]])
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
+  -- Track which open function is called via monkey-patching before pressing %
   child.lua([[
-    require("gitlad").setup({ worktree = { worktrunk = "auto" } })
-    local wt = require("gitlad.worktrunk")
-    -- Mock _executable to return true for "wt" regardless of actual PATH
-    wt._executable = function(name) return name == "wt" end
+    _G.worktrunk_popup_called = false
+    local worktree_popup = require("gitlad.popups.worktree")
+    local orig = worktree_popup._open_worktrunk_popup
+    worktree_popup._open_worktrunk_popup = function(rs, ctx, cfg)
+      _G.worktrunk_popup_called = true
+      orig(rs, ctx, cfg)
+    end
   ]])
 
-  -- Open the worktree popup
-  child.lua(string.format(
-    [[
-      local state = require("gitlad.state")
-      local repo_state = state.get_or_create(%q)
-      local worktree_popup = require("gitlad.popups.worktree")
-
-      -- Track which open function is called
-      _G.worktrunk_popup_called = false
-      local orig = worktree_popup._open_worktrunk_popup
-      worktree_popup._open_worktrunk_popup = function(rs, ctx, cfg)
-        _G.worktrunk_popup_called = true
-        orig(rs, ctx, cfg)
-      end
-
-      worktree_popup.open(repo_state, nil)
-    ]],
-    repo
-  ))
+  child.type_keys("%")
+  helpers.wait_for_popup(child)
 
   local called = child.lua_get([[_G.worktrunk_popup_called]])
   eq(called, true)
 
   child.type_keys("q")
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktrunk popup e2e"]["popup opens in git mode when worktrunk = never"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
+
+  child.lua([[require("gitlad").setup({ worktree = { worktrunk = "never" } })]])
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
   child.lua([[
-    require("gitlad").setup({ worktree = { worktrunk = "never" } })
+    _G.git_popup_called = false
+    local worktree_popup = require("gitlad.popups.worktree")
+    local orig = worktree_popup._open_git_popup
+    worktree_popup._open_git_popup = function(rs, ctx)
+      _G.git_popup_called = true
+      orig(rs, ctx)
+    end
   ]])
 
-  child.lua(string.format(
-    [[
-      local state = require("gitlad.state")
-      local repo_state = state.get_or_create(%q)
-      local worktree_popup = require("gitlad.popups.worktree")
-
-      _G.git_popup_called = false
-      local orig = worktree_popup._open_git_popup
-      worktree_popup._open_git_popup = function(rs, ctx)
-        _G.git_popup_called = true
-        orig(rs, ctx)
-      end
-
-      worktree_popup.open(repo_state, nil)
-    ]],
-    repo
-  ))
+  child.type_keys("%")
+  helpers.wait_for_popup(child)
 
   local called = child.lua_get([[_G.git_popup_called]])
   eq(called, true)
 
   child.type_keys("q")
+  helpers.cleanup_repo(child, repo)
 end
 
 T["worktrunk popup e2e"]["Git Worktree escape hatch visible in worktrunk mode"] = function()
   local child = _G.child
   local repo = helpers.create_test_repo(child)
 
-  child.lua([[
-    require("gitlad").setup({ worktree = { worktrunk = "auto" } })
-    local wt = require("gitlad.worktrunk")
-    wt._executable = function(name) return name == "wt" end
-  ]])
+  helpers.create_file(child, repo, "test.txt", "hello")
+  helpers.git(child, repo, "add test.txt")
+  helpers.git(child, repo, 'commit -m "Initial"')
 
-  child.lua(string.format(
-    [[
-      local state = require("gitlad.state")
-      local repo_state = state.get_or_create(%q)
-      local worktree_popup = require("gitlad.popups.worktree")
-      worktree_popup.open(repo_state, nil)
-    ]],
-    repo
-  ))
+  child.lua([[require("gitlad").setup({ worktree = { worktrunk = "auto" } })]])
+  child.lua(string.format([[vim.cmd("cd %s")]], repo))
+  child.lua([[require("gitlad.ui.views.status").open()]])
+  helpers.wait_for_status(child)
+
+  child.type_keys("%")
+  helpers.wait_for_popup(child)
 
   -- Check popup buffer contains "Git Worktree" heading
-  local lines = child.lua_get([[
+  child.lua([[
     local buf = vim.api.nvim_get_current_buf()
-    return vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    _G.popup_lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   ]])
+  local lines = child.lua_get([[_G.popup_lines]])
 
   local found = false
   if type(lines) == "table" then
@@ -140,6 +135,7 @@ T["worktrunk popup e2e"]["Git Worktree escape hatch visible in worktrunk mode"] 
   eq(found, true)
 
   child.type_keys("q")
+  helpers.cleanup_repo(child, repo)
 end
 
 return T
