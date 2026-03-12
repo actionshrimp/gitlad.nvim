@@ -2,6 +2,9 @@
 ---@brief [[
 --- Transient-style worktree popup with switches, options, and actions.
 --- Follows magit worktree popup patterns (evil-collection keybind: %).
+--- When worktrunk (wt) is installed and enabled, shows a worktrunk-oriented
+--- popup with Switch/Merge/Remove/Steps sections plus a "Git Worktree" escape
+--- hatch for raw git operations. Otherwise falls back to the standard git popup.
 ---@brief ]]
 
 local M = {}
@@ -137,10 +140,23 @@ local function select_worktree(repo_state, prompt_text, include_current, callbac
   end)
 end
 
---- Create and show the worktree popup
+--- Create and show the worktree popup, bifurcating into worktrunk or git mode.
 ---@param repo_state RepoState
 ---@param context? { worktree: WorktreeEntry } Optional context for operations
 function M.open(repo_state, context)
+  local cfg = config.get()
+  local wt = require("gitlad.worktrunk")
+  if wt.is_active(cfg.worktree) then
+    M._open_worktrunk_popup(repo_state, context, cfg)
+  else
+    M._open_git_popup(repo_state, context)
+  end
+end
+
+--- Create and show the standard git worktree popup (no worktrunk).
+---@param repo_state RepoState
+---@param context? { worktree: WorktreeEntry } Optional context for operations
+function M._open_git_popup(repo_state, context)
   local worktree_at_point = context and context.worktree or nil
 
   -- Build action labels with context info
@@ -211,6 +227,246 @@ function M.open(repo_state, context)
     :build()
 
   worktree_popup:show()
+end
+
+--- Create and show the worktrunk-oriented worktree popup.
+--- Shows Switch/Merge/Remove/Steps sections with a "Git Worktree" escape hatch.
+---@param repo_state RepoState
+---@param context? { worktree: WorktreeEntry }
+---@param cfg GitladConfig
+function M._open_worktrunk_popup(repo_state, context, cfg)
+  local wt = require("gitlad.worktrunk")
+
+  local wt_popup = popup
+    .builder()
+    :name("Worktrees [worktrunk]")
+    -- Switches (Arguments)
+    :switch(
+      "i",
+      "copy-ignored",
+      "Copy ignored files on create",
+      { persist_key = "wt_copy_ignored" }
+    )
+    :switch("v", "no-verify", "Skip hooks")
+    :switch("y", "yes", "Skip prompts")
+    -- Switch actions
+    :group_heading("Switch")
+    :action("s", "Switch to worktree", function(_popup_data)
+      wt.list({ cwd = repo_state.repo_root }, function(infos, err)
+        vim.schedule(function()
+          if err or not infos or #infos == 0 then
+            vim.notify("[gitlad] " .. (err or "No worktrees found"), vim.log.levels.WARN)
+            return
+          end
+          -- Filter out current worktree
+          local choices = vim.tbl_filter(function(info)
+            return info.path ~= repo_state.repo_root
+          end, infos)
+          if #choices == 0 then
+            vim.notify("[gitlad] No other worktrees to switch to", vim.log.levels.INFO)
+            return
+          end
+          vim.ui.select(choices, {
+            prompt = "Switch to worktree:",
+            format_item = function(info)
+              return info.branch .. "  " .. info.path
+            end,
+          }, function(info)
+            if not info then
+              return
+            end
+            wt.switch(info.branch, { cwd = repo_state.repo_root }, function(ok, e)
+              vim.schedule(function()
+                if ok then
+                  vim.notify("[gitlad] Switched to " .. info.path, vim.log.levels.INFO)
+                else
+                  vim.notify("[gitlad] wt switch failed: " .. (e or ""), vim.log.levels.ERROR)
+                end
+              end)
+            end)
+          end)
+        end)
+      end)
+    end)
+    :action("S", "Create + switch", function(popup_data)
+      M._wt_create_and_switch(repo_state, popup_data, cfg)
+    end)
+    -- Merge
+    :group_heading("Merge")
+    :action("m", "Merge current branch...", function(_popup_data)
+      local merge_popup = require("gitlad.popups.worktree_merge")
+      merge_popup.open(repo_state)
+    end)
+    -- Remove
+    :group_heading("Remove")
+    :action("R", "Remove worktree", function(_popup_data)
+      M._wt_remove(repo_state)
+    end)
+    -- Steps
+    :group_heading("Steps")
+    :action("ci", "Copy ignored files (run now)", function(_popup_data)
+      local target_path = context and context.worktree_path or repo_state.repo_root
+      wt.copy_ignored({ cwd = target_path }, function(ok, err)
+        vim.schedule(function()
+          if ok then
+            vim.notify("[gitlad] copy-ignored complete", vim.log.levels.INFO)
+          else
+            vim.notify("[gitlad] copy-ignored failed: " .. (err or ""), vim.log.levels.ERROR)
+          end
+        end)
+      end)
+    end)
+    -- Git Worktree escape hatch
+    :group_heading("Git Worktree")
+    :action("b", "Add worktree", function(popup_data)
+      M._add_worktree(repo_state, popup_data)
+    end)
+    :action("c", "Create branch + worktree", function(popup_data)
+      M._add_branch_and_worktree(repo_state, popup_data)
+    end)
+    :action("k", "Delete", function(popup_data)
+      local worktree_at_point = context and context.worktree or nil
+      if worktree_at_point and not worktree_at_point.is_main then
+        M._delete_worktree_direct(repo_state, worktree_at_point, popup_data)
+      else
+        M._delete_worktree(repo_state, popup_data)
+      end
+    end)
+    :action("g", "Visit", function(_popup_data)
+      local worktree_at_point = context and context.worktree or nil
+      if worktree_at_point then
+        M._visit_worktree_direct(repo_state, worktree_at_point)
+      else
+        M._visit_worktree(repo_state)
+      end
+    end)
+    :action("l", "Lock worktree", function(_popup_data)
+      local worktree_at_point = context and context.worktree or nil
+      if worktree_at_point and not worktree_at_point.is_main then
+        M._lock_worktree_direct(repo_state, worktree_at_point)
+      else
+        M._lock_worktree(repo_state)
+      end
+    end)
+    :action("u", "Unlock worktree", function(_popup_data)
+      local worktree_at_point = context and context.worktree or nil
+      if worktree_at_point and worktree_at_point.locked then
+        M._unlock_worktree_direct(repo_state, worktree_at_point)
+      else
+        M._unlock_worktree(repo_state)
+      end
+    end)
+    :action("p", "Prune stale", function(_popup_data)
+      M._prune_worktrees(repo_state)
+    end)
+    :build()
+
+  wt_popup:show()
+end
+
+--- Switch to a new worktree using wt switch -c
+--- After creating, runs wt step copy-ignored if the persistent switch is on
+--- or cfg.worktree.copy_ignored_on_create = "always".
+---@param repo_state RepoState
+---@param popup_data PopupData
+---@param cfg GitladConfig
+function M._wt_create_and_switch(repo_state, popup_data, cfg)
+  vim.ui.input({ prompt = "Create + switch to branch: " }, function(branch)
+    if not branch or branch == "" then
+      return
+    end
+
+    local wt = require("gitlad.worktrunk")
+
+    -- Determine if copy-ignored should run after create
+    local copy_ignored_switch = false
+    for _, sw in ipairs(popup_data.switches) do
+      if sw.cli == "copy-ignored" and sw.enabled then
+        copy_ignored_switch = true
+        break
+      end
+    end
+    local copy_ignored_always = cfg.worktree.copy_ignored_on_create == "always"
+    local should_copy_ignored = copy_ignored_switch or copy_ignored_always
+
+    vim.notify("[gitlad] Creating worktree for branch: " .. branch, vim.log.levels.INFO)
+
+    wt.switch(branch, { cwd = repo_state.repo_root, create = true }, function(ok, err)
+      vim.schedule(function()
+        if not ok then
+          vim.notify("[gitlad] wt switch -c failed: " .. (err or ""), vim.log.levels.ERROR)
+          return
+        end
+
+        vim.notify("[gitlad] Created worktree for branch: " .. branch, vim.log.levels.INFO)
+        repo_state:refresh_status(true)
+
+        if should_copy_ignored then
+          -- Determine source branch for copy-ignored
+          local from_opt = cfg.worktree.copy_ignored_from
+          -- Run copy-ignored from the new worktree (we don't have its path here,
+          -- so we run from the main repo cwd; wt will target the new worktree)
+          local copy_opts = { cwd = repo_state.repo_root }
+          if from_opt == "current" then
+            -- "current" means the worktree we're running from
+            copy_opts.from = repo_state.repo_root
+          end
+          -- Note: when from = "trunk", wt uses its default trunk branch
+          wt.copy_ignored(copy_opts, function(ci_ok, ci_err)
+            vim.schedule(function()
+              if ci_ok then
+                vim.notify("[gitlad] copy-ignored complete", vim.log.levels.INFO)
+              else
+                vim.notify("[gitlad] copy-ignored failed: " .. (ci_err or ""), vim.log.levels.WARN)
+              end
+            end)
+          end)
+        end
+      end)
+    end)
+  end)
+end
+
+--- Remove a worktree using wt remove (prompts with wt list)
+---@param repo_state RepoState
+function M._wt_remove(repo_state)
+  local wt = require("gitlad.worktrunk")
+  wt.list({ cwd = repo_state.repo_root }, function(infos, err)
+    vim.schedule(function()
+      if err or not infos or #infos == 0 then
+        vim.notify("[gitlad] " .. (err or "No worktrees found"), vim.log.levels.WARN)
+        return
+      end
+      -- Filter out main worktree
+      local choices = vim.tbl_filter(function(info)
+        return info.kind ~= "main"
+      end, infos)
+      if #choices == 0 then
+        vim.notify("[gitlad] No linked worktrees to remove", vim.log.levels.INFO)
+        return
+      end
+      vim.ui.select(choices, {
+        prompt = "Remove worktree:",
+        format_item = function(info)
+          return info.branch .. "  " .. info.path
+        end,
+      }, function(info)
+        if not info then
+          return
+        end
+        wt.remove(info.branch, { cwd = repo_state.repo_root }, function(ok, e)
+          vim.schedule(function()
+            if ok then
+              vim.notify("[gitlad] Removed worktree: " .. info.branch, vim.log.levels.INFO)
+              repo_state:refresh_status(true)
+            else
+              vim.notify("[gitlad] wt remove failed: " .. (e or ""), vim.log.levels.ERROR)
+            end
+          end)
+        end)
+      end)
+    end)
+  end)
 end
 
 --- Add a worktree for an existing branch/commit
