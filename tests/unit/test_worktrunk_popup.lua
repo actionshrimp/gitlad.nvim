@@ -216,6 +216,50 @@ T["worktrunk popup"]["worktrunk popup has v and y switches"] = function()
   eq(sw_y.cli, "yes")
 end
 
+T["worktrunk popup"]["worktrunk popup has -i copy-ignored switch with persist_key"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup.builder():switch(
+    "i",
+    "copy-ignored",
+    "Copy ignored files on create",
+    { persist_key = "wt_copy_ignored" }
+  )
+
+  local sw = find_switch(builder, "i")
+  eq(sw ~= nil, true)
+  eq(sw.cli, "copy-ignored")
+  eq(sw.persist_key, "wt_copy_ignored")
+  eq(sw.description, "Copy ignored files on create")
+end
+
+T["worktrunk popup"]["worktrunk popup has ci copy-ignored step action"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup
+    .builder()
+    :group_heading("Steps")
+    :action("ci", "Copy ignored files (run now)", function() end)
+
+  local action = find_action(builder, "ci")
+  eq(action ~= nil, true)
+  eq(action.description, "Copy ignored files (run now)")
+end
+
+T["worktrunk popup"]["worktrunk popup has Steps heading"] = function()
+  local popup = require("gitlad.ui.popup")
+  local builder = popup
+    .builder()
+    :group_heading("Steps")
+    :action("ci", "Copy ignored files (run now)", function() end)
+
+  local headings = {}
+  for _, item in ipairs(builder._actions) do
+    if item.type == "heading" then
+      table.insert(headings, item.text)
+    end
+  end
+  eq(headings[1], "Steps")
+end
+
 -- ── is_active bifurcation logic ─────────────────────────────────────────────
 
 T["worktrunk popup"]["open calls _open_worktrunk_popup when wt active"] = function()

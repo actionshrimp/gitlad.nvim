@@ -241,6 +241,12 @@ function M._open_worktrunk_popup(repo_state, context, cfg)
     .builder()
     :name("Worktrees [worktrunk]")
     -- Switches (Arguments)
+    :switch(
+      "i",
+      "copy-ignored",
+      "Copy ignored files on create",
+      { persist_key = "wt_copy_ignored" }
+    )
     :switch("v", "no-verify", "Skip hooks")
     :switch("y", "yes", "Skip prompts")
     -- Switch actions
@@ -296,6 +302,20 @@ function M._open_worktrunk_popup(repo_state, context, cfg)
     :action("R", "Remove worktree", function(_popup_data)
       M._wt_remove(repo_state)
     end)
+    -- Steps
+    :group_heading("Steps")
+    :action("ci", "Copy ignored files (run now)", function(_popup_data)
+      local target_path = context and context.worktree_path or repo_state.repo_root
+      wt.copy_ignored({ cwd = target_path }, function(ok, err)
+        vim.schedule(function()
+          if ok then
+            vim.notify("[gitlad] copy-ignored complete", vim.log.levels.INFO)
+          else
+            vim.notify("[gitlad] copy-ignored failed: " .. (err or ""), vim.log.levels.ERROR)
+          end
+        end)
+      end)
+    end)
     -- Git Worktree escape hatch
     :group_heading("Git Worktree")
     :action("b", "Add worktree", function(popup_data)
@@ -345,6 +365,8 @@ function M._open_worktrunk_popup(repo_state, context, cfg)
 end
 
 --- Switch to a new worktree using wt switch -c
+--- After creating, runs wt step copy-ignored if the persistent switch is on
+--- or cfg.worktree.copy_ignored_on_create = "always".
 ---@param repo_state RepoState
 ---@param popup_data PopupData
 ---@param cfg GitladConfig
@@ -355,27 +377,50 @@ function M._wt_create_and_switch(repo_state, popup_data, cfg)
     end
 
     local wt = require("gitlad.worktrunk")
-    local extra_args = popup_data:get_arguments()
 
-    -- Build create opts (base can come from prompt in future, for now just create)
-    local switch_opts = {
-      cwd = repo_state.repo_root,
-      create = true,
-    }
-
-    -- Collect extra flags to pass (e.g. --no-verify, --yes)
-    -- wt switch doesn't take these directly but we note them for copy-ignored
-    _ = extra_args
+    -- Determine if copy-ignored should run after create
+    local copy_ignored_switch = false
+    for _, sw in ipairs(popup_data.switches) do
+      if sw.cli == "copy-ignored" and sw.enabled then
+        copy_ignored_switch = true
+        break
+      end
+    end
+    local copy_ignored_always = cfg.worktree.copy_ignored_on_create == "always"
+    local should_copy_ignored = copy_ignored_switch or copy_ignored_always
 
     vim.notify("[gitlad] Creating worktree for branch: " .. branch, vim.log.levels.INFO)
 
-    wt.switch(branch, switch_opts, function(ok, err)
+    wt.switch(branch, { cwd = repo_state.repo_root, create = true }, function(ok, err)
       vim.schedule(function()
-        if ok then
-          vim.notify("[gitlad] Created worktree for branch: " .. branch, vim.log.levels.INFO)
-          repo_state:refresh_status(true)
-        else
+        if not ok then
           vim.notify("[gitlad] wt switch -c failed: " .. (err or ""), vim.log.levels.ERROR)
+          return
+        end
+
+        vim.notify("[gitlad] Created worktree for branch: " .. branch, vim.log.levels.INFO)
+        repo_state:refresh_status(true)
+
+        if should_copy_ignored then
+          -- Determine source branch for copy-ignored
+          local from_opt = cfg.worktree.copy_ignored_from
+          -- Run copy-ignored from the new worktree (we don't have its path here,
+          -- so we run from the main repo cwd; wt will target the new worktree)
+          local copy_opts = { cwd = repo_state.repo_root }
+          if from_opt == "current" then
+            -- "current" means the worktree we're running from
+            copy_opts.from = repo_state.repo_root
+          end
+          -- Note: when from = "trunk", wt uses its default trunk branch
+          wt.copy_ignored(copy_opts, function(ci_ok, ci_err)
+            vim.schedule(function()
+              if ci_ok then
+                vim.notify("[gitlad] copy-ignored complete", vim.log.levels.INFO)
+              else
+                vim.notify("[gitlad] copy-ignored failed: " .. (ci_err or ""), vim.log.levels.WARN)
+              end
+            end)
+          end)
         end
       end)
     end)
