@@ -20,6 +20,9 @@ local M = {}
 ---   "prompt"       → always prompts for path with no default
 ---@class GitladWorktreeConfig
 ---@field directory_strategy "sibling"|"sibling-bare"|"prompt" How to suggest default worktree paths
+---@field worktrunk "auto"|"always"|"never" Whether to use worktrunk (wt) CLI. "auto" = use if installed, "always" = require it, "never" = disable
+---@field copy_ignored_on_create "always"|"never" Whether to run wt step copy-ignored after creating a worktree (default: "never"; use popup switch for per-invocation control)
+---@field copy_ignored_from "trunk"|"current" Source worktree for copy-ignored: "trunk" = default branch, "current" = current worktree
 
 ---@class GitladWatcherConfig
 ---@field enabled boolean Whether to enable file watching for git state changes (default: true)
@@ -67,6 +70,9 @@ local defaults = {
   status = {},
   worktree = {
     directory_strategy = "sibling", -- "sibling", "sibling-bare", or "prompt"
+    worktrunk = "auto", -- "auto" | "always" | "never"
+    copy_ignored_on_create = "never", -- "always" | "never"
+    copy_ignored_from = "trunk", -- "trunk" | "current"
   },
   watcher = {
     enabled = true, -- Can disable for performance-sensitive users
