@@ -268,21 +268,42 @@ local function render_worktrees(ctx, opts)
     -- Normalize repo_root path for comparison (remove trailing slash)
     local current_repo_root = repo_root
 
-    -- Compute max branch name length for tabular alignment
-    local max_branch_len = 0
+    local wt_parse = require("gitlad.worktrunk.parse")
+
+    -- Determine if any worktree has wt enrichment (to decide column layout)
+    local any_wt = false
     if status.worktrees then
       for _, worktree in ipairs(status.worktrees) do
-        local branch_info = worktree.branch or "(detached)"
-        max_branch_len = math.max(max_branch_len, #branch_info)
+        if worktree.wt then
+          any_wt = true
+          break
+        end
       end
     end
-    -- Account for pending add phantom lines (use "(creating...)" as branch placeholder)
+
+    -- First pass: compute branch length, status strings, and max status width
+    local max_branch_len = 0
+    local max_status_len = 0
+    local wt_statuses = {} -- indexed parallel to status.worktrees
+    if status.worktrees then
+      for i, worktree in ipairs(status.worktrees) do
+        local branch_info = worktree.branch or "(detached)"
+        max_branch_len = math.max(max_branch_len, #branch_info)
+        if any_wt then
+          local s = wt_parse.status_str(worktree.wt)
+          wt_statuses[i] = s
+          max_status_len = math.max(max_status_len, #s)
+        end
+      end
+    end
+    -- Account for pending add phantom lines
     for _ in ipairs(pending_adds) do
       max_branch_len = math.max(max_branch_len, #"(creating...)")
     end
 
+    -- Second pass: render rows with aligned columns
     if status.worktrees then
-      for _, worktree in ipairs(status.worktrees) do
+      for i, worktree in ipairs(status.worktrees) do
         local branch_info = worktree.branch or "(detached)"
         -- Compute relative path (cwd-relative first, fallback to home-relative)
         local short_path = vim.fn.fnamemodify(worktree.path, ":.")
@@ -293,33 +314,16 @@ local function render_worktrees(ctx, opts)
           short_path = short_path .. "/"
         end
 
-        -- Build enrichment string from wt data when available
-        local enrich = ""
-        local wt = worktree.wt
-        if wt then
-          local parts = {}
-          if wt.main then
-            if wt.main.ahead > 0 then
-              table.insert(parts, "↑" .. wt.main.ahead)
-            end
-            if wt.main.behind > 0 then
-              table.insert(parts, "↓" .. wt.main.behind)
-            end
-          end
-          local wt_wt = wt.working_tree
-          if wt_wt and (wt_wt.staged or wt_wt.modified or wt_wt.untracked) then
-            table.insert(parts, "●")
-          end
-          if wt.operation_state == "conflicts" then
-            table.insert(parts, "[C]")
-          end
-          if #parts > 0 then
-            enrich = "  " .. table.concat(parts, " ")
-          end
+        local line_text
+        if any_wt then
+          -- Tabular: branch | padded-status | path
+          local status_col = wt_statuses[i] or ""
+          local padded = string.format("%-" .. max_status_len .. "s", status_col)
+          line_text =
+            string.format("%-" .. max_branch_len .. "s  %s  %s", branch_info, padded, short_path)
+        else
+          line_text = string.format("%-" .. max_branch_len .. "s  %s", branch_info, short_path)
         end
-
-        local line_text =
-          string.format("%-" .. max_branch_len .. "s%s  %s", branch_info, enrich, short_path)
 
         table.insert(ctx.lines, line_text)
         self.line_map[#ctx.lines] = {
@@ -351,8 +355,14 @@ local function render_worktrees(ctx, opts)
         short_path = short_path .. "/"
       end
 
-      local line_text =
-        string.format("%-" .. max_branch_len .. "s  %s", "(creating...)", short_path)
+      local line_text
+      if any_wt then
+        local padded = string.format("%-" .. max_status_len .. "s", "")
+        line_text =
+          string.format("%-" .. max_branch_len .. "s  %s  %s", "(creating...)", padded, short_path)
+      else
+        line_text = string.format("%-" .. max_branch_len .. "s  %s", "(creating...)", short_path)
+      end
 
       table.insert(ctx.lines, line_text)
       self.line_map[#ctx.lines] = {

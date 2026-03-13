@@ -140,4 +140,66 @@ T["worktrunk.parse.merge"]["returns the worktrees table"] = function()
   eq(result, worktrees)
 end
 
+-- ============================================================
+-- status_str tests
+-- ============================================================
+
+T["worktrunk.parse.status_str"] = MiniTest.new_set()
+
+T["worktrunk.parse.status_str"]["nil returns empty string"] = function()
+  local parse = require("gitlad.worktrunk.parse")
+  eq(parse.status_str(nil), "")
+end
+
+T["worktrunk.parse.status_str"]["uses wt symbols when present"] = function()
+  local parse = require("gitlad.worktrunk.parse")
+  eq(parse.status_str({ symbols = "↑3", main_state = "ahead" }), "↑3")
+end
+
+T["worktrunk.parse.status_str"]["falls back to main_state empty"] = function()
+  local parse = require("gitlad.worktrunk.parse")
+  eq(parse.status_str({ main_state = "empty" }), "_")
+end
+
+T["worktrunk.parse.status_str"]["falls back to main_state integrated"] = function()
+  local parse = require("gitlad.worktrunk.parse")
+  eq(parse.status_str({ main_state = "integrated" }), "=")
+end
+
+T["worktrunk.parse.status_str"]["falls back to main ahead/behind"] = function()
+  local parse = require("gitlad.worktrunk.parse")
+  eq(parse.status_str({ main_state = "ahead", main = { ahead = 3, behind = 0 } }), "↑3")
+  eq(parse.status_str({ main_state = "ahead", main = { ahead = 3, behind = 2 } }), "↑3↓2")
+  eq(parse.status_str({ main_state = "behind", main = { ahead = 0, behind = 1 } }), "↓1")
+end
+
+T["worktrunk.parse.status_str"]["appends dirty indicator"] = function()
+  local parse = require("gitlad.worktrunk.parse")
+  local result = parse.status_str({
+    symbols = "↑2",
+    working_tree = { staged = true, modified = false, untracked = false },
+  })
+  eq(result, "↑2 ●")
+end
+
+T["worktrunk.parse.status_str"]["appends conflict indicator"] = function()
+  local parse = require("gitlad.worktrunk.parse")
+  local result = parse.status_str({
+    main_state = "ahead",
+    main = { ahead = 1, behind = 0 },
+    operation_state = "conflicts",
+  })
+  eq(result, "↑1 [C]")
+end
+
+T["worktrunk.parse.status_str"]["is_main with clean tree returns empty"] = function()
+  local parse = require("gitlad.worktrunk.parse")
+  eq(parse.status_str({ main_state = "is_main", is_main = true }), "")
+end
+
+T["worktrunk.parse.status_str"]["symbols empty string falls back to structured"] = function()
+  local parse = require("gitlad.worktrunk.parse")
+  eq(parse.status_str({ symbols = "", main_state = "empty" }), "_")
+end
+
 return T
