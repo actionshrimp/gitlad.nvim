@@ -15,8 +15,9 @@ local M = {}
 ---@field working_tree { staged: boolean, modified: boolean, untracked: boolean }|nil
 ---@field main { ahead: integer, behind: integer }|nil Commits ahead/behind main branch
 ---@field remote { ahead: integer, behind: integer, name: string, branch: string }|nil
----@field main_state string|nil e.g. "is_main", "ahead", "integrated"
+---@field main_state string|nil e.g. "is_main", "ahead", "integrated", "empty"
 ---@field operation_state string|nil e.g. "conflicts"
+---@field symbols string|nil Compact status symbols from wt (e.g. "↑3", "^", "_")
 
 --- Parse output of `wt list --format=json`
 --- wt outputs a JSON array spanning multiple lines.
@@ -54,6 +55,67 @@ function M.parse_list(output)
     end
   end
   return result
+end
+
+--- Merge WorktreeInfo from wt list into WorktreeEntry list.
+--- Matches by branch name and attaches wt data as a `.wt` field.
+---@param worktrees WorktreeEntry[]
+---@param infos WorktreeInfo[]
+---@return WorktreeEntry[]
+function M.merge(worktrees, infos)
+  local by_branch = {}
+  for _, info in ipairs(infos) do
+    if info.branch then
+      by_branch[info.branch] = info
+    end
+  end
+  for _, entry in ipairs(worktrees) do
+    if entry.branch then
+      entry.wt = by_branch[entry.branch]
+    end
+  end
+  return worktrees
+end
+
+--- Build a compact status string for display in the worktrees section.
+--- Uses wt's own `symbols` field when present (e.g. "↑3", "^⇣", "_"),
+--- falling back to structured data (main_state + main.ahead/behind).
+--- Appends dirty (●) and conflict ([C]) indicators which wt doesn't include.
+---@param wt_info WorktreeInfo|nil
+---@return string  -- empty string when no info
+function M.status_str(wt_info)
+  if not wt_info then
+    return ""
+  end
+  local parts = {}
+  -- Use wt's own symbols if present
+  if wt_info.symbols and wt_info.symbols ~= "" then
+    table.insert(parts, wt_info.symbols)
+  elseif wt_info.main_state then
+    local ms = wt_info.main_state
+    if ms == "empty" then
+      table.insert(parts, "_")
+    elseif ms == "integrated" then
+      table.insert(parts, "=")
+    elseif wt_info.main then
+      if wt_info.main.ahead > 0 and wt_info.main.behind > 0 then
+        table.insert(parts, "↑" .. wt_info.main.ahead .. "↓" .. wt_info.main.behind)
+      elseif wt_info.main.ahead > 0 then
+        table.insert(parts, "↑" .. wt_info.main.ahead)
+      elseif wt_info.main.behind > 0 then
+        table.insert(parts, "↓" .. wt_info.main.behind)
+      end
+    end
+  end
+  -- Append dirty/conflict state (not in wt symbols)
+  local wk = wt_info.working_tree
+  if wk and (wk.staged or wk.modified or wk.untracked) then
+    table.insert(parts, "●")
+  end
+  if wt_info.operation_state == "conflicts" then
+    table.insert(parts, "[C]")
+  end
+  return table.concat(parts, " ")
 end
 
 return M

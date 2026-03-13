@@ -536,10 +536,22 @@ function RepoState:_fetch_extended_status(result, callback)
     complete_one()
   end)
 
-  -- 8. Worktree list
+  -- 8. Worktree list (+ optional wt enrichment in parallel)
   start_op()
   git.worktree_list(opts, function(worktrees, _err)
     result.worktrees = worktrees or {}
+    local cfg = require("gitlad.config").get()
+    local wt = require("gitlad.worktrunk")
+    if wt.is_active(cfg.worktree) then
+      M.mark_operation_time(opts.cwd)
+      start_op()
+      wt.list(opts, function(infos, _wt_err)
+        if infos and #infos > 0 then
+          require("gitlad.worktrunk.parse").merge(result.worktrees, infos)
+        end
+        complete_one()
+      end)
+    end
     complete_one()
   end)
 

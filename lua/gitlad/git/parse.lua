@@ -441,6 +441,7 @@ end
 ---@field lock_reason string|nil Reason for locking (if locked)
 ---@field prunable boolean Whether the worktree is prunable (stale)
 ---@field prune_reason string|nil Reason why it's prunable
+---@field wt WorktreeInfo|nil Enriched data from wt list (when worktrunk is active)
 
 ---@class GitRemote
 ---@field name string Remote name (e.g., "origin")
